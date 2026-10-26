@@ -13,6 +13,7 @@ import {
   safeFileName,
   signFiles,
   withFileUrls,
+  type FileItem,
   type FileRow,
   type Idea,
   type RawIdea,
@@ -42,6 +43,8 @@ export default function Capture({
   const [query, setQuery] = useState("");
   const [activeTag, setActiveTag] = useState<string | null>(null);
   const [activeStatus, setActiveStatus] = useState<string | null>(null);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editText, setEditText] = useState("");
   const requestId = useRef(0);
   const firstRun = useRef(true);
   const fileInput = useRef<HTMLInputElement>(null);
@@ -223,6 +226,100 @@ export default function Capture({
     if (files.length) await uploadFiles(saved.id, files);
   }
 
+  function adjustTagCounts(removed: string[], added: string[]) {
+    setTagCounts((c) => {
+      const next = { ...c };
+      for (const t of removed) next[t] = (next[t] ?? 1) - 1;
+      for (const t of added) next[t] = (next[t] ?? 0) + 1;
+      return next;
+    });
+  }
+
+  function startEdit(idea: Idea) {
+    setEditingId(idea.id);
+    setEditText(idea.content);
+    setError("");
+  }
+
+  async function saveEdit(idea: Idea) {
+    const content = editText.trim();
+    if (!content && idea.files.length === 0) {
+      setError("An idea needs some text or a file. Delete it instead if you don't want it.");
+      return;
+    }
+    const tags = extractTags(content);
+    const old = { content: idea.content, tags: idea.tags };
+    const apply = (c: string, t: string[]) =>
+      setIdeas((list) => list.map((i) => (i.id === idea.id ? { ...i, content: c, tags: t } : i)));
+
+    apply(content, tags);
+    adjustTagCounts(old.tags, tags);
+    setEditingId(null);
+    setError("");
+
+    const { error } = await createClient()
+      .from("ideas")
+      .update({ content, tags })
+      .eq("id", idea.id);
+    if (error) {
+      apply(old.content, old.tags);
+      adjustTagCounts(tags, old.tags);
+      setError(error.message);
+    }
+  }
+
+  async function deleteIdea(idea: Idea) {
+    if (!confirm("Delete this idea and its files? This can't be undone.")) return;
+    const index = ideas.findIndex((i) => i.id === idea.id);
+    setIdeas((list) => list.filter((i) => i.id !== idea.id));
+    adjustTagCounts(idea.tags, []);
+    setError("");
+
+    const supabase = createClient();
+    // Deleting the idea also deletes its file records; the stored files are removed after.
+    const { error } = await supabase.from("ideas").delete().eq("id", idea.id);
+    if (error) {
+      setIdeas((list) => {
+        const copy = [...list];
+        copy.splice(Math.min(index, copy.length), 0, idea);
+        return copy;
+      });
+      adjustTagCounts([], idea.tags);
+      setError(error.message);
+      return;
+    }
+    if (idea.files.length) {
+      const removed = await supabase.storage.from(BUCKET).remove(idea.files.map((f) => f.path));
+      if (removed.error) setError(`Idea deleted, but its files could not be removed: ${removed.error.message}`);
+    }
+  }
+
+  async function deleteFile(idea: Idea, file: FileItem) {
+    if (!idea.content && idea.files.length === 1) {
+      setError("This is all that's in this idea. Delete the whole idea instead.");
+      return;
+    }
+    if (!confirm(`Remove "${file.name}"?`)) return;
+    setIdeas((list) =>
+      list.map((i) =>
+        i.id === idea.id ? { ...i, files: i.files.filter((f) => f.id !== file.id) } : i,
+      ),
+    );
+    setError("");
+
+    const supabase = createClient();
+    const { error } = await supabase.from("idea_files").delete().eq("id", file.id);
+    if (error) {
+      setIdeas((list) =>
+        list.map((i) => (i.id === idea.id ? { ...i, files: [...i.files, file] } : i)),
+      );
+      setError(error.message);
+      return;
+    }
+    const removed = await supabase.storage.from(BUCKET).remove([file.path]);
+    if (removed.error) setError(`File removed, but it could not be erased: ${removed.error.message}`);
+  }
+
   const sortedTags = Object.entries(tagCounts)
     .filter(([, n]) => n > 0)
     .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
@@ -358,7 +455,31 @@ export default function Capture({
               idea.id.startsWith("temp-") ? "opacity-60" : ""
             }`}
           >
-            {idea.content && (
+            {editingId === idea.id ? (
+              <div className="flex flex-col gap-2">
+                <textarea
+                  autoFocus
+                  rows={4}
+                  value={editText}
+                  onChange={(e) => setEditText(e.target.value)}
+                  className="w-full resize-none rounded-lg border border-neutral-300 bg-white p-3 text-base text-black"
+                />
+                <div className="flex gap-3">
+                  <button
+                    onClick={() => saveEdit(idea)}
+                    className="flex-1 rounded-lg bg-black px-3 py-2 font-medium text-white"
+                  >
+                    Save
+                  </button>
+                  <button
+                    onClick={() => setEditingId(null)}
+                    className="rounded-lg border border-neutral-300 px-3 py-2"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            ) : idea.content ? (
               <p className="whitespace-pre-wrap break-words">
                 {splitTags(idea.content).map((part, i) =>
                   part.tag ? (
@@ -374,9 +495,24 @@ export default function Capture({
                   ),
                 )}
               </p>
+            ) : null}
+
+            {editingId === idea.id && idea.files.length > 0 && (
+              <ul className="mt-2 flex flex-col gap-1 text-sm">
+                {idea.files.map((f) => (
+                  <li key={f.id} className="flex items-center justify-between gap-2">
+                    <span className="truncate">
+                      {f.name} <span className="text-neutral-500">{formatSize(f.size)}</span>
+                    </span>
+                    <button onClick={() => deleteFile(idea, f)} className="shrink-0 text-red-600">
+                      Remove
+                    </button>
+                  </li>
+                ))}
+              </ul>
             )}
 
-            {idea.files.length > 0 && (
+            {idea.files.length > 0 && editingId !== idea.id && (
               <div className="mt-2 flex flex-wrap gap-2">
                 {idea.files.map((f) =>
                   f.url && f.mime_type?.startsWith("image/") ? (
@@ -434,6 +570,16 @@ export default function Capture({
                 ))}
               </select>
             </div>
+            {editingId !== idea.id && !idea.id.startsWith("temp-") && !idea.uploading && (
+              <div className="mt-1 flex gap-5 text-sm">
+                <button onClick={() => startEdit(idea)} className="py-2 text-blue-600">
+                  Edit
+                </button>
+                <button onClick={() => deleteIdea(idea)} className="py-2 text-red-600">
+                  Delete
+                </button>
+              </div>
+            )}
           </li>
         ))}
         {ideas.length === 0 && (
