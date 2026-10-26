@@ -8,6 +8,7 @@ import {
   BUCKET,
   IDEA_COLUMNS,
   MAX_FILE_BYTES,
+  STATUSES,
   formatSize,
   safeFileName,
   signFiles,
@@ -40,11 +41,12 @@ export default function Capture({
   const [error, setError] = useState("");
   const [query, setQuery] = useState("");
   const [activeTag, setActiveTag] = useState<string | null>(null);
+  const [activeStatus, setActiveStatus] = useState<string | null>(null);
   const requestId = useRef(0);
   const firstRun = useRef(true);
   const fileInput = useRef<HTMLInputElement>(null);
 
-  const filtering = query.trim() !== "" || activeTag !== null;
+  const filtering = query.trim() !== "" || activeTag !== null || activeStatus !== null;
 
   // Re-run the search whenever the search box or the chosen tag changes.
   useEffect(() => {
@@ -63,6 +65,7 @@ export default function Capture({
       const term = query.trim();
       if (term) q = q.ilike("content", `%${term.replace(/[\\%_]/g, "\\$&")}%`);
       if (activeTag) q = q.contains("tags", [activeTag]);
+      if (activeStatus) q = q.eq("status", activeStatus);
       const { data, error } = await q;
       if (id !== requestId.current) return; // a newer search replaced this one
       if (error) setError(error.message);
@@ -72,13 +75,26 @@ export default function Capture({
       }
     }, 250);
     return () => clearTimeout(timer);
-  }, [query, activeTag]);
+  }, [query, activeTag, activeStatus]);
 
   function matchesFilters(idea: Idea) {
     const term = query.trim().toLowerCase();
     if (term && !idea.content.toLowerCase().includes(term)) return false;
     if (activeTag && !idea.tags.includes(activeTag)) return false;
+    if (activeStatus && idea.status !== activeStatus) return false;
     return true;
+  }
+
+  async function changeStatus(id: string, status: string) {
+    const before = ideas.find((i) => i.id === id)?.status;
+    if (!before || before === status) return;
+    setIdeas((list) => list.map((i) => (i.id === id ? { ...i, status } : i)));
+    setError("");
+    const { error } = await createClient().from("ideas").update({ status }).eq("id", id);
+    if (error) {
+      setIdeas((list) => list.map((i) => (i.id === id ? { ...i, status: before } : i)));
+      setError(error.message);
+    }
   }
 
   const recorder = useRecorder(
@@ -302,6 +318,19 @@ export default function Capture({
           placeholder="Search ideas"
           className="w-full rounded-lg border border-neutral-300 bg-white p-3 text-base text-black"
         />
+        <div className="flex flex-wrap gap-2">
+          {[null, ...STATUSES].map((s) => (
+            <button
+              key={s ?? "all"}
+              onClick={() => setActiveStatus(s)}
+              className={`rounded-full border px-3 py-1 text-sm ${
+                activeStatus === s ? "border-black bg-black text-white" : "border-neutral-300"
+              }`}
+            >
+              {s ?? "all"}
+            </button>
+          ))}
+        </div>
         {sortedTags.length > 0 && (
           <div className="flex flex-wrap gap-2">
             {sortedTags.map(([tag, n]) => (
@@ -387,9 +416,24 @@ export default function Capture({
               </p>
             ) : null}
 
-            <p className="mt-1 text-xs text-neutral-500">
-              {new Date(idea.created_at).toLocaleString()}
-            </p>
+            <div className="mt-2 flex items-center justify-between gap-2">
+              <p className="text-xs text-neutral-500">
+                {new Date(idea.created_at).toLocaleString()}
+              </p>
+              <select
+                value={idea.status}
+                disabled={idea.id.startsWith("temp-")}
+                onChange={(e) => changeStatus(idea.id, e.target.value)}
+                aria-label="Status"
+                className="rounded-full border border-neutral-300 bg-white px-3 py-1 text-sm text-black"
+              >
+                {STATUSES.map((s) => (
+                  <option key={s} value={s}>
+                    {s}
+                  </option>
+                ))}
+              </select>
+            </div>
           </li>
         ))}
         {ideas.length === 0 && (
