@@ -1011,7 +1011,7 @@ export default function Capture({
                       open();
                     }
                   }}
-                  className="group flex cursor-pointer flex-col overflow-hidden rounded-2xl border border-line bg-card shadow-sm transition hover:-translate-y-0.5 hover:shadow-md"
+                  className="flex cursor-pointer flex-col overflow-hidden rounded-2xl border border-line bg-card shadow-sm transition hover:-translate-y-0.5 hover:shadow-md"
                 >
                   <div className="h-1" style={{ background: STATUS_COLOR[idea.status] }} />
                   {cover?.url && (
