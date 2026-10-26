@@ -185,13 +185,13 @@ export default function Home() {
         >
           <div className="hidden md:block" aria-hidden />
           <div>
-            <p className={`${label} text-pf-muted`}>
+            <p className={`${label} text-pf-ink [text-shadow:0_1px_10px_rgba(6,19,33,0.9)]`}>
               Engineering Science // Jeonbuk National University
             </p>
             <h1 className="font-serif-display mt-6 text-6xl font-semibold leading-[0.95] sm:text-7xl">
               Curiosity meets engineering.
             </h1>
-            <p className="mt-6 max-w-md leading-relaxed text-pf-muted">
+            <p className="mt-6 max-w-md text-lg leading-relaxed text-[#e4f5fa] [text-shadow:0_1px_12px_rgba(6,19,33,0.9)]">
               I&apos;m {NAME}, an engineering student who learns by building. I start with what
               I&apos;m curious about and make it real, one project at a time.
             </p>
@@ -201,7 +201,7 @@ export default function Home() {
               </a>
               <a
                 href="#about"
-                className={`${button} border border-pf-line hover:border-pf-ink`}
+                className={`${button} border border-pf-ink/50 hover:border-pf-ink`}
               >
                 About me
               </a>
@@ -211,7 +211,7 @@ export default function Home() {
 
         <p
           aria-hidden
-          className={`${label} absolute right-4 top-1/2 hidden -translate-y-1/2 text-[0.65rem] text-pf-muted [writing-mode:vertical-rl] lg:block`}
+          className={`${label} absolute right-4 top-1/2 hidden -translate-y-1/2 text-[0.65rem] text-pf-ink/80 [writing-mode:vertical-rl] lg:block`}
         >
           Bangladesh → South Korea
         </p>
