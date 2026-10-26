@@ -35,22 +35,34 @@ export default function VaultPage() {
   );
 }
 
+// A light index of every idea, so folder counts, tags and the streak cover all of them.
+// Read in pages of 1000 (the most the server returns at once) so no idea is skipped.
+async function ideaIndex(supabase: Awaited<ReturnType<typeof createClient>>) {
+  const STEP = 1000;
+  const rows: { id: string; tags: string[]; status: string; created_at: string }[] = [];
+  for (let from = 0; ; from += STEP) {
+    const { data } = await supabase
+      .from("ideas")
+      .select("id, tags, status, created_at")
+      .order("created_at", { ascending: false })
+      .range(from, from + STEP - 1);
+    if (!data) break;
+    rows.push(...data);
+    if (data.length < STEP) break;
+  }
+  return rows;
+}
+
 async function VaultContent() {
   const supabase = await createClient();
-  const [ideas, allTags] = await Promise.all([
+  const [ideas, index] = await Promise.all([
     supabase
       .from("ideas")
       .select(IDEA_COLUMNS)
       .order("created_at", { ascending: false })
       .limit(PAGE_SIZE),
-    // A light index of every idea, so folder counts, tags and the streak cover all of them.
-    supabase
-      .from("ideas")
-      .select("id, tags, status, created_at")
-      .order("created_at", { ascending: false })
-      .limit(2000),
+    ideaIndex(supabase),
   ]);
-  const index = allTags.data ?? [];
 
   return (
     <Capture
