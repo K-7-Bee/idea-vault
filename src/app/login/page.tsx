@@ -23,7 +23,7 @@ export default function LoginPage() {
   }
 
   const input =
-    "w-full rounded-lg border border-neutral-300 bg-white px-3 py-3 text-base text-black";
+    "w-full rounded-lg border border-line bg-field px-3 py-3 text-base text-ink";
 
   return (
     <main className="mx-auto flex min-h-screen max-w-sm flex-col justify-center gap-4 p-6">
@@ -49,12 +49,12 @@ export default function LoginPage() {
         />
         <button
           disabled={busy}
-          className="w-full rounded-lg bg-black px-3 py-3 text-base font-medium text-white disabled:opacity-50"
+          className="w-full rounded-lg bg-ink px-3 py-3 text-base font-medium text-on-ink disabled:opacity-50"
         >
           Log in
         </button>
       </form>
-      {error && <p className="text-sm text-red-600">{error}</p>}
+      {error && <p className="text-sm text-danger">{error}</p>}
     </main>
   );
 }

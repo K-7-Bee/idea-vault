@@ -1,22 +1,45 @@
 @import "tailwindcss";
 
+/* Each colour has a light and a dark value; dark mode follows the phone/computer setting. */
 :root {
+  color-scheme: light dark;
   --background: #ffffff;
   --foreground: #171717;
-}
-
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --field: #ffffff;
+  --ink: #000000;
+  --on-ink: #ffffff;
+  --line: #d4d4d4;
+  --muted: #737373;
+  --link: #2563eb;
+  --danger: #dc2626;
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
     --background: #0a0a0a;
     --foreground: #ededed;
+    --field: #171717;
+    --ink: #ededed;
+    --on-ink: #0a0a0a;
+    --line: #3f3f46;
+    --muted: #a1a1aa;
+    --link: #60a5fa;
+    --danger: #f87171;
   }
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-field: var(--field);
+  --color-ink: var(--ink);
+  --color-on-ink: var(--on-ink);
+  --color-line: var(--line);
+  --color-muted: var(--muted);
+  --color-link: var(--link);
+  --color-danger: var(--danger);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
 }
 
 body {

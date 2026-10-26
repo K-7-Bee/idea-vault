@@ -2,13 +2,17 @@ import { Suspense } from "react";
 import { createClient } from "@/lib/supabase/server";
 import { IDEA_COLUMNS, withFileUrls, type RawIdea } from "@/lib/ideas";
 import Capture from "./capture";
+import LogoutButton from "./logout-button";
 
 export default function VaultPage() {
   return (
     <main className="mx-auto max-w-xl p-4">
-      <h1 className="mb-4 text-2xl font-semibold">Idea Vault</h1>
+      <div className="mb-4 flex items-center justify-between">
+        <h1 className="text-2xl font-semibold">Idea Vault</h1>
+        <LogoutButton />
+      </div>
       {/* Reads your login cookie, so it loads at request time behind a boundary. */}
-      <Suspense fallback={<p className="text-neutral-500">Loading…</p>}>
+      <Suspense fallback={<p className="text-muted">Loading…</p>}>
         <VaultContent />
       </Suspense>
     </main>

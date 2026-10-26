@@ -48,6 +48,7 @@ export default function Capture({
   const requestId = useRef(0);
   const firstRun = useRef(true);
   const fileInput = useRef<HTMLInputElement>(null);
+  const editFileInput = useRef<HTMLInputElement>(null);
 
   const filtering = query.trim() !== "" || activeTag !== null || activeStatus !== null;
 
@@ -168,6 +169,19 @@ export default function Capture({
       ),
     );
     if (failures.length) setError(`Some files failed: ${failures.join("; ")}`);
+  }
+
+  async function addToIdea(ideaId: string, list: FileList | null) {
+    const files = list ? [...list] : [];
+    if (editFileInput.current) editFileInput.current.value = "";
+    const ok = files.filter((f) => f.size <= MAX_FILE_BYTES);
+    const tooBig = files.filter((f) => f.size > MAX_FILE_BYTES).map((f) => f.name);
+    setError(
+      tooBig.length ? `Too big (max ${formatSize(MAX_FILE_BYTES)}): ${tooBig.join(", ")}` : "",
+    );
+    if (ok.length === 0) return;
+    setIdeas((all) => all.map((i) => (i.id === ideaId ? { ...i, uploading: ok.length } : i)));
+    await uploadFiles(ideaId, ok);
   }
 
   async function save(e: React.FormEvent) {
@@ -336,7 +350,7 @@ export default function Capture({
             if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) save(e);
           }}
           placeholder="What's the idea? Add #tags like #project"
-          className="w-full resize-none rounded-lg border border-neutral-300 bg-white p-3 text-base text-black"
+          className="w-full resize-none rounded-lg border border-line bg-field p-3 text-base text-ink"
         />
 
         {pending.length > 0 && (
@@ -344,12 +358,12 @@ export default function Capture({
             {pending.map((f, i) => (
               <li key={i} className="flex items-center justify-between gap-2">
                 <span className="truncate">
-                  {f.name} <span className="text-neutral-500">{formatSize(f.size)}</span>
+                  {f.name} <span className="text-muted">{formatSize(f.size)}</span>
                 </span>
                 <button
                   type="button"
                   onClick={() => setPending((p) => p.filter((_, j) => j !== i))}
-                  className="shrink-0 text-red-600"
+                  className="shrink-0 text-danger"
                 >
                   Remove
                 </button>
@@ -366,13 +380,13 @@ export default function Capture({
           onChange={(e) => addFiles(e.target.files ? [...e.target.files] : null)}
         />
         {recorder.recording && (
-          <div className="flex items-center justify-between rounded-lg border border-red-300 p-3">
-            <span className="font-medium text-red-600">
+          <div className="flex items-center justify-between rounded-lg border border-danger p-3">
+            <span className="font-medium text-danger">
               ● Recording {Math.floor(recorder.seconds / 60)}:
               {String(recorder.seconds % 60).padStart(2, "0")}
             </span>
             <span className="flex gap-3">
-              <button type="button" onClick={recorder.cancel} className="text-neutral-500">
+              <button type="button" onClick={recorder.cancel} className="text-muted">
                 Cancel
               </button>
               <button type="button" onClick={recorder.stop} className="font-medium">
@@ -385,7 +399,7 @@ export default function Capture({
           <button
             type="button"
             onClick={() => fileInput.current?.click()}
-            className="rounded-lg border border-neutral-300 px-3 py-3 text-base"
+            className="rounded-lg border border-line px-3 py-3 text-base"
           >
             Attach
           </button>
@@ -393,18 +407,18 @@ export default function Capture({
             type="button"
             disabled={recorder.recording}
             onClick={recorder.start}
-            className="rounded-lg border border-neutral-300 px-3 py-3 text-base disabled:opacity-40"
+            className="rounded-lg border border-line px-3 py-3 text-base disabled:opacity-40"
           >
             Record
           </button>
           <button
             disabled={recorder.recording || (!text.trim() && pending.length === 0)}
-            className="flex-1 rounded-lg bg-black px-3 py-3 text-base font-medium text-white disabled:opacity-40"
+            className="flex-1 rounded-lg bg-ink px-3 py-3 text-base font-medium text-on-ink disabled:opacity-40"
           >
             Save idea
           </button>
         </div>
-        {error && <p className="text-sm text-red-600">{error}</p>}
+        {error && <p className="text-sm text-danger">{error}</p>}
       </form>
 
       <div className="flex flex-col gap-3">
@@ -413,7 +427,7 @@ export default function Capture({
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           placeholder="Search ideas"
-          className="w-full rounded-lg border border-neutral-300 bg-white p-3 text-base text-black"
+          className="w-full rounded-lg border border-line bg-field p-3 text-base text-ink"
         />
         <div className="flex flex-wrap gap-2">
           {[null, ...STATUSES].map((s) => (
@@ -421,7 +435,7 @@ export default function Capture({
               key={s ?? "all"}
               onClick={() => setActiveStatus(s)}
               className={`rounded-full border px-3 py-1 text-sm ${
-                activeStatus === s ? "border-black bg-black text-white" : "border-neutral-300"
+                activeStatus === s ? "border-ink bg-ink text-on-ink" : "border-line"
               }`}
             >
               {s ?? "all"}
@@ -436,8 +450,8 @@ export default function Capture({
                 onClick={() => setActiveTag(activeTag === tag ? null : tag)}
                 className={`rounded-full border px-3 py-1 text-sm ${
                   activeTag === tag
-                    ? "border-black bg-black text-white"
-                    : "border-neutral-300"
+                    ? "border-ink bg-ink text-on-ink"
+                    : "border-line"
                 }`}
               >
                 #{tag} <span className="opacity-60">{n}</span>
@@ -447,11 +461,19 @@ export default function Capture({
         )}
       </div>
 
+      <input
+        ref={editFileInput}
+        type="file"
+        multiple
+        className="hidden"
+        onChange={(e) => editingId && addToIdea(editingId, e.target.files)}
+      />
+
       <ul className="flex flex-col gap-3">
         {ideas.map((idea) => (
           <li
             key={idea.id}
-            className={`rounded-lg border border-neutral-300 p-3 ${
+            className={`rounded-lg border border-line p-3 ${
               idea.id.startsWith("temp-") ? "opacity-60" : ""
             }`}
           >
@@ -462,18 +484,18 @@ export default function Capture({
                   rows={4}
                   value={editText}
                   onChange={(e) => setEditText(e.target.value)}
-                  className="w-full resize-none rounded-lg border border-neutral-300 bg-white p-3 text-base text-black"
+                  className="w-full resize-none rounded-lg border border-line bg-field p-3 text-base text-ink"
                 />
                 <div className="flex gap-3">
                   <button
                     onClick={() => saveEdit(idea)}
-                    className="flex-1 rounded-lg bg-black px-3 py-2 font-medium text-white"
+                    className="flex-1 rounded-lg bg-ink px-3 py-2 font-medium text-on-ink"
                   >
                     Save
                   </button>
                   <button
                     onClick={() => setEditingId(null)}
-                    className="rounded-lg border border-neutral-300 px-3 py-2"
+                    className="rounded-lg border border-line px-3 py-2"
                   >
                     Cancel
                   </button>
@@ -486,7 +508,7 @@ export default function Capture({
                     <button
                       key={i}
                       onClick={() => setActiveTag(part.tag!)}
-                      className="font-medium text-blue-600"
+                      className="font-medium text-link"
                     >
                       {part.text}
                     </button>
@@ -502,14 +524,23 @@ export default function Capture({
                 {idea.files.map((f) => (
                   <li key={f.id} className="flex items-center justify-between gap-2">
                     <span className="truncate">
-                      {f.name} <span className="text-neutral-500">{formatSize(f.size)}</span>
+                      {f.name} <span className="text-muted">{formatSize(f.size)}</span>
                     </span>
-                    <button onClick={() => deleteFile(idea, f)} className="shrink-0 text-red-600">
+                    <button onClick={() => deleteFile(idea, f)} className="shrink-0 text-danger">
                       Remove
                     </button>
                   </li>
                 ))}
               </ul>
+            )}
+
+            {editingId === idea.id && (
+              <button
+                onClick={() => editFileInput.current?.click()}
+                className="mt-2 rounded-lg border border-line px-3 py-2 text-sm"
+              >
+                Add files
+              </button>
             )}
 
             {idea.files.length > 0 && editingId !== idea.id && (
@@ -538,22 +569,22 @@ export default function Capture({
                       href={f.url ?? undefined}
                       target="_blank"
                       rel="noreferrer"
-                      className="max-w-full truncate rounded-lg border border-neutral-300 px-3 py-2 text-sm text-blue-600"
+                      className="max-w-full truncate rounded-lg border border-line px-3 py-2 text-sm text-link"
                     >
-                      {f.name} <span className="text-neutral-500">{formatSize(f.size)}</span>
+                      {f.name} <span className="text-muted">{formatSize(f.size)}</span>
                     </a>
                   ),
                 )}
               </div>
             )}
             {idea.uploading ? (
-              <p className="mt-2 text-sm text-neutral-500">
+              <p className="mt-2 text-sm text-muted">
                 Uploading {idea.uploading} file{idea.uploading > 1 ? "s" : ""}…
               </p>
             ) : null}
 
             <div className="mt-2 flex items-center justify-between gap-2">
-              <p className="text-xs text-neutral-500">
+              <p className="text-xs text-muted">
                 {new Date(idea.created_at).toLocaleString()}
               </p>
               <select
@@ -561,7 +592,7 @@ export default function Capture({
                 disabled={idea.id.startsWith("temp-")}
                 onChange={(e) => changeStatus(idea.id, e.target.value)}
                 aria-label="Status"
-                className="rounded-full border border-neutral-300 bg-white px-3 py-1 text-sm text-black"
+                className="rounded-full border border-line bg-field px-3 py-1 text-sm text-ink"
               >
                 {STATUSES.map((s) => (
                   <option key={s} value={s}>
@@ -572,10 +603,10 @@ export default function Capture({
             </div>
             {editingId !== idea.id && !idea.id.startsWith("temp-") && !idea.uploading && (
               <div className="mt-1 flex gap-5 text-sm">
-                <button onClick={() => startEdit(idea)} className="py-2 text-blue-600">
+                <button onClick={() => startEdit(idea)} className="py-2 text-link">
                   Edit
                 </button>
-                <button onClick={() => deleteIdea(idea)} className="py-2 text-red-600">
+                <button onClick={() => deleteIdea(idea)} className="py-2 text-danger">
                   Delete
                 </button>
               </div>
@@ -583,7 +614,7 @@ export default function Capture({
           </li>
         ))}
         {ideas.length === 0 && (
-          <li className="text-neutral-500">
+          <li className="text-muted">
             {filtering ? "Nothing matches." : "No ideas yet."}
           </li>
         )}
