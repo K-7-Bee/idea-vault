@@ -4,10 +4,13 @@ import { useEffect, useRef, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { extractTags, splitTags } from "@/lib/tags";
 import { useRecorder } from "./use-recorder";
+import { useDraft } from "./use-draft";
+import type { SupabaseClient } from "@supabase/supabase-js";
 import {
   BUCKET,
   IDEA_COLUMNS,
   MAX_FILE_BYTES,
+  PAGE_SIZE,
   STATUSES,
   formatSize,
   safeFileName,
@@ -21,6 +24,26 @@ import {
 
 // An idea on screen; `uploading` is how many files are still going up.
 type ViewIdea = Idea & { uploading?: number };
+
+// File links last an hour; renew them well before that.
+const REFRESH_AFTER_MS = 45 * 60 * 1000;
+
+// One page of ideas (newest first) matching the filters, starting after `before`.
+function searchIdeas(
+  supabase: SupabaseClient,
+  f: { term: string; tag: string | null; status: string | null; before?: string },
+) {
+  let q = supabase
+    .from("ideas")
+    .select(IDEA_COLUMNS)
+    .order("created_at", { ascending: false })
+    .limit(PAGE_SIZE);
+  if (f.term) q = q.ilike("content", `%${f.term.replace(/[\\%_]/g, "\\$&")}%`);
+  if (f.tag) q = q.contains("tags", [f.tag]);
+  if (f.status) q = q.eq("status", f.status);
+  if (f.before) q = q.lt("created_at", f.before);
+  return q;
+}
 
 function countTags(lists: string[][]) {
   const counts: Record<string, number> = {};
@@ -37,7 +60,9 @@ export default function Capture({
 }) {
   const [ideas, setIdeas] = useState<ViewIdea[]>(initial);
   const [tagCounts, setTagCounts] = useState(() => countTags(initialTags));
-  const [text, setText] = useState("");
+  const [text, setText] = useDraft();
+  const [hasMore, setHasMore] = useState(initial.length >= PAGE_SIZE);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [pending, setPending] = useState<File[]>([]);
   const [error, setError] = useState("");
   const [query, setQuery] = useState("");
@@ -49,6 +74,8 @@ export default function Capture({
   const firstRun = useRef(true);
   const fileInput = useRef<HTMLInputElement>(null);
   const editFileInput = useRef<HTMLInputElement>(null);
+  const ideasRef = useRef(ideas);
+  const signedAt = useRef(0);
 
   const filtering = query.trim() !== "" || activeTag !== null || activeStatus !== null;
 
@@ -61,25 +88,92 @@ export default function Capture({
     const id = ++requestId.current;
     const timer = setTimeout(async () => {
       const supabase = createClient();
-      let q = supabase
-        .from("ideas")
-        .select(IDEA_COLUMNS)
-        .order("created_at", { ascending: false })
-        .limit(100);
-      const term = query.trim();
-      if (term) q = q.ilike("content", `%${term.replace(/[\\%_]/g, "\\$&")}%`);
-      if (activeTag) q = q.contains("tags", [activeTag]);
-      if (activeStatus) q = q.eq("status", activeStatus);
-      const { data, error } = await q;
+      const { data, error } = await searchIdeas(supabase, {
+        term: query.trim(),
+        tag: activeTag,
+        status: activeStatus,
+      });
       if (id !== requestId.current) return; // a newer search replaced this one
       if (error) setError(error.message);
       else {
         const withUrls = await withFileUrls(supabase, (data ?? []) as unknown as RawIdea[]);
-        if (id === requestId.current) setIdeas(withUrls);
+        if (id === requestId.current) {
+          setIdeas(withUrls);
+          setHasMore((data ?? []).length === PAGE_SIZE);
+        }
       }
     }, 250);
     return () => clearTimeout(timer);
   }, [query, activeTag, activeStatus]);
+
+  async function loadMore() {
+    const last = [...ideas].reverse().find((i) => !i.id.startsWith("temp-"));
+    if (!last || loadingMore) return;
+    const id = requestId.current;
+    setLoadingMore(true);
+    setError("");
+    const supabase = createClient();
+    const { data, error } = await searchIdeas(supabase, {
+      term: query.trim(),
+      tag: activeTag,
+      status: activeStatus,
+      before: last.created_at,
+    });
+    if (error) {
+      setError(error.message);
+    } else if (id === requestId.current) {
+      const more = await withFileUrls(supabase, (data ?? []) as unknown as RawIdea[]);
+      setIdeas((list) => {
+        const seen = new Set(list.map((i) => i.id));
+        return [...list, ...more.filter((i) => !seen.has(i.id))];
+      });
+      setHasMore((data ?? []).length === PAGE_SIZE);
+    }
+    setLoadingMore(false);
+  }
+
+  // Keep file links fresh: renew them when you come back to the app or leave it open a long time.
+  useEffect(() => {
+    ideasRef.current = ideas;
+  });
+
+  useEffect(() => {
+    signedAt.current = Date.now();
+
+    async function refreshUrls() {
+      if (document.visibilityState !== "visible") return;
+      if (Date.now() - signedAt.current < REFRESH_AFTER_MS) return;
+      // Don't cut off a voice note that is playing.
+      if ([...document.querySelectorAll("audio")].some((a) => !a.paused)) return;
+      const files = ideasRef.current.flatMap((i) => i.files);
+      const previous = signedAt.current;
+      signedAt.current = Date.now();
+      if (files.length === 0) return;
+
+      const fresh = await signFiles(createClient(), files);
+      if (!fresh.some((f) => f.url)) {
+        signedAt.current = previous; // couldn't reach the server; try again soon
+        return;
+      }
+      const byId = new Map(fresh.map((f) => [f.id, f]));
+      setIdeas((list) =>
+        list.map((i) => ({
+          ...i,
+          files: i.files.map((f) => {
+            const renewed = byId.get(f.id);
+            return renewed?.url ? renewed : f;
+          }),
+        })),
+      );
+    }
+
+    document.addEventListener("visibilitychange", refreshUrls);
+    const timer = setInterval(refreshUrls, 5 * 60 * 1000);
+    return () => {
+      document.removeEventListener("visibilitychange", refreshUrls);
+      clearInterval(timer);
+    };
+  }, []);
 
   function matchesFilters(idea: Idea) {
     const term = query.trim().toLowerCase();
@@ -619,6 +713,16 @@ export default function Capture({
           </li>
         )}
       </ul>
+
+      {hasMore && (
+        <button
+          onClick={loadMore}
+          disabled={loadingMore}
+          className="rounded-lg border border-line px-3 py-3 text-base disabled:opacity-40"
+        >
+          {loadingMore ? "Loading…" : "Load more"}
+        </button>
+      )}
     </div>
   );
 }

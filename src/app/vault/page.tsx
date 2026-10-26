@@ -1,6 +1,6 @@
 import { Suspense } from "react";
 import { createClient } from "@/lib/supabase/server";
-import { IDEA_COLUMNS, withFileUrls, type RawIdea } from "@/lib/ideas";
+import { IDEA_COLUMNS, PAGE_SIZE, withFileUrls, type RawIdea } from "@/lib/ideas";
 import Capture from "./capture";
 import LogoutButton from "./logout-button";
 
@@ -26,7 +26,7 @@ async function VaultContent() {
       .from("ideas")
       .select(IDEA_COLUMNS)
       .order("created_at", { ascending: false })
-      .limit(100),
+      .limit(PAGE_SIZE),
     // Just the tag lists, so the tag buttons cover every idea, not only the latest 100.
     supabase.from("ideas").select("tags").limit(2000),
   ]);

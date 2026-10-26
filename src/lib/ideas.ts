@@ -3,6 +3,9 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 export const BUCKET = "attachments";
 export const MAX_FILE_BYTES = 25 * 1024 * 1024;
 
+// How many ideas load at a time.
+export const PAGE_SIZE = 100;
+
 export const STATUSES = ["raw", "exploring", "building", "done"] as const;
 
 // Asks the database for an idea plus the files attached to it.
