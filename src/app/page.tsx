@@ -1,12 +1,14 @@
 import type { Metadata } from "next";
-import { Cormorant_Garamond } from "next/font/google";
+import { Bodoni_Moda } from "next/font/google";
+import Image from "next/image";
 import Link from "next/link";
 import MobileMenu from "./mobile-menu";
 
-const display = Cormorant_Garamond({
+// A sharp, high-contrast serif with hairline details for the big headlines.
+const display = Bodoni_Moda({
   variable: "--font-display",
   subsets: ["latin"],
-  weight: ["500", "600", "700"],
+  weight: ["500", "600", "700", "900"],
 });
 
 export const metadata: Metadata = {
@@ -109,18 +111,6 @@ const label = "font-mono text-xs uppercase tracking-[0.25em]";
 const button =
   "rounded-sm px-5 py-3 font-mono text-xs uppercase tracking-[0.2em] transition-colors";
 
-function Rings({ className }: { className?: string }) {
-  return (
-    <svg viewBox="0 0 400 400" aria-hidden className={className} fill="none">
-      {[190, 150, 110, 70, 30].map((r) => (
-        <circle key={r} cx="200" cy="200" r={r} stroke="currentColor" strokeWidth="1" />
-      ))}
-      <line x1="0" y1="200" x2="400" y2="200" stroke="currentColor" strokeWidth="0.5" />
-      <line x1="200" y1="0" x2="200" y2="400" stroke="currentColor" strokeWidth="0.5" />
-    </svg>
-  );
-}
-
 function Timeline({ title, items }: { title: string; items: Entry[] }) {
   return (
     <div>
@@ -148,12 +138,30 @@ export default function Home() {
       <div className="pf-grain" aria-hidden />
 
       {/* Hero */}
-      <section id="top" className="pf-glow relative flex min-h-screen flex-col overflow-hidden">
-        <Rings className="pointer-events-none absolute -left-40 top-1/2 h-[46rem] w-[46rem] -translate-y-1/2 text-pf-line" />
+      <section id="top" className="relative flex min-h-screen flex-col overflow-hidden">
+        {/* The photo, tinted into the navy palette so the text stays readable. */}
+        <Image
+          src="/hero.jpg"
+          alt=""
+          fill
+          priority
+          sizes="100vw"
+          className="object-cover object-[35%_center]"
+        />
+        <div aria-hidden className="absolute inset-0 bg-pf-bg/65 md:bg-pf-bg/10" />
+        <div
+          aria-hidden
+          className="absolute inset-0 bg-gradient-to-r from-transparent via-pf-bg/40 to-pf-bg/95 max-md:hidden"
+        />
+        <div
+          aria-hidden
+          className="absolute inset-0 bg-gradient-to-b from-pf-bg/70 via-transparent to-pf-bg"
+        />
+        <div aria-hidden className="pf-glow absolute inset-0 mix-blend-soft-light" />
 
         <header className="relative z-10 mx-auto flex w-full max-w-6xl items-center justify-between px-6 py-6">
-          <a href="#top" className="font-serif-display text-3xl font-semibold">
-            K..
+          <a href="#top" aria-label={`${NAME} — back to top`}>
+            <Image src="/k-logo.png" alt="" width={56} height={56} priority className="h-14 w-14" />
           </a>
           <nav className={`${label} hidden gap-8 text-pf-ink sm:flex`}>
             {NAV.map((n) => (
@@ -210,7 +218,7 @@ export default function Home() {
 
         <div
           aria-hidden
-          className="font-serif-display relative z-10 select-none px-4 text-[clamp(4.5rem,19vw,17rem)] font-bold uppercase leading-[0.78] tracking-tight"
+          className="font-serif-display relative z-10 select-none px-4 text-[clamp(4.5rem,19vw,17rem)] font-black uppercase leading-[0.78] tracking-[-0.03em] [text-shadow:0_0_60px_rgba(164,217,233,0.25)]"
         >
           Kaushik
         </div>
