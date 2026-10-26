@@ -19,6 +19,23 @@ export default function VaultPage() {
   );
 }
 
+// Reads tags in pages of 1000 (the most the server returns at once) so no idea is skipped.
+async function allTagLists(supabase: Awaited<ReturnType<typeof createClient>>) {
+  const STEP = 1000;
+  const lists: string[][] = [];
+  for (let from = 0; ; from += STEP) {
+    const { data } = await supabase
+      .from("ideas")
+      .select("tags")
+      .order("created_at", { ascending: false })
+      .range(from, from + STEP - 1);
+    if (!data) break;
+    lists.push(...data.map((r) => r.tags as string[]));
+    if (data.length < STEP) break;
+  }
+  return lists;
+}
+
 async function VaultContent() {
   const supabase = await createClient();
   const [ideas, allTags] = await Promise.all([
@@ -28,13 +45,13 @@ async function VaultContent() {
       .order("created_at", { ascending: false })
       .limit(PAGE_SIZE),
     // Just the tag lists, so the tag buttons cover every idea, not only the latest 100.
-    supabase.from("ideas").select("tags").limit(2000),
+    allTagLists(supabase),
   ]);
 
   return (
     <Capture
       initial={await withFileUrls(supabase, (ideas.data ?? []) as unknown as RawIdea[])}
-      initialTags={(allTags.data ?? []).map((r) => r.tags)}
+      initialTags={allTags}
     />
   );
 }

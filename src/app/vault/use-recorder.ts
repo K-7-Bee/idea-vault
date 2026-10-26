@@ -10,6 +10,7 @@ export function useRecorder(onDone: (file: File) => void, onError: (message: str
   const [seconds, setSeconds] = useState(0);
   const recorder = useRef<MediaRecorder | null>(null);
   const discard = useRef(false);
+  const unmounted = useRef(false);
   const callbacks = useRef({ onDone, onError });
 
   useEffect(() => {
@@ -18,7 +19,9 @@ export function useRecorder(onDone: (file: File) => void, onError: (message: str
 
   // Stop the microphone if you leave the page mid-recording.
   useEffect(() => {
+    unmounted.current = false;
     return () => {
+      unmounted.current = true;
       discard.current = true;
       if (recorder.current?.state === "recording") recorder.current.stop();
     };
@@ -41,6 +44,11 @@ export function useRecorder(onDone: (file: File) => void, onError: (message: str
       stream = await navigator.mediaDevices.getUserMedia({ audio: true });
     } catch {
       callbacks.current.onError("Microphone blocked. Allow it in your browser or phone settings.");
+      return;
+    }
+    // You left the page while the permission prompt was open: release the microphone.
+    if (unmounted.current) {
+      stream.getTracks().forEach((t) => t.stop());
       return;
     }
 

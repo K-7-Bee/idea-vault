@@ -128,7 +128,18 @@ export default function Capture({
       } else {
         const withUrls = await withFileUrls(supabase, (data ?? []) as unknown as RawIdea[]);
         if (id === requestId.current) {
-          setIdeas(withUrls);
+          // Ideas still waiting to sync aren't on the server yet; keep the ones that match.
+          const term = query.trim().toLowerCase();
+          const ids = new Set(withUrls.map((i) => i.id));
+          const waiting = ideasRef.current.filter(
+            (i) =>
+              i.waiting &&
+              !ids.has(i.id) &&
+              (!term || i.content.toLowerCase().includes(term)) &&
+              (!activeTag || i.tags.includes(activeTag)) &&
+              (!activeStatus || i.status === activeStatus),
+          );
+          setIdeas([...waiting, ...withUrls]);
           setHasMore((data ?? []).length === PAGE_SIZE);
         }
       }
@@ -217,7 +228,8 @@ export default function Capture({
       for (const item of await listQueued()) {
         try {
           const { idea, failures } = await pushIdea(supabase, item);
-          await removeQueued(item.id);
+          // Keep the item queued if a file failed, so the file isn't lost; the next sync retries it.
+          if (!failures.length) await removeQueued(item.id);
           setIdeas((list) => list.map((i) => (i.id === item.id ? idea : i)));
           if (failures.length) setError(`Some files failed: ${failures.join("; ")}`);
         } catch (e) {
@@ -397,7 +409,18 @@ export default function Capture({
     );
     if (ok.length === 0) return;
     setIdeas((all) => all.map((i) => (i.id === ideaId ? { ...i, uploading: ok.length } : i)));
-    await uploadFiles(ideaId, ok);
+    try {
+      await uploadFiles(ideaId, ok);
+    } catch (e) {
+      setIdeas((all) => all.map((i) => (i.id === ideaId ? { ...i, uploading: undefined } : i)));
+      setError(
+        e instanceof Error && looksOffline(e.message)
+          ? "You're offline. Adding files needs a connection."
+          : e instanceof Error
+            ? e.message
+            : "Could not upload the files.",
+      );
+    }
   }
 
   async function save(e: React.FormEvent) {
@@ -545,7 +568,7 @@ export default function Capture({
           value={text}
           onChange={(e) => setText(e.target.value)}
           onKeyDown={(e) => {
-            if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) save(e);
+            if (e.key === "Enter" && (e.ctrlKey || e.metaKey) && !recorder.recording) save(e);
           }}
           placeholder="What's the idea? Add #tags like #project"
           className="w-full resize-none rounded-lg border border-line bg-field p-3 text-base text-ink"
