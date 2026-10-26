@@ -1,5 +1,6 @@
 import { Suspense } from "react";
 import { createClient } from "@/lib/supabase/server";
+import { IDEA_COLUMNS, withFileUrls, type RawIdea } from "@/lib/ideas";
 import Capture from "./capture";
 
 export default function VaultPage() {
@@ -19,7 +20,7 @@ async function VaultContent() {
   const [ideas, allTags] = await Promise.all([
     supabase
       .from("ideas")
-      .select("id, content, status, tags, created_at")
+      .select(IDEA_COLUMNS)
       .order("created_at", { ascending: false })
       .limit(100),
     // Just the tag lists, so the tag buttons cover every idea, not only the latest 100.
@@ -28,7 +29,7 @@ async function VaultContent() {
 
   return (
     <Capture
-      initial={ideas.data ?? []}
+      initial={await withFileUrls(supabase, (ideas.data ?? []) as unknown as RawIdea[])}
       initialTags={(allTags.data ?? []).map((r) => r.tags)}
     />
   );

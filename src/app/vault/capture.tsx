@@ -3,16 +3,21 @@
 import { useEffect, useRef, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { extractTags, splitTags } from "@/lib/tags";
+import {
+  BUCKET,
+  IDEA_COLUMNS,
+  MAX_FILE_BYTES,
+  formatSize,
+  safeFileName,
+  signFiles,
+  withFileUrls,
+  type FileRow,
+  type Idea,
+  type RawIdea,
+} from "@/lib/ideas";
 
-export type Idea = {
-  id: string;
-  content: string;
-  status: string;
-  tags: string[];
-  created_at: string;
-};
-
-const COLUMNS = "id, content, status, tags, created_at";
+// An idea on screen; `uploading` is how many files are still going up.
+type ViewIdea = Idea & { uploading?: number };
 
 function countTags(lists: string[][]) {
   const counts: Record<string, number> = {};
@@ -27,14 +32,16 @@ export default function Capture({
   initial: Idea[];
   initialTags: string[][];
 }) {
-  const [ideas, setIdeas] = useState(initial);
+  const [ideas, setIdeas] = useState<ViewIdea[]>(initial);
   const [tagCounts, setTagCounts] = useState(() => countTags(initialTags));
   const [text, setText] = useState("");
+  const [pending, setPending] = useState<File[]>([]);
   const [error, setError] = useState("");
   const [query, setQuery] = useState("");
   const [activeTag, setActiveTag] = useState<string | null>(null);
   const requestId = useRef(0);
   const firstRun = useRef(true);
+  const fileInput = useRef<HTMLInputElement>(null);
 
   const filtering = query.trim() !== "" || activeTag !== null;
 
@@ -46,9 +53,10 @@ export default function Capture({
     }
     const id = ++requestId.current;
     const timer = setTimeout(async () => {
-      let q = createClient()
+      const supabase = createClient();
+      let q = supabase
         .from("ideas")
-        .select(COLUMNS)
+        .select(IDEA_COLUMNS)
         .order("created_at", { ascending: false })
         .limit(100);
       const term = query.trim();
@@ -57,7 +65,10 @@ export default function Capture({
       const { data, error } = await q;
       if (id !== requestId.current) return; // a newer search replaced this one
       if (error) setError(error.message);
-      else setIdeas(data ?? []);
+      else {
+        const withUrls = await withFileUrls(supabase, (data ?? []) as unknown as RawIdea[]);
+        if (id === requestId.current) setIdeas(withUrls);
+      }
     }, 250);
     return () => clearTimeout(timer);
   }, [query, activeTag]);
@@ -69,20 +80,88 @@ export default function Capture({
     return true;
   }
 
+  function addFiles(list: FileList | null) {
+    if (!list) return;
+    const ok: File[] = [];
+    const tooBig: string[] = [];
+    for (const f of list) {
+      if (f.size > MAX_FILE_BYTES) tooBig.push(f.name);
+      else ok.push(f);
+    }
+    setPending((p) => [...p, ...ok]);
+    setError(
+      tooBig.length
+        ? `Too big (max ${formatSize(MAX_FILE_BYTES)}): ${tooBig.join(", ")}`
+        : "",
+    );
+    if (fileInput.current) fileInput.current.value = "";
+  }
+
+  async function uploadFiles(ideaId: string, files: File[]) {
+    const supabase = createClient();
+    const { data: auth } = await supabase.auth.getUser();
+    const userId = auth.user?.id;
+    const rows: FileRow[] = [];
+    const failures: string[] = [];
+
+    for (const file of files) {
+      if (!userId) {
+        failures.push(`${file.name}: not logged in`);
+        continue;
+      }
+      const path = `${userId}/${ideaId}/${crypto.randomUUID()}-${safeFileName(file.name)}`;
+      const up = await supabase.storage
+        .from(BUCKET)
+        .upload(path, file, { contentType: file.type || undefined });
+      if (up.error) {
+        failures.push(`${file.name}: ${up.error.message}`);
+        continue;
+      }
+      const rec = await supabase
+        .from("idea_files")
+        .insert({
+          idea_id: ideaId,
+          path,
+          name: file.name,
+          mime_type: file.type || null,
+          size: file.size,
+        })
+        .select("id, path, name, mime_type, size")
+        .single();
+      if (rec.error || !rec.data) {
+        await supabase.storage.from(BUCKET).remove([path]);
+        failures.push(`${file.name}: ${rec.error?.message ?? "could not save"}`);
+      } else {
+        rows.push(rec.data as FileRow);
+      }
+    }
+
+    const signed = await signFiles(supabase, rows);
+    setIdeas((list) =>
+      list.map((i) =>
+        i.id === ideaId ? { ...i, files: [...i.files, ...signed], uploading: undefined } : i,
+      ),
+    );
+    if (failures.length) setError(`Some files failed: ${failures.join("; ")}`);
+  }
+
   async function save(e: React.FormEvent) {
     e.preventDefault();
     const content = text.trim();
-    if (!content) return;
+    const files = pending;
+    if (!content && files.length === 0) return;
     const tags = extractTags(content);
 
     // Show it instantly, then confirm with the database.
     const tempId = `temp-${Date.now()}`;
-    const temp: Idea = {
+    const temp: ViewIdea = {
       id: tempId,
       content,
       status: "raw",
       tags,
       created_at: new Date().toISOString(),
+      files: [],
+      uploading: files.length || undefined,
     };
     if (matchesFilters(temp)) setIdeas((list) => [temp, ...list]);
     setTagCounts((c) => {
@@ -91,12 +170,13 @@ export default function Capture({
       return next;
     });
     setText("");
+    setPending([]);
     setError("");
 
     const { data, error } = await createClient()
       .from("ideas")
       .insert({ content, tags })
-      .select(COLUMNS)
+      .select(IDEA_COLUMNS)
       .single();
 
     if (error || !data) {
@@ -107,10 +187,18 @@ export default function Capture({
         return next;
       });
       setText(content);
+      setPending(files);
       setError(error?.message ?? "Could not save. Try again.");
-    } else {
-      setIdeas((list) => list.map((i) => (i.id === tempId ? data : i)));
+      return;
     }
+
+    const saved = data as unknown as RawIdea;
+    setIdeas((list) =>
+      list.map((i) =>
+        i.id === tempId ? { ...saved, files: [], uploading: files.length || undefined } : i,
+      ),
+    );
+    if (files.length) await uploadFiles(saved.id, files);
   }
 
   const sortedTags = Object.entries(tagCounts)
@@ -131,12 +219,48 @@ export default function Capture({
           placeholder="What's the idea? Add #tags like #project"
           className="w-full resize-none rounded-lg border border-neutral-300 bg-white p-3 text-base text-black"
         />
-        <button
-          disabled={!text.trim()}
-          className="rounded-lg bg-black px-3 py-3 text-base font-medium text-white disabled:opacity-40"
-        >
-          Save idea
-        </button>
+
+        {pending.length > 0 && (
+          <ul className="flex flex-col gap-1 text-sm">
+            {pending.map((f, i) => (
+              <li key={i} className="flex items-center justify-between gap-2">
+                <span className="truncate">
+                  {f.name} <span className="text-neutral-500">{formatSize(f.size)}</span>
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setPending((p) => p.filter((_, j) => j !== i))}
+                  className="shrink-0 text-red-600"
+                >
+                  Remove
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+
+        <input
+          ref={fileInput}
+          type="file"
+          multiple
+          className="hidden"
+          onChange={(e) => addFiles(e.target.files)}
+        />
+        <div className="flex gap-3">
+          <button
+            type="button"
+            onClick={() => fileInput.current?.click()}
+            className="rounded-lg border border-neutral-300 px-3 py-3 text-base"
+          >
+            Attach
+          </button>
+          <button
+            disabled={!text.trim() && pending.length === 0}
+            className="flex-1 rounded-lg bg-black px-3 py-3 text-base font-medium text-white disabled:opacity-40"
+          >
+            Save idea
+          </button>
+        </div>
         {error && <p className="text-sm text-red-600">{error}</p>}
       </form>
 
@@ -175,21 +299,56 @@ export default function Capture({
               idea.id.startsWith("temp-") ? "opacity-60" : ""
             }`}
           >
-            <p className="whitespace-pre-wrap break-words">
-              {splitTags(idea.content).map((part, i) =>
-                part.tag ? (
-                  <button
-                    key={i}
-                    onClick={() => setActiveTag(part.tag!)}
-                    className="font-medium text-blue-600"
-                  >
-                    {part.text}
-                  </button>
-                ) : (
-                  <span key={i}>{part.text}</span>
-                ),
-              )}
-            </p>
+            {idea.content && (
+              <p className="whitespace-pre-wrap break-words">
+                {splitTags(idea.content).map((part, i) =>
+                  part.tag ? (
+                    <button
+                      key={i}
+                      onClick={() => setActiveTag(part.tag!)}
+                      className="font-medium text-blue-600"
+                    >
+                      {part.text}
+                    </button>
+                  ) : (
+                    <span key={i}>{part.text}</span>
+                  ),
+                )}
+              </p>
+            )}
+
+            {idea.files.length > 0 && (
+              <div className="mt-2 flex flex-wrap gap-2">
+                {idea.files.map((f) =>
+                  f.url && f.mime_type?.startsWith("image/") ? (
+                    <a key={f.id} href={f.url} target="_blank" rel="noreferrer">
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        src={f.url}
+                        alt={f.name}
+                        className="h-24 w-24 rounded-lg object-cover"
+                      />
+                    </a>
+                  ) : (
+                    <a
+                      key={f.id}
+                      href={f.url ?? undefined}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="max-w-full truncate rounded-lg border border-neutral-300 px-3 py-2 text-sm text-blue-600"
+                    >
+                      {f.name} <span className="text-neutral-500">{formatSize(f.size)}</span>
+                    </a>
+                  ),
+                )}
+              </div>
+            )}
+            {idea.uploading ? (
+              <p className="mt-2 text-sm text-neutral-500">
+                Uploading {idea.uploading} file{idea.uploading > 1 ? "s" : ""}…
+              </p>
+            ) : null}
+
             <p className="mt-1 text-xs text-neutral-500">
               {new Date(idea.created_at).toLocaleString()}
             </p>
