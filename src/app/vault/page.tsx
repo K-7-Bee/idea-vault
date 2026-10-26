@@ -16,11 +16,20 @@ export default function VaultPage() {
 
 async function VaultContent() {
   const supabase = await createClient();
-  const { data } = await supabase
-    .from("ideas")
-    .select("id, content, status, created_at")
-    .order("created_at", { ascending: false })
-    .limit(100);
+  const [ideas, allTags] = await Promise.all([
+    supabase
+      .from("ideas")
+      .select("id, content, status, tags, created_at")
+      .order("created_at", { ascending: false })
+      .limit(100),
+    // Just the tag lists, so the tag buttons cover every idea, not only the latest 100.
+    supabase.from("ideas").select("tags").limit(2000),
+  ]);
 
-  return <Capture initial={data ?? []} />;
+  return (
+    <Capture
+      initial={ideas.data ?? []}
+      initialTags={(allTags.data ?? []).map((r) => r.tags)}
+    />
+  );
 }
