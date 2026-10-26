@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Bodoni_Moda } from "next/font/google";
 import Image from "next/image";
 import Link from "next/link";
+import HeroStage from "./hero-stage";
 import MobileMenu from "./mobile-menu";
 
 // A sharp, high-contrast serif with hairline details for the big headlines.
@@ -138,27 +139,31 @@ export default function Home() {
       <div className="pf-grain" aria-hidden />
 
       {/* Hero */}
-      <section id="top" className="relative flex min-h-screen flex-col overflow-hidden">
-        {/* The photo, tinted into the navy palette so the text stays readable. */}
-        <Image
-          src="/hero.jpg"
-          alt=""
-          fill
-          priority
-          sizes="100vw"
-          className="object-cover object-[35%_center]"
-        />
-        <div aria-hidden className="absolute inset-0 bg-pf-bg/65 md:bg-pf-bg/10" />
-        <div
-          aria-hidden
-          className="absolute inset-0 bg-gradient-to-r from-transparent via-pf-bg/40 to-pf-bg/95 max-md:hidden"
-        />
-        <div
-          aria-hidden
-          className="absolute inset-0 bg-gradient-to-b from-pf-bg/70 via-transparent to-pf-bg"
-        />
-        <div aria-hidden className="pf-glow absolute inset-0 mix-blend-soft-light" />
-
+      <HeroStage
+        background={
+          <>
+            {/* The photo, tinted into the navy palette so the text stays readable. */}
+            <Image
+              src="/hero.jpg"
+              alt=""
+              fill
+              priority
+              sizes="100vw"
+              className="object-cover object-[35%_center]"
+            />
+            <div aria-hidden className="absolute inset-0 bg-pf-bg/65 md:bg-pf-bg/10" />
+            <div
+              aria-hidden
+              className="absolute inset-0 bg-gradient-to-r from-transparent via-pf-bg/40 to-pf-bg/95 max-md:hidden"
+            />
+            <div
+              aria-hidden
+              className="absolute inset-0 bg-gradient-to-b from-pf-bg/70 via-transparent to-pf-bg"
+            />
+            <div aria-hidden className="pf-glow absolute inset-0 mix-blend-soft-light" />
+          </>
+        }
+      >
         <header className="relative z-10 mx-auto flex w-full max-w-6xl items-center justify-between px-6 py-6">
           <a href="#top" aria-label={`${NAME} — back to top`}>
             <Image src="/k-logo.png" alt="" width={56} height={56} priority className="h-14 w-14" />
@@ -183,7 +188,9 @@ export default function Home() {
 
         <div className="relative z-10 mx-auto grid w-full max-w-6xl flex-1 items-center gap-10 px-6 py-10 md:grid-cols-2"
         >
-          <div className="hidden md:block" aria-hidden />
+          <p className={`${label} hidden self-end text-[0.65rem] text-pf-ink/70 md:block`}>
+            Click anywhere to strike
+          </p>
           <div>
             <p className={`${label} text-pf-ink [text-shadow:0_1px_10px_rgba(6,19,33,0.9)]`}>
               Engineering Science // Jeonbuk National University
@@ -222,7 +229,7 @@ export default function Home() {
         >
           Kaushik
         </div>
-      </section>
+      </HeroStage>
 
       <main className="relative z-10 mx-auto max-w-6xl px-6">
         {/* About */}
