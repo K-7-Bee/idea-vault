@@ -23,11 +23,14 @@ export async function proxy(request: NextRequest) {
 
   // Refreshes the login session and tells us who (if anyone) is signed in.
   const { data } = await supabase.auth.getUser();
-  const allowed = process.env.ALLOWED_EMAIL?.toLowerCase();
+  const allowed = process.env.ALLOWED_EMAIL?.trim().toLowerCase();
   const isOwner = !!data.user && data.user.email?.toLowerCase() === allowed;
 
   if (request.nextUrl.pathname.startsWith("/vault") && !isOwner) {
-    return NextResponse.redirect(new URL("/login", request.url));
+    const login = new URL("/login", request.url);
+    // Signed in, but not as the vault's owner: say so on the login page instead of failing silently.
+    if (data.user) login.searchParams.set("denied", "1");
+    return NextResponse.redirect(login);
   }
 
   return response;

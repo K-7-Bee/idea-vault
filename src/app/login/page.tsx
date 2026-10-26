@@ -1,7 +1,7 @@
 "use client";
 
-import { useState } from "react";
-import { useRouter } from "next/navigation";
+import { Suspense, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { looksOffline } from "@/lib/sync";
 import { serif } from "../vault/fonts";
@@ -69,8 +69,26 @@ export default function LoginPage() {
             Log in
           </button>
         </form>
-        {error && <p className="text-center text-sm text-danger">{error}</p>}
+        {error ? (
+          <p className="text-center text-sm text-danger">{error}</p>
+        ) : (
+          // Reads the address bar, so it sits behind its own boundary.
+          <Suspense>
+            <DeniedNotice />
+          </Suspense>
+        )}
       </main>
     </div>
+  );
+}
+
+// Shown when the password was right but the account isn't the one allowed into the vault.
+function DeniedNotice() {
+  if (useSearchParams().get("denied") !== "1") return null;
+  return (
+    <p className="text-center text-sm text-danger">
+      That account isn&apos;t allowed into this vault. Check that ALLOWED_EMAIL matches the email
+      you log in with.
+    </p>
   );
 }
