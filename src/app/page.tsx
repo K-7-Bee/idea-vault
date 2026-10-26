@@ -148,7 +148,7 @@ export default function Home() {
       <div className="pf-grain" aria-hidden />
 
       {/* Hero */}
-      <section className="pf-glow relative flex min-h-screen flex-col overflow-hidden">
+      <section id="top" className="pf-glow relative flex min-h-screen flex-col overflow-hidden">
         <Rings className="pointer-events-none absolute -left-40 top-1/2 h-[46rem] w-[46rem] -translate-y-1/2 text-pf-line" />
 
         <header className="relative z-10 mx-auto flex w-full max-w-6xl items-center justify-between px-6 py-6">
@@ -173,9 +173,7 @@ export default function Home() {
           </div>
         </header>
 
-        <div
-          id="top"
-          className="relative z-10 mx-auto grid w-full max-w-6xl flex-1 items-center gap-10 px-6 py-10 md:grid-cols-2"
+        <div className="relative z-10 mx-auto grid w-full max-w-6xl flex-1 items-center gap-10 px-6 py-10 md:grid-cols-2"
         >
           <div className="hidden md:block" aria-hidden />
           <div>
