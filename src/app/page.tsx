@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Bodoni_Moda } from "next/font/google";
 import Image from "next/image";
 import Link from "next/link";
+import Circuit from "./circuit";
 import HeroStage from "./hero-stage";
 import MobileMenu from "./mobile-menu";
 
@@ -142,25 +143,12 @@ export default function Home() {
       <HeroStage
         background={
           <>
-            {/* The photo, tinted into the navy palette so the text stays readable. */}
-            <Image
-              src="/hero.jpg"
-              alt=""
-              fill
-              priority
-              sizes="100vw"
-              className="object-cover object-[35%_center]"
-            />
-            <div aria-hidden className="absolute inset-0 bg-pf-bg/65 md:bg-pf-bg/10" />
+            <div className="pf-glow absolute inset-0" />
+            <Circuit />
             <div
               aria-hidden
-              className="absolute inset-0 bg-gradient-to-r from-transparent via-pf-bg/40 to-pf-bg/95 max-md:hidden"
+              className="absolute inset-0 bg-gradient-to-b from-pf-bg/40 via-transparent to-pf-bg"
             />
-            <div
-              aria-hidden
-              className="absolute inset-0 bg-gradient-to-b from-pf-bg/70 via-transparent to-pf-bg"
-            />
-            <div aria-hidden className="pf-glow absolute inset-0 mix-blend-soft-light" />
           </>
         }
       >
@@ -195,7 +183,7 @@ export default function Home() {
             <p className={`${label} text-pf-ink [text-shadow:0_1px_10px_rgba(6,19,33,0.9)]`}>
               Engineering Science // Jeonbuk National University
             </p>
-            <h1 className="font-serif-display mt-6 text-6xl font-semibold leading-[0.95] sm:text-7xl">
+            <h1 className="font-serif-display mt-6 text-5xl font-semibold leading-[0.95] min-[420px]:text-6xl sm:text-7xl">
               Curiosity meets engineering.
             </h1>
             <p className="mt-6 max-w-md text-lg leading-relaxed text-[#e4f5fa] [text-shadow:0_1px_12px_rgba(6,19,33,0.9)]">
@@ -225,7 +213,7 @@ export default function Home() {
 
         <div
           aria-hidden
-          className="font-serif-display relative z-10 select-none px-4 text-[clamp(4.5rem,19vw,17rem)] font-black uppercase leading-[0.78] tracking-[-0.03em] [text-shadow:0_0_60px_rgba(164,217,233,0.25)]"
+          className="font-serif-display relative z-10 select-none px-4 text-[clamp(4rem,17.5vw,17rem)] font-black uppercase leading-[0.78] tracking-[-0.03em] [text-shadow:0_0_60px_rgba(164,217,233,0.25)]"
         >
           Kaushik
         </div>

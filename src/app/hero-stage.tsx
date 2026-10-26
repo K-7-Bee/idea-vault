@@ -2,9 +2,9 @@
 
 import { useEffect, useRef, type ReactNode } from "react";
 
-// The interactive hero: the photo drifts and the content tilts slightly with the pointer,
-// a soft light follows it, and lightning strikes where you click or tap (and now and then on
-// its own). Everything is switched off for people who prefer reduced motion.
+// The interactive hero: a soft light follows the pointer, and lightning strikes where you
+// click or tap (and now and then on its own). It's all switched off for people who prefer
+// reduced motion.
 
 type Point = { x: number; y: number };
 type Path = { pts: Point[]; width: number };
@@ -140,20 +140,12 @@ export default function HeroStage({
       const rect = el.getBoundingClientRect();
       const x = (e.clientX - rect.left) / rect.width;
       const y = (e.clientY - rect.top) / rect.height;
-      el.style.setProperty("--px", String(x - 0.5));
-      el.style.setProperty("--py", String(y - 0.5));
       el.style.setProperty("--sx", `${x * 100}%`);
       el.style.setProperty("--sy", `${y * 100}%`);
     };
 
-    const onPointerLeave = () => {
-      el.style.setProperty("--px", "0");
-      el.style.setProperty("--py", "0");
-    };
-
     el.addEventListener("pointerdown", onPointerDown);
     el.addEventListener("pointermove", onPointerMove);
-    el.addEventListener("pointerleave", onPointerLeave);
 
     // Now and then, a strike on its own while the hero is on screen.
     let onScreen = true;
@@ -171,7 +163,6 @@ export default function HeroStage({
     return () => {
       el.removeEventListener("pointerdown", onPointerDown);
       el.removeEventListener("pointermove", onPointerMove);
-      el.removeEventListener("pointerleave", onPointerLeave);
       observer.disconnect();
       io.disconnect();
       clearTimeout(timer);
@@ -183,17 +174,9 @@ export default function HeroStage({
     <section
       ref={section}
       id="top"
-      className="relative flex min-h-screen flex-col overflow-hidden [perspective:1200px]"
+      className="relative flex min-h-screen flex-col overflow-hidden"
     >
-      {/* The photo drifts opposite to the pointer, which gives the page some depth. */}
-      <div
-        aria-hidden
-        className="absolute -inset-8 transition-transform duration-300 ease-out"
-        style={{
-          transform:
-            "translate3d(calc(var(--px, 0) * -28px), calc(var(--py, 0) * -18px), 0) scale(1.04)",
-        }}
-      >
+      <div aria-hidden className="absolute inset-0">
         {background}
       </div>
 
@@ -209,13 +192,7 @@ export default function HeroStage({
 
       <canvas ref={canvas} aria-hidden className="pointer-events-none absolute inset-0 z-[5]" />
 
-      <div
-        className="relative z-10 flex flex-1 flex-col transition-transform duration-300 ease-out"
-        style={{
-          transform:
-            "rotateY(calc(var(--px, 0) * 3deg)) rotateX(calc(var(--py, 0) * -2deg))",
-        }}
-      >
+      <div className="relative z-10 flex flex-1 flex-col">
         {children}
       </div>
     </section>

@@ -33,6 +33,7 @@ export async function proxy(request: NextRequest) {
   return response;
 }
 
+// Only the vault needs the login check, so the public portfolio works without Supabase set up.
 export const config = {
-  matcher: ["/((?!_next/static|_next/image|favicon.ico|sw.js|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico)$).*)"],
+  matcher: ["/vault/:path*"],
 };
