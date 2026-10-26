@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { extractTags, splitTags } from "@/lib/tags";
+import { useRecorder } from "./use-recorder";
 import {
   BUCKET,
   IDEA_COLUMNS,
@@ -80,7 +81,12 @@ export default function Capture({
     return true;
   }
 
-  function addFiles(list: FileList | null) {
+  const recorder = useRecorder(
+    (file) => addFiles([file]),
+    (message) => setError(message),
+  );
+
+  function addFiles(list: Iterable<File> | null) {
     if (!list) return;
     const ok: File[] = [];
     const tooBig: string[] = [];
@@ -244,8 +250,24 @@ export default function Capture({
           type="file"
           multiple
           className="hidden"
-          onChange={(e) => addFiles(e.target.files)}
+          onChange={(e) => addFiles(e.target.files ? [...e.target.files] : null)}
         />
+        {recorder.recording && (
+          <div className="flex items-center justify-between rounded-lg border border-red-300 p-3">
+            <span className="font-medium text-red-600">
+              ● Recording {Math.floor(recorder.seconds / 60)}:
+              {String(recorder.seconds % 60).padStart(2, "0")}
+            </span>
+            <span className="flex gap-3">
+              <button type="button" onClick={recorder.cancel} className="text-neutral-500">
+                Cancel
+              </button>
+              <button type="button" onClick={recorder.stop} className="font-medium">
+                Stop
+              </button>
+            </span>
+          </div>
+        )}
         <div className="flex gap-3">
           <button
             type="button"
@@ -255,7 +277,15 @@ export default function Capture({
             Attach
           </button>
           <button
-            disabled={!text.trim() && pending.length === 0}
+            type="button"
+            disabled={recorder.recording}
+            onClick={recorder.start}
+            className="rounded-lg border border-neutral-300 px-3 py-3 text-base disabled:opacity-40"
+          >
+            Record
+          </button>
+          <button
+            disabled={recorder.recording || (!text.trim() && pending.length === 0)}
             className="flex-1 rounded-lg bg-black px-3 py-3 text-base font-medium text-white disabled:opacity-40"
           >
             Save idea
@@ -329,6 +359,14 @@ export default function Capture({
                         className="h-24 w-24 rounded-lg object-cover"
                       />
                     </a>
+                  ) : f.url && f.mime_type?.startsWith("audio/") ? (
+                    <audio
+                      key={f.id}
+                      controls
+                      preload="metadata"
+                      src={f.url}
+                      className="w-full"
+                    />
                   ) : (
                     <a
                       key={f.id}
