@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
+import { looksOffline } from "@/lib/sync";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -18,7 +19,9 @@ export default function LoginPage() {
     const supabase = createClient();
     const { error } = await supabase.auth.signInWithPassword({ email, password });
     setBusy(false);
-    if (error) setError(error.message);
+    if (error) {
+      setError(looksOffline(error.message) ? "You're offline. Logging in needs a connection." : error.message);
+    }
     else router.replace("/vault");
   }
 

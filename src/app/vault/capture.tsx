@@ -4,7 +4,10 @@ import { useEffect, useRef, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { extractTags, splitTags } from "@/lib/tags";
 import { useRecorder } from "./use-recorder";
-import { useDraft } from "./use-draft";
+import { useLocalValue } from "./use-local-value";
+import { useOnline } from "./use-online";
+import { addQueued, listQueued, removeQueued, type QueuedIdea } from "@/lib/outbox";
+import { NetworkError, looksOffline, pushIdea } from "@/lib/sync";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import {
   BUCKET,
@@ -22,8 +25,27 @@ import {
   type RawIdea,
 } from "@/lib/ideas";
 
-// An idea on screen; `uploading` is how many files are still going up.
-type ViewIdea = Idea & { uploading?: number };
+// An idea on screen. `uploading` is how many files are still going up to an existing idea;
+// `waiting` marks an idea saved on this device that hasn't reached the database yet.
+type ViewIdea = Idea & {
+  uploading?: number;
+  waiting?: boolean;
+  queuedFiles?: { name: string; size: number }[];
+  syncError?: string;
+};
+
+function queuedToView(q: QueuedIdea): ViewIdea {
+  return {
+    id: q.id,
+    content: q.content,
+    status: "raw",
+    tags: q.tags,
+    created_at: q.created_at,
+    files: [],
+    waiting: true,
+    queuedFiles: q.files.map((f) => ({ name: f.file.name, size: f.file.size })),
+  };
+}
 
 // File links last an hour; renew them well before that.
 const REFRESH_AFTER_MS = 45 * 60 * 1000;
@@ -60,7 +82,11 @@ export default function Capture({
 }) {
   const [ideas, setIdeas] = useState<ViewIdea[]>(initial);
   const [tagCounts, setTagCounts] = useState(() => countTags(initialTags));
-  const [text, setText] = useDraft();
+  const [text, setText] = useLocalValue("vault-draft", "");
+  const [view, setView] = useLocalValue("vault-view", "list");
+  const grid = view === "grid";
+  const online = useOnline();
+  const [expandedId, setExpandedId] = useState<string | null>(null);
   const [hasMore, setHasMore] = useState(initial.length >= PAGE_SIZE);
   const [loadingMore, setLoadingMore] = useState(false);
   const [pending, setPending] = useState<File[]>([]);
@@ -76,6 +102,9 @@ export default function Capture({
   const editFileInput = useRef<HTMLInputElement>(null);
   const ideasRef = useRef(ideas);
   const signedAt = useRef(0);
+  const syncing = useRef(false);
+  const syncAgain = useRef(false);
+  const syncRef = useRef<() => Promise<void>>(async () => {});
 
   const filtering = query.trim() !== "" || activeTag !== null || activeStatus !== null;
 
@@ -94,8 +123,9 @@ export default function Capture({
         status: activeStatus,
       });
       if (id !== requestId.current) return; // a newer search replaced this one
-      if (error) setError(error.message);
-      else {
+      if (error) {
+        setError(looksOffline(error.message) ? "You're offline. Search needs a connection." : error.message);
+      } else {
         const withUrls = await withFileUrls(supabase, (data ?? []) as unknown as RawIdea[]);
         if (id === requestId.current) {
           setIdeas(withUrls);
@@ -107,7 +137,7 @@ export default function Capture({
   }, [query, activeTag, activeStatus]);
 
   async function loadMore() {
-    const last = [...ideas].reverse().find((i) => !i.id.startsWith("temp-"));
+    const last = [...ideas].reverse().find((i) => !i.waiting);
     if (!last || loadingMore) return;
     const id = requestId.current;
     setLoadingMore(true);
@@ -175,6 +205,97 @@ export default function Capture({
     };
   }, []);
 
+  // Ideas written on this device that haven't reached the database yet are sent from here.
+  async function syncQueue() {
+    if (syncing.current) {
+      syncAgain.current = true; // something new was queued mid-sync; go round again after
+      return;
+    }
+    syncing.current = true;
+    try {
+      const supabase = createClient();
+      for (const item of await listQueued()) {
+        try {
+          const { idea, failures } = await pushIdea(supabase, item);
+          await removeQueued(item.id);
+          setIdeas((list) => list.map((i) => (i.id === item.id ? idea : i)));
+          if (failures.length) setError(`Some files failed: ${failures.join("; ")}`);
+        } catch (e) {
+          if (e instanceof NetworkError) break; // no connection yet; try again later
+          const message = e instanceof Error ? e.message : "Could not sync.";
+          setIdeas((list) =>
+            list.map((i) => (i.id === item.id ? { ...i, syncError: message } : i)),
+          );
+        }
+      }
+    } catch {
+      // the device queue isn't available; nothing to send
+    } finally {
+      syncing.current = false;
+      if (syncAgain.current) {
+        syncAgain.current = false;
+        void syncRef.current();
+      }
+    }
+  }
+
+  useEffect(() => {
+    syncRef.current = syncQueue;
+  });
+
+  // On opening: show ideas still waiting on this device, then try to send them.
+  useEffect(() => {
+    let cancelled = false;
+    listQueued()
+      .then((queued) => {
+        if (cancelled || queued.length === 0) return;
+        const have = new Set(ideasRef.current.map((i) => i.id));
+        const fresh = queued.filter((q) => !have.has(q.id));
+        if (fresh.length) {
+          setIdeas((list) => [...fresh.map(queuedToView).reverse(), ...list]);
+          setTagCounts((c) => {
+            const next = { ...c };
+            for (const q of fresh) for (const t of q.tags) next[t] = (next[t] ?? 0) + 1;
+            return next;
+          });
+        }
+        void syncRef.current();
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // Try again when the connection comes back, when you return to the app, and every 20 seconds.
+  useEffect(() => {
+    const run = () => void syncRef.current();
+    const onVisible = () => {
+      if (document.visibilityState === "visible") run();
+    };
+    window.addEventListener("online", run);
+    document.addEventListener("visibilitychange", onVisible);
+    const timer = setInterval(() => {
+      if (ideasRef.current.some((i) => i.waiting)) run();
+    }, 20000);
+    return () => {
+      window.removeEventListener("online", run);
+      document.removeEventListener("visibilitychange", onVisible);
+      clearInterval(timer);
+    };
+  }, []);
+
+  async function discardQueued(idea: ViewIdea) {
+    if (!confirm("Discard this idea? It was never saved to the vault.")) return;
+    try {
+      await removeQueued(idea.id);
+    } catch {
+      // already gone
+    }
+    setIdeas((list) => list.filter((i) => i.id !== idea.id));
+    adjustTagCounts(idea.tags, []);
+  }
+
   function matchesFilters(idea: Idea) {
     const term = query.trim().toLowerCase();
     if (term && !idea.content.toLowerCase().includes(term)) return false;
@@ -184,8 +305,9 @@ export default function Capture({
   }
 
   async function changeStatus(id: string, status: string) {
-    const before = ideas.find((i) => i.id === id)?.status;
-    if (!before || before === status) return;
+    const current = ideas.find((i) => i.id === id);
+    const before = current?.status;
+    if (!before || before === status || current?.waiting) return;
     setIdeas((list) => list.map((i) => (i.id === id ? { ...i, status } : i)));
     setError("");
     const { error } = await createClient().from("ideas").update({ status }).eq("id", id);
@@ -285,53 +407,29 @@ export default function Capture({
     if (!content && files.length === 0) return;
     const tags = extractTags(content);
 
-    // Show it instantly, then confirm with the database.
-    const tempId = `temp-${Date.now()}`;
-    const temp: ViewIdea = {
-      id: tempId,
+    // Every idea goes to the on-device outbox first, so it survives a dropped connection
+    // or a closed app. It is then sent to the database as soon as possible.
+    const item: QueuedIdea = {
+      id: crypto.randomUUID(),
       content,
-      status: "raw",
       tags,
       created_at: new Date().toISOString(),
-      files: [],
-      uploading: files.length || undefined,
+      files: files.map((file) => ({ id: crypto.randomUUID(), file })),
     };
-    if (matchesFilters(temp)) setIdeas((list) => [temp, ...list]);
-    setTagCounts((c) => {
-      const next = { ...c };
-      for (const t of tags) next[t] = (next[t] ?? 0) + 1;
-      return next;
-    });
-    setText("");
-    setPending([]);
-    setError("");
-
-    const { data, error } = await createClient()
-      .from("ideas")
-      .insert({ content, tags })
-      .select(IDEA_COLUMNS)
-      .single();
-
-    if (error || !data) {
-      setIdeas((list) => list.filter((i) => i.id !== tempId));
-      setTagCounts((c) => {
-        const next = { ...c };
-        for (const t of tags) next[t] = (next[t] ?? 1) - 1;
-        return next;
-      });
-      setText(content);
-      setPending(files);
-      setError(error?.message ?? "Could not save. Try again.");
+    try {
+      await addQueued(item);
+    } catch {
+      setError("This browser couldn't store the idea on your device. Try again.");
       return;
     }
 
-    const saved = data as unknown as RawIdea;
-    setIdeas((list) =>
-      list.map((i) =>
-        i.id === tempId ? { ...saved, files: [], uploading: files.length || undefined } : i,
-      ),
-    );
-    if (files.length) await uploadFiles(saved.id, files);
+    const shown = queuedToView(item);
+    if (matchesFilters(shown)) setIdeas((list) => [shown, ...list]);
+    adjustTagCounts([], tags);
+    setText("");
+    setPending([]);
+    setError("");
+    await syncQueue();
   }
 
   function adjustTagCounts(removed: string[], added: string[]) {
@@ -345,6 +443,7 @@ export default function Capture({
 
   function startEdit(idea: Idea) {
     setEditingId(idea.id);
+    setExpandedId(idea.id);
     setEditText(idea.content);
     setError("");
   }
@@ -434,6 +533,11 @@ export default function Capture({
 
   return (
     <div className="flex flex-col gap-6">
+      {!online && (
+        <p role="status" className="rounded-lg border border-line p-3 text-sm text-muted">
+          You&apos;re offline. New ideas are kept on this device and will sync automatically.
+        </p>
+      )}
       <form onSubmit={save} className="flex flex-col gap-3">
         <textarea
           autoFocus
@@ -516,13 +620,31 @@ export default function Capture({
       </form>
 
       <div className="flex flex-col gap-3">
-        <input
-          type="search"
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          placeholder="Search ideas"
-          className="w-full rounded-lg border border-line bg-field p-3 text-base text-ink"
-        />
+        <div className="flex gap-2">
+          <input
+            type="search"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Search ideas"
+            className="min-w-0 flex-1 rounded-lg border border-line bg-field p-3 text-base text-ink"
+          />
+          <div
+            role="group"
+            aria-label="View"
+            className="flex shrink-0 overflow-hidden rounded-lg border border-line text-sm"
+          >
+            {(["list", "grid"] as const).map((v) => (
+              <button
+                key={v}
+                onClick={() => setView(v)}
+                aria-pressed={view === v}
+                className={`px-3 ${view === v ? "bg-ink text-on-ink" : ""}`}
+              >
+                {v}
+              </button>
+            ))}
+          </div>
+        </div>
         <div className="flex flex-wrap gap-2">
           {[null, ...STATUSES].map((s) => (
             <button
@@ -563,12 +685,60 @@ export default function Capture({
         onChange={(e) => editingId && addToIdea(editingId, e.target.files)}
       />
 
-      <ul className="flex flex-col gap-3">
-        {ideas.map((idea) => (
+      <ul className={grid ? "grid grid-cols-2 gap-3" : "flex flex-col gap-3"}>
+        {ideas.map((idea) => {
+          // In grid view ideas show as small cards; tap one to open it in full.
+          const compact =
+            grid &&
+            !idea.waiting &&
+            !idea.uploading &&
+            expandedId !== idea.id &&
+            editingId !== idea.id;
+          if (compact) {
+            const cover = idea.files.find((f) => f.url && f.mime_type?.startsWith("image/"));
+            const open = () => setExpandedId(idea.id);
+            return (
+              <li
+                key={idea.id}
+                role="button"
+                tabIndex={0}
+                onClick={open}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
+                    open();
+                  }
+                }}
+                className="cursor-pointer overflow-hidden rounded-lg border border-line"
+              >
+                {cover?.url && (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={cover.url} alt="" className="aspect-square w-full object-cover" />
+                )}
+                <div className="p-3">
+                  {idea.content && (
+                    <p className="line-clamp-4 whitespace-pre-wrap break-words text-sm">
+                      {idea.content}
+                    </p>
+                  )}
+                  {idea.files.length > 0 && (
+                    <p className="mt-1 text-xs text-muted">
+                      {idea.files.length} attachment{idea.files.length > 1 ? "s" : ""}
+                    </p>
+                  )}
+                  <div className="mt-2 flex items-center justify-between gap-2 text-xs text-muted">
+                    <span>{new Date(idea.created_at).toLocaleDateString()}</span>
+                    <span>{idea.status}</span>
+                  </div>
+                </div>
+              </li>
+            );
+          }
+          return (
           <li
             key={idea.id}
-            className={`rounded-lg border border-line p-3 ${
-              idea.id.startsWith("temp-") ? "opacity-60" : ""
+            className={`rounded-lg border border-line p-3 ${grid ? "col-span-2" : ""} ${
+              idea.waiting ? "opacity-60" : ""
             }`}
           >
             {editingId === idea.id ? (
@@ -677,13 +847,39 @@ export default function Capture({
               </p>
             ) : null}
 
+            {idea.waiting && idea.queuedFiles && idea.queuedFiles.length > 0 && (
+              <div className="mt-2 flex flex-wrap gap-2">
+                {idea.queuedFiles.map((f, i) => (
+                  <span
+                    key={i}
+                    className="max-w-full truncate rounded-lg border border-line px-3 py-2 text-sm"
+                  >
+                    {f.name} <span className="text-muted">{formatSize(f.size)}</span>
+                  </span>
+                ))}
+              </div>
+            )}
+            {idea.waiting &&
+              (idea.syncError ? (
+                <p className="mt-2 text-sm text-danger">
+                  Couldn&apos;t save this one: {idea.syncError}{" "}
+                  <button onClick={() => discardQueued(idea)} className="underline">
+                    Discard
+                  </button>
+                </p>
+              ) : (
+                <p className="mt-2 text-sm text-muted">
+                  {online ? "Saving…" : "Waiting for a connection. It will sync by itself."}
+                </p>
+              ))}
+
             <div className="mt-2 flex items-center justify-between gap-2">
               <p className="text-xs text-muted">
                 {new Date(idea.created_at).toLocaleString()}
               </p>
               <select
                 value={idea.status}
-                disabled={idea.id.startsWith("temp-")}
+                disabled={idea.waiting}
                 onChange={(e) => changeStatus(idea.id, e.target.value)}
                 aria-label="Status"
                 className="rounded-full border border-line bg-field px-3 py-1 text-sm text-ink"
@@ -695,7 +891,7 @@ export default function Capture({
                 ))}
               </select>
             </div>
-            {editingId !== idea.id && !idea.id.startsWith("temp-") && !idea.uploading && (
+            {editingId !== idea.id && !idea.waiting && !idea.uploading && (
               <div className="mt-1 flex gap-5 text-sm">
                 <button onClick={() => startEdit(idea)} className="py-2 text-link">
                   Edit
@@ -703,10 +899,16 @@ export default function Capture({
                 <button onClick={() => deleteIdea(idea)} className="py-2 text-danger">
                   Delete
                 </button>
+                {grid && (
+                  <button onClick={() => setExpandedId(null)} className="py-2 text-muted">
+                    Close
+                  </button>
+                )}
               </div>
             )}
           </li>
-        ))}
+          );
+        })}
         {ideas.length === 0 && (
           <li className="text-muted">
             {filtering ? "Nothing matches." : "No ideas yet."}
