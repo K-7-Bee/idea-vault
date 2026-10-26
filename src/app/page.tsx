@@ -164,10 +164,7 @@ export default function Home() {
             ))}
           </nav>
           <div className="flex items-center gap-3">
-            <a
-              href={`mailto:${EMAIL}`}
-              className={`${button} bg-pf-ink text-pf-bg hover:opacity-85`}
-            >
+            <a href="#contact" className={`${button} bg-pf-ink text-pf-bg hover:opacity-85`}>
               Get in touch
             </a>
             <MobileMenu links={NAV} />
@@ -213,7 +210,7 @@ export default function Home() {
 
         <div
           aria-hidden
-          className="font-serif-display relative z-10 select-none px-4 text-[clamp(4rem,17.5vw,17rem)] font-black uppercase leading-[0.78] tracking-[-0.03em] [text-shadow:0_0_60px_rgba(164,217,233,0.25)]"
+          className="font-serif-display pointer-events-none relative z-10 select-none px-4 text-[clamp(4rem,17.5vw,17rem)] font-black uppercase leading-[0.78] tracking-[-0.03em] [text-shadow:0_0_60px_rgba(164,217,233,0.25)]"
         >
           Kaushik
         </div>
