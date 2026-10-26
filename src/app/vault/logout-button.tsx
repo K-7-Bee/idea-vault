@@ -21,7 +21,7 @@ export default function LogoutButton() {
   }
 
   return (
-    <button onClick={logOut} disabled={busy} className="py-2 text-sm text-muted disabled:opacity-40">
+    <button onClick={logOut} disabled={busy} className="rounded-full border border-line bg-card px-4 py-2 text-sm text-muted transition hover:text-foreground disabled:opacity-40">
       Log out
     </button>
   );

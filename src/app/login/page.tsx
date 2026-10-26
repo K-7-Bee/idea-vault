@@ -4,6 +4,8 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { looksOffline } from "@/lib/sync";
+import { serif } from "../vault/fonts";
+import { SparkIcon } from "../vault/icons";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -26,38 +28,49 @@ export default function LoginPage() {
   }
 
   const input =
-    "w-full rounded-lg border border-line bg-field px-3 py-3 text-base text-ink";
+    "w-full rounded-xl border border-line bg-field px-4 py-3 text-base text-ink outline-none transition focus:border-accent focus:ring-4 focus:ring-accent/15";
 
   return (
-    <main className="mx-auto flex min-h-screen max-w-sm flex-col justify-center gap-4 p-6">
-      <h1 className="text-2xl font-semibold">Idea Vault</h1>
-      <form onSubmit={logIn} className="flex flex-col gap-3">
-        <input
-          type="email"
-          required
-          autoComplete="email"
-          placeholder="Your email"
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
-          className={input}
-        />
-        <input
-          type="password"
-          required
-          autoComplete="current-password"
-          placeholder="Password"
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-          className={input}
-        />
-        <button
-          disabled={busy}
-          className="w-full rounded-lg bg-ink px-3 py-3 text-base font-medium text-on-ink disabled:opacity-50"
+    <div className="vault min-h-screen text-foreground">
+      <main className="mx-auto flex min-h-screen max-w-sm flex-col justify-center gap-6 p-6">
+        <div className="flex flex-col items-center gap-3 text-center">
+          <span className="grid h-14 w-14 place-items-center rounded-2xl bg-accent text-on-accent shadow-lg shadow-accent/30">
+            <SparkIcon className="h-7 w-7" />
+          </span>
+          <h1 className={`${serif.className} text-4xl tracking-tight`}>Idea Vault</h1>
+          <p className="text-sm text-muted">Welcome back. Your ideas are waiting.</p>
+        </div>
+        <form
+          onSubmit={logIn}
+          className="flex flex-col gap-3 rounded-2xl border border-line bg-card p-5 shadow-sm"
         >
-          Log in
-        </button>
-      </form>
-      {error && <p className="text-sm text-danger">{error}</p>}
-    </main>
+          <input
+            type="email"
+            required
+            autoComplete="email"
+            placeholder="Your email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            className={input}
+          />
+          <input
+            type="password"
+            required
+            autoComplete="current-password"
+            placeholder="Password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            className={input}
+          />
+          <button
+            disabled={busy}
+            className="mt-1 w-full rounded-xl bg-accent px-3 py-3 text-base font-medium text-on-accent shadow-sm shadow-accent/30 transition hover:brightness-105 active:scale-[0.99] disabled:opacity-50"
+          >
+            Log in
+          </button>
+        </form>
+        {error && <p className="text-center text-sm text-danger">{error}</p>}
+      </main>
+    </div>
   );
 }

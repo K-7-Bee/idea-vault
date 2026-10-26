@@ -8,6 +8,25 @@ import { useLocalValue } from "./use-local-value";
 import { useOnline } from "./use-online";
 import { addQueued, listQueued, removeQueued, type QueuedIdea } from "@/lib/outbox";
 import { NetworkError, looksOffline, pushIdea } from "@/lib/sync";
+import {
+  BoardIcon,
+  ChipIcon,
+  ClipIcon,
+  CloudOffIcon,
+  DiceIcon,
+  FileIcon,
+  FlameIcon,
+  GridIcon,
+  ListIcon,
+  MicIcon,
+  PencilIcon,
+  SearchIcon,
+  SparkIcon,
+  TrashIcon,
+} from "./icons";
+import { STATUS_COLOR, STATUS_INFO } from "./status";
+import { CHEERS, PROMPTS } from "./sparks";
+import { serif } from "./fonts";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import {
   BUCKET,
@@ -67,6 +86,33 @@ function searchIdeas(
   return q;
 }
 
+// Just enough about each idea to count folders and work out the streak.
+type Meta = { id: string; status: string; created_at: string };
+
+// Days in a row (ending today, or yesterday if nothing yet today) with at least one idea.
+function dayStreak(dates: string[]) {
+  const days = new Set(dates.map((d) => new Date(d).toDateString()));
+  const day = new Date();
+  if (!days.has(day.toDateString())) day.setDate(day.getDate() - 1);
+  let streak = 0;
+  while (days.has(day.toDateString())) {
+    streak++;
+    day.setDate(day.getDate() - 1);
+  }
+  return streak;
+}
+
+// Sparks flying out of the save button, spread evenly round a circle.
+const BURST = Array.from({ length: 14 }, (_, i) => {
+  const angle = (i / 14) * Math.PI * 2;
+  const reach = i % 2 ? 70 : 46;
+  return {
+    dx: `${Math.round(Math.cos(angle) * reach)}px`,
+    dy: `${Math.round(Math.sin(angle) * reach)}px`,
+    color: ["var(--accent)", "var(--status-exploring)", "var(--status-building)", "var(--status-done)"][i % 4],
+  };
+});
+
 function countTags(lists: string[][]) {
   const counts: Record<string, number> = {};
   for (const tags of lists) for (const t of tags) counts[t] = (counts[t] ?? 0) + 1;
@@ -76,12 +122,18 @@ function countTags(lists: string[][]) {
 export default function Capture({
   initial,
   initialTags,
+  initialMeta,
 }: {
   initial: Idea[];
   initialTags: string[][];
+  initialMeta: Meta[];
 }) {
   const [ideas, setIdeas] = useState<ViewIdea[]>(initial);
   const [tagCounts, setTagCounts] = useState(() => countTags(initialTags));
+  const [meta, setMeta] = useState(() => new Map(initialMeta.map((m) => [m.id, m])));
+  const [cheer, setCheer] = useState<{ key: number; text: string } | null>(null);
+  const [freshId, setFreshId] = useState<string | null>(null);
+  const [promptIndex, setPromptIndex] = useState(() => initial.length % PROMPTS.length);
   const [text, setText] = useLocalValue("vault-draft", "");
   const [view, setView] = useLocalValue("vault-view", "list");
   const grid = view === "grid";
@@ -100,6 +152,9 @@ export default function Capture({
   const firstRun = useRef(true);
   const fileInput = useRef<HTMLInputElement>(null);
   const editFileInput = useRef<HTMLInputElement>(null);
+  const composer = useRef<HTMLTextAreaElement>(null);
+  const searchInput = useRef<HTMLInputElement>(null);
+  const cheerTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
   const ideasRef = useRef(ideas);
   const signedAt = useRef(0);
   const syncing = useRef(false);
@@ -253,6 +308,7 @@ export default function Capture({
         const fresh = queued.filter((q) => !have.has(q.id));
         if (fresh.length) {
           setIdeas((list) => [...fresh.map(queuedToView).reverse(), ...list]);
+          for (const q of fresh) track(q.id, { status: "raw", created_at: q.created_at });
           setTagCounts((c) => {
             const next = { ...c };
             for (const q of fresh) for (const t of q.tags) next[t] = (next[t] ?? 0) + 1;
@@ -285,6 +341,41 @@ export default function Capture({
     };
   }, []);
 
+  // Press "/" anywhere (outside a text box) to jump to search.
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (e.key !== "/" || e.ctrlKey || e.metaKey || e.altKey) return;
+      if (e.target instanceof Element && e.target.closest("input, textarea, select, [contenteditable]")) return;
+      e.preventDefault();
+      searchInput.current?.focus();
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
+
+  useEffect(() => () => clearTimeout(cheerTimer.current), []);
+
+  // Keep the folder index in step with what happens on screen. `null` removes the idea.
+  function track(id: string, entry: Omit<Meta, "id"> | null) {
+    setMeta((m) => {
+      const next = new Map(m);
+      if (entry) next.set(id, { id, ...entry });
+      else next.delete(id);
+      return next;
+    });
+  }
+
+  function takeSpark() {
+    const prompt = PROMPTS[promptIndex];
+    setText(text.trim() ? `${text.trimEnd()}\n${prompt} ` : `${prompt} `);
+    setPromptIndex((i) => (i + 1) % PROMPTS.length);
+    composer.current?.focus();
+  }
+
+  function shuffleSpark() {
+    setPromptIndex((i) => (i + 1 + Math.floor(Math.random() * (PROMPTS.length - 1))) % PROMPTS.length);
+  }
+
   async function discardQueued(idea: ViewIdea) {
     if (!confirm("Discard this idea? It was never saved to the vault.")) return;
     try {
@@ -294,6 +385,7 @@ export default function Capture({
     }
     setIdeas((list) => list.filter((i) => i.id !== idea.id));
     adjustTagCounts(idea.tags, []);
+    track(idea.id, null);
   }
 
   function matchesFilters(idea: Idea) {
@@ -309,10 +401,12 @@ export default function Capture({
     const before = current?.status;
     if (!before || before === status || current?.waiting) return;
     setIdeas((list) => list.map((i) => (i.id === id ? { ...i, status } : i)));
+    track(id, { status, created_at: current.created_at });
     setError("");
     const { error } = await createClient().from("ideas").update({ status }).eq("id", id);
     if (error) {
       setIdeas((list) => list.map((i) => (i.id === id ? { ...i, status: before } : i)));
+      track(id, { status: before, created_at: current.created_at });
       setError(error.message);
     }
   }
@@ -426,6 +520,12 @@ export default function Capture({
     const shown = queuedToView(item);
     if (matchesFilters(shown)) setIdeas((list) => [shown, ...list]);
     adjustTagCounts([], tags);
+    track(item.id, { status: "raw", created_at: item.created_at });
+    setFreshId(item.id);
+    const pick = CHEERS[Math.floor(Math.random() * CHEERS.length)];
+    setCheer({ key: Date.now(), text: `${pick} That's idea #${meta.size + 1}.` });
+    clearTimeout(cheerTimer.current);
+    cheerTimer.current = setTimeout(() => setCheer(null), 2400);
     setText("");
     setPending([]);
     setError("");
@@ -480,6 +580,7 @@ export default function Capture({
     const index = ideas.findIndex((i) => i.id === idea.id);
     setIdeas((list) => list.filter((i) => i.id !== idea.id));
     adjustTagCounts(idea.tags, []);
+    track(idea.id, null);
     setError("");
 
     const supabase = createClient();
@@ -492,6 +593,7 @@ export default function Capture({
         return copy;
       });
       adjustTagCounts([], idea.tags);
+      track(idea.id, { status: idea.status, created_at: idea.created_at });
       setError(error.message);
       return;
     }
@@ -531,400 +633,650 @@ export default function Capture({
     .filter(([, n]) => n > 0)
     .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
 
+  const metaList = [...meta.values()];
+  const statusCounts: Record<string, number> = {};
+  for (const m of metaList) statusCounts[m.status] = (statusCounts[m.status] ?? 0) + 1;
+  const weekAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
+  const thisWeek = metaList.filter((m) => new Date(m.created_at).getTime() > weekAgo).length;
+  const streak = dayStreak(metaList.map((m) => m.created_at));
+  const folder = activeStatus ? STATUS_INFO[activeStatus] : null;
+
+  const folderButton = (active: boolean) =>
+    `flex shrink-0 items-center gap-2.5 rounded-xl border px-3 py-2 text-left text-sm transition lg:w-full ${
+      active ? "border-ink bg-ink text-on-ink shadow-sm" : "border-line bg-card hover:border-muted"
+    }`;
+  const chipBox = (color: string) => ({
+    color,
+    background: `color-mix(in srgb, ${color} 16%, transparent)`,
+  });
+  const field =
+    "w-full resize-none rounded-xl border border-line bg-field p-3 text-base text-ink outline-none transition focus:border-accent focus:ring-4 focus:ring-accent/15";
+
   return (
-    <div className="flex flex-col gap-6">
-      {!online && (
-        <p role="status" className="rounded-lg border border-line p-3 text-sm text-muted">
-          You&apos;re offline. New ideas are kept on this device and will sync automatically.
+    <div className="flex flex-col gap-6 lg:grid lg:grid-cols-[15rem_minmax(0,1fr)] lg:gap-x-8">
+      {cheer && (
+        <p
+          key={cheer.key}
+          role="status"
+          className="toast fixed bottom-[max(1.5rem,env(safe-area-inset-bottom))] left-1/2 z-50 flex max-w-[calc(100vw-2rem)] items-center gap-2 rounded-full bg-ink px-5 py-3 text-sm font-medium text-on-ink shadow-lg"
+        >
+          <SparkIcon className="h-4 w-4 shrink-0 text-accent" />
+          {cheer.text}
         </p>
       )}
-      <form onSubmit={save} className="flex flex-col gap-3">
-        <textarea
-          autoFocus
-          rows={4}
-          value={text}
-          onChange={(e) => setText(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) save(e);
-          }}
-          placeholder="What's the idea? Add #tags like #project"
-          className="w-full resize-none rounded-lg border border-line bg-field p-3 text-base text-ink"
-        />
 
-        {pending.length > 0 && (
-          <ul className="flex flex-col gap-1 text-sm">
-            {pending.map((f, i) => (
-              <li key={i} className="flex items-center justify-between gap-2">
-                <span className="truncate">
-                  {f.name} <span className="text-muted">{formatSize(f.size)}</span>
-                </span>
-                <button
-                  type="button"
-                  onClick={() => setPending((p) => p.filter((_, j) => j !== i))}
-                  className="shrink-0 text-danger"
-                >
-                  Remove
-                </button>
-              </li>
-            ))}
-          </ul>
+      <section className="flex flex-col gap-4 lg:col-start-2 lg:row-start-1">
+        {!online && (
+          <p
+            role="status"
+            className="flex items-center gap-2 rounded-xl border border-line bg-card p-3 text-sm text-muted"
+          >
+            <CloudOffIcon className="h-4 w-4 shrink-0" />
+            You&apos;re offline. New ideas are kept on this device and will sync automatically.
+          </p>
         )}
 
-        <input
-          ref={fileInput}
-          type="file"
-          multiple
-          className="hidden"
-          onChange={(e) => addFiles(e.target.files ? [...e.target.files] : null)}
-        />
-        {recorder.recording && (
-          <div className="flex items-center justify-between rounded-lg border border-danger p-3">
-            <span className="font-medium text-danger">
-              ● Recording {Math.floor(recorder.seconds / 60)}:
-              {String(recorder.seconds % 60).padStart(2, "0")}
-            </span>
-            <span className="flex gap-3">
-              <button type="button" onClick={recorder.cancel} className="text-muted">
-                Cancel
-              </button>
-              <button type="button" onClick={recorder.stop} className="font-medium">
-                Stop
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-2xl border border-dashed border-accent/40 bg-accent-soft/60 px-4 py-3">
+          <SparkIcon className="h-5 w-5 shrink-0 text-accent" />
+          <p className="min-w-0 flex-1 text-sm">
+            <span className="font-medium text-link">Idea spark: </span>
+            {PROMPTS[promptIndex]}
+          </p>
+          <div className="ml-auto flex items-center gap-1">
+            <button
+              type="button"
+              onClick={shuffleSpark}
+              aria-label="Another prompt"
+              title="Another prompt"
+              className="rounded-lg p-2 text-muted transition hover:rotate-12 hover:bg-card hover:text-foreground"
+            >
+              <DiceIcon className="h-4 w-4" />
+            </button>
+            <button
+              type="button"
+              onClick={takeSpark}
+              className="rounded-lg bg-card px-3 py-1.5 text-sm font-medium text-link shadow-sm transition hover:brightness-105"
+            >
+              Use it
+            </button>
+          </div>
+        </div>
+
+        <form
+          onSubmit={save}
+          className="rounded-2xl border border-line bg-card shadow-sm transition focus-within:border-accent focus-within:ring-4 focus-within:ring-accent/15"
+        >
+          <textarea
+            ref={composer}
+            autoFocus
+            rows={4}
+            value={text}
+            onChange={(e) => setText(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) save(e);
+            }}
+            placeholder="What's the idea? Add #tags like #project"
+            className="block w-full resize-none rounded-t-2xl bg-transparent p-4 text-base text-ink outline-none placeholder:text-muted"
+          />
+
+          {pending.length > 0 && (
+            <ul className="flex flex-wrap gap-2 px-4 pb-3 text-sm">
+              {pending.map((f, i) => (
+                <li
+                  key={i}
+                  className="flex max-w-full items-center gap-2 rounded-lg bg-background py-1 pl-2 pr-1"
+                >
+                  <FileIcon className="h-4 w-4 shrink-0 text-muted" />
+                  <span className="truncate">
+                    {f.name} <span className="text-muted">{formatSize(f.size)}</span>
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setPending((p) => p.filter((_, j) => j !== i))}
+                    aria-label={`Remove ${f.name}`}
+                    className="shrink-0 rounded-md px-1.5 text-muted hover:text-danger"
+                  >
+                    ×
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+
+          <input
+            ref={fileInput}
+            type="file"
+            multiple
+            className="hidden"
+            onChange={(e) => addFiles(e.target.files ? [...e.target.files] : null)}
+          />
+          {recorder.recording && (
+            <div className="mx-3 mb-3 flex items-center justify-between rounded-xl bg-danger/10 p-3">
+              <span className="flex items-center gap-2 font-medium text-danger">
+                <span className="h-2.5 w-2.5 animate-pulse rounded-full bg-danger" />
+                Recording {Math.floor(recorder.seconds / 60)}:
+                {String(recorder.seconds % 60).padStart(2, "0")}
+              </span>
+              <span className="flex gap-3">
+                <button type="button" onClick={recorder.cancel} className="text-muted">
+                  Cancel
+                </button>
+                <button type="button" onClick={recorder.stop} className="font-medium">
+                  Stop
+                </button>
+              </span>
+            </div>
+          )}
+          <div className="flex items-center gap-1 border-t border-line p-2">
+            <button
+              type="button"
+              onClick={() => fileInput.current?.click()}
+              title="Attach files"
+              className="flex items-center gap-1.5 rounded-xl px-3 py-2 text-sm text-muted transition hover:bg-background hover:text-foreground"
+            >
+              <ClipIcon className="h-[18px] w-[18px]" />
+              <span className="hidden sm:inline">Attach</span>
+            </button>
+            <button
+              type="button"
+              disabled={recorder.recording}
+              onClick={recorder.start}
+              title="Record a voice note"
+              className="flex items-center gap-1.5 rounded-xl px-3 py-2 text-sm text-muted transition hover:bg-background hover:text-foreground disabled:opacity-40"
+            >
+              <MicIcon className="h-[18px] w-[18px]" />
+              <span className="hidden sm:inline">Record</span>
+            </button>
+            <span className="ml-auto hidden pr-2 text-xs text-muted sm:inline">Ctrl/⌘ + Enter</span>
+            <span className="relative ml-auto sm:ml-0">
+              {cheer && (
+                <span
+                  key={cheer.key}
+                  aria-hidden="true"
+                  className="burst pointer-events-none absolute left-1/2 top-1/2"
+                >
+                  {BURST.map((b, i) => (
+                    <span
+                      key={i}
+                      className="absolute -ml-1 -mt-1 h-2 w-2 rounded-full"
+                      style={{ background: b.color, "--dx": b.dx, "--dy": b.dy } as React.CSSProperties}
+                    />
+                  ))}
+                </span>
+              )}
+              <button
+                disabled={recorder.recording || (!text.trim() && pending.length === 0)}
+                className="rounded-xl bg-accent px-5 py-2.5 text-base font-medium text-on-accent shadow-sm shadow-accent/30 transition hover:brightness-105 active:scale-[0.96] disabled:opacity-40 disabled:shadow-none"
+              >
+                Save idea
               </button>
             </span>
           </div>
+        </form>
+        {error && (
+          <p className="rounded-xl bg-danger/10 px-3 py-2 text-sm text-danger">{error}</p>
         )}
-        <div className="flex gap-3">
-          <button
-            type="button"
-            onClick={() => fileInput.current?.click()}
-            className="rounded-lg border border-line px-3 py-3 text-base"
-          >
-            Attach
-          </button>
-          <button
-            type="button"
-            disabled={recorder.recording}
-            onClick={recorder.start}
-            className="rounded-lg border border-line px-3 py-3 text-base disabled:opacity-40"
-          >
-            Record
-          </button>
-          <button
-            disabled={recorder.recording || (!text.trim() && pending.length === 0)}
-            className="flex-1 rounded-lg bg-ink px-3 py-3 text-base font-medium text-on-ink disabled:opacity-40"
-          >
-            Save idea
-          </button>
-        </div>
-        {error && <p className="text-sm text-danger">{error}</p>}
-      </form>
+      </section>
 
-      <div className="flex flex-col gap-3">
+      <aside className="flex min-w-0 flex-col gap-5 lg:sticky lg:top-6 lg:col-start-1 lg:row-span-2 lg:row-start-1 lg:self-start">
+        <div className="grid grid-cols-3 gap-2">
+          {[
+            { Icon: FlameIcon, value: streak, label: "day streak" },
+            { Icon: SparkIcon, value: thisWeek, label: "this week" },
+            { Icon: ChipIcon, value: meta.size, label: "in the vault" },
+          ].map(({ Icon, value, label }) => (
+            <div key={label} className="rounded-2xl border border-line bg-card p-3 shadow-sm">
+              <Icon className="h-4 w-4 text-accent" />
+              {/* Day boundaries depend on the device's timezone, so the server's guess may differ. */}
+              <p suppressHydrationWarning className="mt-1 text-2xl font-semibold tabular-nums leading-tight">
+                {value}
+              </p>
+              <p className="text-xs text-muted">{label}</p>
+            </div>
+          ))}
+        </div>
+
+        <nav aria-label="Folders">
+          <h2 className="mb-2 hidden px-1 text-xs font-medium uppercase tracking-wider text-muted lg:block">
+            Folders
+          </h2>
+          <div className="-mx-4 flex gap-2 overflow-x-auto px-4 pb-1 [scrollbar-width:none] sm:-mx-6 sm:px-6 lg:mx-0 lg:flex-col lg:overflow-visible lg:px-0 lg:pb-0">
+            {[null, ...STATUSES].map((s) => {
+              const info = s ? STATUS_INFO[s] : null;
+              const active = activeStatus === s;
+              return (
+                <button
+                  key={s ?? "all"}
+                  onClick={() => setActiveStatus(s)}
+                  aria-pressed={active}
+                  className={folderButton(active)}
+                >
+                  <span
+                    className="grid h-8 w-8 shrink-0 place-items-center rounded-lg"
+                    style={chipBox(info?.color ?? "var(--accent)")}
+                  >
+                    {info ? (
+                      <ChipIcon className="h-[18px] w-[18px]" />
+                    ) : (
+                      <BoardIcon className="h-[18px] w-[18px]" />
+                    )}
+                  </span>
+                  <span className="min-w-0 flex-1">
+                    <span className="block font-medium leading-tight">{info?.label ?? "All ideas"}</span>
+                    <span className={`hidden text-xs lg:block ${active ? "opacity-70" : "text-muted"}`}>
+                      {info?.blurb ?? "Everything"}
+                    </span>
+                  </span>
+                  <span
+                    className={`ml-1 rounded-full px-2 py-0.5 text-xs tabular-nums ${
+                      active ? "bg-on-ink/15" : "bg-background text-muted"
+                    }`}
+                  >
+                    {s ? (statusCounts[s] ?? 0) : meta.size}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        </nav>
+
+        {sortedTags.length > 0 && (
+          <div>
+            <h2 className="mb-2 hidden px-1 text-xs font-medium uppercase tracking-wider text-muted lg:block">
+              Tags
+            </h2>
+            <div className="flex flex-wrap gap-2">
+              {sortedTags.map(([tag, n]) => (
+                <button
+                  key={tag}
+                  onClick={() => setActiveTag(activeTag === tag ? null : tag)}
+                  className={`rounded-full px-3 py-1 text-sm transition ${
+                    activeTag === tag
+                      ? "bg-accent text-on-accent"
+                      : "bg-accent-soft text-link hover:brightness-95"
+                  }`}
+                >
+                  #{tag} <span className="opacity-60">{n}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+      </aside>
+
+      <section className="flex min-w-0 flex-col gap-4 lg:col-start-2">
         <div className="flex gap-2">
-          <input
-            type="search"
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder="Search ideas"
-            className="min-w-0 flex-1 rounded-lg border border-line bg-field p-3 text-base text-ink"
-          />
+          <label className="relative min-w-0 flex-1">
+            <SearchIcon className="pointer-events-none absolute left-3 top-1/2 h-[18px] w-[18px] -translate-y-1/2 text-muted" />
+            <input
+              ref={searchInput}
+              type="search"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Search ideas"
+              className="w-full rounded-xl border border-line bg-field py-3 pl-10 pr-10 text-base text-ink outline-none transition focus:border-accent focus:ring-4 focus:ring-accent/15"
+            />
+            {!query && (
+              <kbd className="pointer-events-none absolute right-3 top-1/2 hidden -translate-y-1/2 rounded-md border border-line px-1.5 text-xs text-muted lg:block">
+                /
+              </kbd>
+            )}
+          </label>
           <div
             role="group"
             aria-label="View"
-            className="flex shrink-0 overflow-hidden rounded-lg border border-line text-sm"
+            className="flex shrink-0 gap-1 rounded-xl border border-line bg-card p-1"
           >
             {(["list", "grid"] as const).map((v) => (
               <button
                 key={v}
                 onClick={() => setView(v)}
                 aria-pressed={view === v}
-                className={`px-3 ${view === v ? "bg-ink text-on-ink" : ""}`}
-              >
-                {v}
-              </button>
-            ))}
-          </div>
-        </div>
-        <div className="flex flex-wrap gap-2">
-          {[null, ...STATUSES].map((s) => (
-            <button
-              key={s ?? "all"}
-              onClick={() => setActiveStatus(s)}
-              className={`rounded-full border px-3 py-1 text-sm ${
-                activeStatus === s ? "border-ink bg-ink text-on-ink" : "border-line"
-              }`}
-            >
-              {s ?? "all"}
-            </button>
-          ))}
-        </div>
-        {sortedTags.length > 0 && (
-          <div className="flex flex-wrap gap-2">
-            {sortedTags.map(([tag, n]) => (
-              <button
-                key={tag}
-                onClick={() => setActiveTag(activeTag === tag ? null : tag)}
-                className={`rounded-full border px-3 py-1 text-sm ${
-                  activeTag === tag
-                    ? "border-ink bg-ink text-on-ink"
-                    : "border-line"
+                aria-label={`${v} view`}
+                className={`grid place-items-center rounded-lg px-2.5 transition ${
+                  view === v ? "bg-ink text-on-ink" : "text-muted hover:text-foreground"
                 }`}
               >
-                #{tag} <span className="opacity-60">{n}</span>
+                {v === "list" ? (
+                  <ListIcon className="h-[18px] w-[18px]" />
+                ) : (
+                  <GridIcon className="h-[18px] w-[18px]" />
+                )}
               </button>
             ))}
           </div>
-        )}
-      </div>
+        </div>
 
-      <input
-        ref={editFileInput}
-        type="file"
-        multiple
-        className="hidden"
-        onChange={(e) => editingId && addToIdea(editingId, e.target.files)}
-      />
+        <div className="flex items-center gap-3">
+          <span
+            className="grid h-10 w-10 shrink-0 place-items-center rounded-xl"
+            style={chipBox(folder?.color ?? "var(--accent)")}
+          >
+            {folder ? <ChipIcon /> : <BoardIcon />}
+          </span>
+          <div className="min-w-0">
+            <h2 className={`${serif.className} text-2xl leading-none`}>
+              {folder?.label ?? "All ideas"}
+            </h2>
+            <p className="mt-1 truncate text-sm text-muted">
+              {folder?.blurb ?? "Every spark you've caught"}
+            </p>
+          </div>
+          {activeTag && (
+            <button
+              onClick={() => setActiveTag(null)}
+              aria-label={`Stop filtering by #${activeTag}`}
+              className="ml-auto shrink-0 rounded-full bg-accent-soft px-3 py-1 text-sm text-link"
+            >
+              #{activeTag} ×
+            </button>
+          )}
+        </div>
 
-      <ul className={grid ? "grid grid-cols-2 gap-3" : "flex flex-col gap-3"}>
-        {ideas.map((idea) => {
-          // In grid view ideas show as small cards; tap one to open it in full.
-          const compact =
-            grid &&
-            !idea.waiting &&
-            !idea.uploading &&
-            expandedId !== idea.id &&
-            editingId !== idea.id;
-          if (compact) {
-            const cover = idea.files.find((f) => f.url && f.mime_type?.startsWith("image/"));
-            const open = () => setExpandedId(idea.id);
+        <input
+          ref={editFileInput}
+          type="file"
+          multiple
+          className="hidden"
+          onChange={(e) => editingId && addToIdea(editingId, e.target.files)}
+        />
+
+        <ul
+          className={
+            grid
+              ? "grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-4"
+              : "grid items-start gap-3 xl:grid-cols-2"
+          }
+        >
+          {ideas.map((idea) => {
+            // In grid view ideas show as small cards; tap one to open it in full.
+            const compact =
+              grid &&
+              !idea.waiting &&
+              !idea.uploading &&
+              expandedId !== idea.id &&
+              editingId !== idea.id;
+            if (compact) {
+              const cover = idea.files.find((f) => f.url && f.mime_type?.startsWith("image/"));
+              const open = () => setExpandedId(idea.id);
+              return (
+                <li
+                  key={idea.id}
+                  role="button"
+                  tabIndex={0}
+                  onClick={open}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" || e.key === " ") {
+                      e.preventDefault();
+                      open();
+                    }
+                  }}
+                  className="group flex cursor-pointer flex-col overflow-hidden rounded-2xl border border-line bg-card shadow-sm transition hover:-translate-y-0.5 hover:shadow-md"
+                >
+                  <div className="h-1" style={{ background: STATUS_COLOR[idea.status] }} />
+                  {cover?.url && (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={cover.url} alt="" className="aspect-square w-full object-cover" />
+                  )}
+                  <div className="flex flex-1 flex-col p-3">
+                    {idea.content && (
+                      <p className="line-clamp-4 whitespace-pre-wrap break-words text-sm">
+                        {idea.content}
+                      </p>
+                    )}
+                    {idea.files.length > 0 && (
+                      <p className="mt-1 flex items-center gap-1 text-xs text-muted">
+                        <ClipIcon className="h-3.5 w-3.5" />
+                        {idea.files.length}
+                      </p>
+                    )}
+                    <div className="mt-auto flex items-center justify-between gap-2 pt-2 text-xs text-muted">
+                      <span>{new Date(idea.created_at).toLocaleDateString()}</span>
+                      <span
+                        className="flex items-center gap-1 capitalize"
+                        style={{ color: STATUS_COLOR[idea.status] }}
+                      >
+                        <ChipIcon className="h-3.5 w-3.5" />
+                        <span className="text-muted">{idea.status}</span>
+                      </span>
+                    </div>
+                  </div>
+                </li>
+              );
+            }
             return (
-              <li
-                key={idea.id}
-                role="button"
-                tabIndex={0}
-                onClick={open}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" || e.key === " ") {
-                    e.preventDefault();
-                    open();
-                  }
-                }}
-                className="cursor-pointer overflow-hidden rounded-lg border border-line"
-              >
-                {cover?.url && (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img src={cover.url} alt="" className="aspect-square w-full object-cover" />
-                )}
-                <div className="p-3">
-                  {idea.content && (
-                    <p className="line-clamp-4 whitespace-pre-wrap break-words text-sm">
-                      {idea.content}
-                    </p>
-                  )}
-                  {idea.files.length > 0 && (
-                    <p className="mt-1 text-xs text-muted">
-                      {idea.files.length} attachment{idea.files.length > 1 ? "s" : ""}
-                    </p>
-                  )}
-                  <div className="mt-2 flex items-center justify-between gap-2 text-xs text-muted">
-                    <span>{new Date(idea.created_at).toLocaleDateString()}</span>
-                    <span>{idea.status}</span>
+            <li
+              key={idea.id}
+              className={`relative overflow-hidden rounded-2xl border border-line bg-card p-4 pl-5 shadow-sm ${
+                grid ? "col-span-full" : ""
+              } ${idea.waiting ? "border-dashed opacity-70" : ""} ${idea.id === freshId ? "pop" : ""}`}
+            >
+              <span
+                aria-hidden="true"
+                className="absolute inset-y-0 left-0 w-1"
+                style={{ background: STATUS_COLOR[idea.status] }}
+              />
+              {editingId === idea.id ? (
+                <div className="flex flex-col gap-2">
+                  <textarea
+                    autoFocus
+                    rows={4}
+                    value={editText}
+                    onChange={(e) => setEditText(e.target.value)}
+                    className={field}
+                  />
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => saveEdit(idea)}
+                      className="flex-1 rounded-xl bg-accent px-3 py-2 font-medium text-on-accent transition hover:brightness-105"
+                    >
+                      Save
+                    </button>
+                    <button
+                      onClick={() => setEditingId(null)}
+                      className="rounded-xl border border-line px-4 py-2 text-muted transition hover:text-foreground"
+                    >
+                      Cancel
+                    </button>
                   </div>
                 </div>
-              </li>
-            );
-          }
-          return (
-          <li
-            key={idea.id}
-            className={`rounded-lg border border-line p-3 ${grid ? "col-span-2" : ""} ${
-              idea.waiting ? "opacity-60" : ""
-            }`}
-          >
-            {editingId === idea.id ? (
-              <div className="flex flex-col gap-2">
-                <textarea
-                  autoFocus
-                  rows={4}
-                  value={editText}
-                  onChange={(e) => setEditText(e.target.value)}
-                  className="w-full resize-none rounded-lg border border-line bg-field p-3 text-base text-ink"
-                />
-                <div className="flex gap-3">
-                  <button
-                    onClick={() => saveEdit(idea)}
-                    className="flex-1 rounded-lg bg-ink px-3 py-2 font-medium text-on-ink"
-                  >
-                    Save
-                  </button>
-                  <button
-                    onClick={() => setEditingId(null)}
-                    className="rounded-lg border border-line px-3 py-2"
-                  >
-                    Cancel
-                  </button>
-                </div>
-              </div>
-            ) : idea.content ? (
-              <p className="whitespace-pre-wrap break-words">
-                {splitTags(idea.content).map((part, i) =>
-                  part.tag ? (
-                    <button
-                      key={i}
-                      onClick={() => setActiveTag(part.tag!)}
-                      className="font-medium text-link"
+              ) : idea.content ? (
+                <p className="whitespace-pre-wrap break-words leading-relaxed">
+                  {splitTags(idea.content).map((part, i) =>
+                    part.tag ? (
+                      <button
+                        key={i}
+                        onClick={() => setActiveTag(part.tag!)}
+                        className="rounded-md bg-accent-soft px-1 font-medium text-link"
+                      >
+                        {part.text}
+                      </button>
+                    ) : (
+                      <span key={i}>{part.text}</span>
+                    ),
+                  )}
+                </p>
+              ) : null}
+
+              {editingId === idea.id && idea.files.length > 0 && (
+                <ul className="mt-3 flex flex-col gap-1 text-sm">
+                  {idea.files.map((f) => (
+                    <li
+                      key={f.id}
+                      className="flex items-center justify-between gap-2 rounded-lg bg-background px-3 py-2"
                     >
-                      {part.text}
-                    </button>
-                  ) : (
-                    <span key={i}>{part.text}</span>
-                  ),
-                )}
-              </p>
-            ) : null}
+                      <span className="truncate">
+                        {f.name} <span className="text-muted">{formatSize(f.size)}</span>
+                      </span>
+                      <button onClick={() => deleteFile(idea, f)} className="shrink-0 text-danger">
+                        Remove
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
 
-            {editingId === idea.id && idea.files.length > 0 && (
-              <ul className="mt-2 flex flex-col gap-1 text-sm">
-                {idea.files.map((f) => (
-                  <li key={f.id} className="flex items-center justify-between gap-2">
-                    <span className="truncate">
-                      {f.name} <span className="text-muted">{formatSize(f.size)}</span>
-                    </span>
-                    <button onClick={() => deleteFile(idea, f)} className="shrink-0 text-danger">
-                      Remove
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            )}
+              {editingId === idea.id && (
+                <button
+                  onClick={() => editFileInput.current?.click()}
+                  className="mt-2 flex items-center gap-1.5 rounded-xl border border-dashed border-line px-3 py-2 text-sm text-muted transition hover:text-foreground"
+                >
+                  <ClipIcon className="h-4 w-4" />
+                  Add files
+                </button>
+              )}
 
-            {editingId === idea.id && (
-              <button
-                onClick={() => editFileInput.current?.click()}
-                className="mt-2 rounded-lg border border-line px-3 py-2 text-sm"
-              >
-                Add files
-              </button>
-            )}
-
-            {idea.files.length > 0 && editingId !== idea.id && (
-              <div className="mt-2 flex flex-wrap gap-2">
-                {idea.files.map((f) =>
-                  f.url && f.mime_type?.startsWith("image/") ? (
-                    <a key={f.id} href={f.url} target="_blank" rel="noreferrer">
-                      {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img
+              {idea.files.length > 0 && editingId !== idea.id && (
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {idea.files.map((f) =>
+                    f.url && f.mime_type?.startsWith("image/") ? (
+                      <a key={f.id} href={f.url} target="_blank" rel="noreferrer">
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img
+                          src={f.url}
+                          alt={f.name}
+                          className="h-24 w-24 rounded-xl border border-line object-cover transition hover:opacity-90"
+                        />
+                      </a>
+                    ) : f.url && f.mime_type?.startsWith("audio/") ? (
+                      <audio
+                        key={f.id}
+                        controls
+                        preload="metadata"
                         src={f.url}
-                        alt={f.name}
-                        className="h-24 w-24 rounded-lg object-cover"
+                        className="w-full"
                       />
-                    </a>
-                  ) : f.url && f.mime_type?.startsWith("audio/") ? (
-                    <audio
-                      key={f.id}
-                      controls
-                      preload="metadata"
-                      src={f.url}
-                      className="w-full"
-                    />
-                  ) : (
-                    <a
-                      key={f.id}
-                      href={f.url ?? undefined}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="max-w-full truncate rounded-lg border border-line px-3 py-2 text-sm text-link"
+                    ) : (
+                      <a
+                        key={f.id}
+                        href={f.url ?? undefined}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="flex max-w-full items-center gap-2 rounded-xl border border-line bg-background px-3 py-2 text-sm text-link transition hover:border-accent"
+                      >
+                        <FileIcon className="h-4 w-4 shrink-0" />
+                        <span className="truncate">
+                          {f.name} <span className="text-muted">{formatSize(f.size)}</span>
+                        </span>
+                      </a>
+                    ),
+                  )}
+                </div>
+              )}
+              {idea.uploading ? (
+                <p className="mt-2 animate-pulse text-sm text-muted">
+                  Uploading {idea.uploading} file{idea.uploading > 1 ? "s" : ""}…
+                </p>
+              ) : null}
+
+              {idea.waiting && idea.queuedFiles && idea.queuedFiles.length > 0 && (
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {idea.queuedFiles.map((f, i) => (
+                    <span
+                      key={i}
+                      className="flex max-w-full items-center gap-2 rounded-xl border border-line bg-background px-3 py-2 text-sm"
                     >
-                      {f.name} <span className="text-muted">{formatSize(f.size)}</span>
-                    </a>
-                  ),
-                )}
-              </div>
-            )}
-            {idea.uploading ? (
-              <p className="mt-2 text-sm text-muted">
-                Uploading {idea.uploading} file{idea.uploading > 1 ? "s" : ""}…
-              </p>
-            ) : null}
+                      <FileIcon className="h-4 w-4 shrink-0 text-muted" />
+                      <span className="truncate">
+                        {f.name} <span className="text-muted">{formatSize(f.size)}</span>
+                      </span>
+                    </span>
+                  ))}
+                </div>
+              )}
+              {idea.waiting &&
+                (idea.syncError ? (
+                  <p className="mt-2 text-sm text-danger">
+                    Couldn&apos;t save this one: {idea.syncError}{" "}
+                    <button onClick={() => discardQueued(idea)} className="underline">
+                      Discard
+                    </button>
+                  </p>
+                ) : (
+                  <p className="mt-2 text-sm text-muted">
+                    {online ? "Saving…" : "Waiting for a connection. It will sync by itself."}
+                  </p>
+                ))}
 
-            {idea.waiting && idea.queuedFiles && idea.queuedFiles.length > 0 && (
-              <div className="mt-2 flex flex-wrap gap-2">
-                {idea.queuedFiles.map((f, i) => (
+              <div className="mt-3 flex flex-wrap items-center gap-x-2 gap-y-1">
+                <label
+                  className="relative inline-flex items-center rounded-full border border-line bg-background text-sm"
+                  style={{ color: STATUS_COLOR[idea.status] }}
+                >
                   <span
-                    key={i}
-                    className="max-w-full truncate rounded-lg border border-line px-3 py-2 text-sm"
+                    aria-hidden="true"
+                    className="pointer-events-none absolute left-3 h-2 w-2 rounded-full bg-current"
+                  />
+                  <select
+                    value={idea.status}
+                    disabled={idea.waiting}
+                    onChange={(e) => changeStatus(idea.id, e.target.value)}
+                    aria-label="Status"
+                    className="cursor-pointer appearance-none rounded-full bg-transparent py-1 pl-7 pr-3 capitalize text-ink outline-none disabled:cursor-default"
                   >
-                    {f.name} <span className="text-muted">{formatSize(f.size)}</span>
-                  </span>
-                ))}
-              </div>
-            )}
-            {idea.waiting &&
-              (idea.syncError ? (
-                <p className="mt-2 text-sm text-danger">
-                  Couldn&apos;t save this one: {idea.syncError}{" "}
-                  <button onClick={() => discardQueued(idea)} className="underline">
-                    Discard
-                  </button>
+                    {STATUSES.map((s) => (
+                      <option key={s} value={s}>
+                        {s}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <p className="text-xs text-muted">
+                  {new Date(idea.created_at).toLocaleString(undefined, {
+                    dateStyle: "medium",
+                    timeStyle: "short",
+                  })}
                 </p>
-              ) : (
-                <p className="mt-2 text-sm text-muted">
-                  {online ? "Saving…" : "Waiting for a connection. It will sync by itself."}
-                </p>
-              ))}
-
-            <div className="mt-2 flex items-center justify-between gap-2">
-              <p className="text-xs text-muted">
-                {new Date(idea.created_at).toLocaleString()}
-              </p>
-              <select
-                value={idea.status}
-                disabled={idea.waiting}
-                onChange={(e) => changeStatus(idea.id, e.target.value)}
-                aria-label="Status"
-                className="rounded-full border border-line bg-field px-3 py-1 text-sm text-ink"
-              >
-                {STATUSES.map((s) => (
-                  <option key={s} value={s}>
-                    {s}
-                  </option>
-                ))}
-              </select>
-            </div>
-            {editingId !== idea.id && !idea.waiting && !idea.uploading && (
-              <div className="mt-1 flex gap-5 text-sm">
-                <button onClick={() => startEdit(idea)} className="py-2 text-link">
-                  Edit
-                </button>
-                <button onClick={() => deleteIdea(idea)} className="py-2 text-danger">
-                  Delete
-                </button>
-                {grid && (
-                  <button onClick={() => setExpandedId(null)} className="py-2 text-muted">
-                    Close
-                  </button>
+                {editingId !== idea.id && !idea.waiting && !idea.uploading && (
+                  <div className="ml-auto flex items-center gap-1 text-sm">
+                    {grid && (
+                      <button
+                        onClick={() => setExpandedId(null)}
+                        className="rounded-lg px-2 py-1.5 text-muted transition hover:bg-background hover:text-foreground"
+                      >
+                        Close
+                      </button>
+                    )}
+                    <button
+                      onClick={() => startEdit(idea)}
+                      aria-label="Edit"
+                      title="Edit"
+                      className="rounded-lg p-2 text-muted transition hover:bg-background hover:text-foreground"
+                    >
+                      <PencilIcon className="h-4 w-4" />
+                    </button>
+                    <button
+                      onClick={() => deleteIdea(idea)}
+                      aria-label="Delete"
+                      title="Delete"
+                      className="rounded-lg p-2 text-muted transition hover:bg-danger/10 hover:text-danger"
+                    >
+                      <TrashIcon className="h-4 w-4" />
+                    </button>
+                  </div>
                 )}
               </div>
-            )}
-          </li>
-          );
-        })}
-        {ideas.length === 0 && (
-          <li className="text-muted">
-            {filtering ? "Nothing matches." : "No ideas yet."}
-          </li>
-        )}
-      </ul>
+            </li>
+            );
+          })}
+          {ideas.length === 0 && (
+            <li className="col-span-full flex flex-col items-center gap-2 rounded-2xl border border-dashed border-line px-4 py-12 text-center text-muted">
+              <SparkIcon className="h-8 w-8 text-accent" />
+              {filtering ? "Nothing matches." : "No ideas yet. Your first one goes up top."}
+            </li>
+          )}
+        </ul>
 
-      {hasMore && (
-        <button
-          onClick={loadMore}
-          disabled={loadingMore}
-          className="rounded-lg border border-line px-3 py-3 text-base disabled:opacity-40"
-        >
-          {loadingMore ? "Loading…" : "Load more"}
-        </button>
-      )}
+        {hasMore && (
+          <button
+            onClick={loadMore}
+            disabled={loadingMore}
+            className="mx-auto rounded-full border border-line bg-card px-6 py-2.5 text-sm text-muted shadow-sm transition hover:text-foreground disabled:opacity-40"
+          >
+            {loadingMore ? "Loading…" : "Load more"}
+          </button>
+        )}
+      </section>
     </div>
   );
 }

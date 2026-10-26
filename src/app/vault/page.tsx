@@ -3,19 +3,35 @@ import { createClient } from "@/lib/supabase/server";
 import { IDEA_COLUMNS, PAGE_SIZE, withFileUrls, type RawIdea } from "@/lib/ideas";
 import Capture from "./capture";
 import LogoutButton from "./logout-button";
+import { serif } from "./fonts";
+import { SparkIcon } from "./icons";
 
 export default function VaultPage() {
   return (
-    <main className="mx-auto max-w-xl p-4">
-      <div className="mb-4 flex items-center justify-between">
-        <h1 className="text-2xl font-semibold">Idea Vault</h1>
-        <LogoutButton />
-      </div>
-      {/* Reads your login cookie, so it loads at request time behind a boundary. */}
-      <Suspense fallback={<p className="text-muted">Loading…</p>}>
-        <VaultContent />
-      </Suspense>
-    </main>
+    <div className="vault min-h-screen text-foreground">
+      <main className="mx-auto max-w-6xl px-4 pb-16 pt-6 sm:px-6 sm:pt-10">
+        <header className="mb-6 flex items-center justify-between gap-4">
+          <div className="flex items-center gap-3">
+            <span className="grid h-10 w-10 place-items-center rounded-xl bg-accent text-on-accent shadow-sm shadow-accent/30">
+              <SparkIcon />
+            </span>
+            <div>
+              <h1 className={`${serif.className} text-3xl leading-none tracking-tight`}>
+                Idea Vault
+              </h1>
+              <p className="mt-1 text-sm text-muted">Catch it before it&apos;s gone.</p>
+            </div>
+          </div>
+          <LogoutButton />
+        </header>
+        {/* Reads your login cookie, so it loads at request time behind a boundary. */}
+        <Suspense
+          fallback={<div className="h-40 animate-pulse rounded-2xl border border-line bg-card" />}
+        >
+          <VaultContent />
+        </Suspense>
+      </main>
+    </div>
   );
 }
 
@@ -27,14 +43,20 @@ async function VaultContent() {
       .select(IDEA_COLUMNS)
       .order("created_at", { ascending: false })
       .limit(PAGE_SIZE),
-    // Just the tag lists, so the tag buttons cover every idea, not only the latest 100.
-    supabase.from("ideas").select("tags").limit(2000),
+    // A light index of every idea, so folder counts, tags and the streak cover all of them.
+    supabase
+      .from("ideas")
+      .select("id, tags, status, created_at")
+      .order("created_at", { ascending: false })
+      .limit(2000),
   ]);
+  const index = allTags.data ?? [];
 
   return (
     <Capture
       initial={await withFileUrls(supabase, (ideas.data ?? []) as unknown as RawIdea[])}
-      initialTags={(allTags.data ?? []).map((r) => r.tags)}
+      initialTags={index.map((r) => r.tags)}
+      initialMeta={index.map(({ id, status, created_at }) => ({ id, status, created_at }))}
     />
   );
 }

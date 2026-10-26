@@ -28,7 +28,67 @@
   }
 }
 
+/* The vault and login screens get their own warmer palette. Scoped with :has() so the
+   portfolio page at / keeps the plain colours above. */
+:root:has(.vault) {
+  --background: #f6f3ee;
+  --foreground: #1c1917;
+  --field: #ffffff;
+  --card: #ffffff;
+  --ink: #1c1917;
+  --on-ink: #fafaf9;
+  --line: #e7e2d9;
+  --muted: #78716c;
+  --link: #c2410c;
+  --danger: #dc2626;
+  --accent: #f97316;
+  --on-accent: #ffffff;
+  --accent-soft: #ffedd5;
+  --status-raw: #a8a29e;
+  --status-exploring: #0ea5e9;
+  --status-building: #f59e0b;
+  --status-done: #10b981;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:has(.vault) {
+    --background: #12100e;
+    --foreground: #f5f5f4;
+    --field: #1c1917;
+    --card: #1c1917;
+    --ink: #f5f5f4;
+    --on-ink: #12100e;
+    --line: #2e2a26;
+    --muted: #a8a29e;
+    --link: #fb923c;
+    --danger: #f87171;
+    --accent: #fb923c;
+    --on-accent: #1c1917;
+    --accent-soft: #3b2414;
+    --status-raw: #78716c;
+    --status-exploring: #38bdf8;
+    --status-building: #fbbf24;
+    --status-done: #34d399;
+  }
+}
+
+.vault {
+  font-family: var(--font-geist-sans), system-ui, sans-serif;
+  background:
+    radial-gradient(60rem 24rem at 50% -8rem, var(--accent-soft), transparent 70%),
+    var(--background);
+}
+
+.vault ::selection {
+  background: var(--accent);
+  color: var(--on-accent);
+}
+
 @theme inline {
+  --color-card: var(--card);
+  --color-accent: var(--accent);
+  --color-on-accent: var(--on-accent);
+  --color-accent-soft: var(--accent-soft);
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --color-field: var(--field);
@@ -46,4 +106,65 @@ body {
   background: var(--background);
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
+}
+
+/* Vault animations: new ideas pop in, saving sets off a little burst of sparks. */
+@keyframes vault-pop {
+  from {
+    opacity: 0;
+    transform: translateY(10px) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes vault-burst {
+  from {
+    opacity: 1;
+    transform: translate(0, 0) scale(1);
+  }
+  to {
+    opacity: 0;
+    transform: translate(var(--dx), var(--dy)) scale(0.3);
+  }
+}
+
+@keyframes vault-toast {
+  0% {
+    opacity: 0;
+    transform: translate(-50%, 16px) scale(0.95);
+  }
+  12%,
+  80% {
+    opacity: 1;
+    transform: translate(-50%, 0) scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: translate(-50%, -8px);
+  }
+}
+
+.vault .pop {
+  animation: vault-pop 0.4s cubic-bezier(0.2, 0.9, 0.3, 1.25) both;
+}
+
+.vault .burst span {
+  animation: vault-burst 0.75s ease-out forwards;
+}
+
+.vault .toast {
+  animation: vault-toast 2.4s ease forwards;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .vault .pop,
+  .vault .toast {
+    animation: none;
+  }
+  .vault .burst {
+    display: none;
+  }
 }
