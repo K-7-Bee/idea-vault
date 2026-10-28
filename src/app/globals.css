@@ -248,27 +248,32 @@ html {
   white-space: nowrap;
 }
 
-/* Bubbles rising through the hero. */
-.pf-bubble {
+/* Screws falling through the hero. Each one sets its own fall distance, drift, spin and
+   opacity; the easing speeds them up a little as they fall. */
+.pf-screw {
   position: absolute;
-  bottom: -50px;
-  border-radius: 9999px;
-  border: 1px solid rgba(238, 238, 238, 0.45);
-  background: radial-gradient(circle at 30% 30%, rgba(255, 255, 255, 0.55), rgba(255, 255, 255, 0.05) 45%, transparent 70%);
-  animation: pf-rise 6s linear forwards;
+  top: -70px;
+  filter: drop-shadow(0 6px 8px rgba(0, 0, 0, 0.35));
+  animation: pf-fall 7s cubic-bezier(0.4, 0, 0.9, 0.7) forwards;
 }
 
-@keyframes pf-rise {
+.pf-screw svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+@keyframes pf-fall {
   0% {
-    transform: translateY(0) translateX(0) rotate(0deg);
+    transform: translate(0, 0) rotate(var(--r0));
     opacity: 0;
   }
-  10%,
-  90% {
-    opacity: 0.4;
+  8%,
+  85% {
+    opacity: var(--o);
   }
   100% {
-    transform: translateY(-110vh) translateX(30px) rotate(360deg);
+    transform: translate(var(--dx), var(--fall)) rotate(var(--r1));
     opacity: 0;
   }
 }

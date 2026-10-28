@@ -6,7 +6,7 @@ import { OPEN_TERMINAL } from "./companion";
 import MobileMenu from "./mobile-menu";
 
 // The portfolio hero: the lightning K floats in the middle and tilts toward the pointer,
-// electronic parts drift around it and dodge the cursor, and bubbles rise from the bottom.
+// electronic parts drift around it and dodge the cursor, and screws tumble down behind it.
 // The two chapter cards switch the colour theme: the K spins, and the parts are pulled into
 // the middle, swapped for the other chapter's parts and thrown back out.
 
@@ -73,6 +73,11 @@ const FLOAT_SECONDS = [5, 7, 6, 8, 5.5, 6.5, 9, 11, 10];
 
 const SWITCH_MS = 1700;
 
+// A falling flat-head screw, side-on: countersunk head with the Phillips recess, a threaded
+// shank and a point. The steel gradient is defined once in the hero's markup.
+const THREADS = Array.from({ length: 9 }, (_, i) => `M8 ${13 + i * 4.4}l8 3`).join("");
+const SCREW = `<svg viewBox="0 0 24 60"><path d="M0 1h24l-8 8H8z" fill="url(#pf-steel)"/><path d="M10.5 1h3v3h-3z" fill="#3b414a"/><path d="M8 9h8v38l-4 11-4-11z" fill="url(#pf-steel)"/><path d="${THREADS}" stroke="#4a515b" stroke-width="1.4" stroke-linecap="round"/></svg>`;
+
 const backOut = (s: number) => (t: number) => 1 + (s + 1) * (t - 1) ** 3 + s * (t - 1) ** 2;
 
 function tween(ms: number, ease: (t: number) => number, update: (k: number) => void, done?: () => void) {
@@ -136,7 +141,7 @@ export default function Hero({
   const tiltRef = useRef<HTMLDivElement>(null);
   const frontRef = useRef<HTMLDivElement>(null);
   const backRef = useRef<HTMLDivElement>(null);
-  const bubblesRef = useRef<HTMLDivElement>(null);
+  const screwsRef = useRef<HTMLDivElement>(null);
   const partsRef = useRef<(HTMLDivElement | null)[]>([]);
   const switchTo = useRef<(theme: Theme) => void>(null);
   const busy = useRef(false);
@@ -146,8 +151,8 @@ export default function Hero({
     const tilt = tiltRef.current;
     const front = frontRef.current;
     const back = backRef.current;
-    const bubbles = bubblesRef.current;
-    if (!hero || !tilt || !front || !back || !bubbles) return;
+    const screws = screwsRef.current;
+    if (!hero || !tilt || !front || !back || !screws) return;
     const parts = partsRef.current.filter((p): p is HTMLDivElement => !!p);
 
     if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
@@ -224,18 +229,30 @@ export default function Hero({
     });
     io.observe(hero);
 
-    const bubbleTimer = window.setInterval(() => {
+    // Screws drop from above the hero, spinning as they fall, and fade out at the bottom.
+    const screwTimer = window.setInterval(() => {
       if (!visible || document.hidden) return;
-      const b = document.createElement("span");
-      const size = Math.random() * 20 + 10;
-      const seconds = Math.random() * 6 + 4;
-      b.className = "pf-bubble";
-      b.style.width = b.style.height = `${size}px`;
-      b.style.left = `${Math.random() * 100}%`;
-      b.style.animationDuration = `${seconds}s`;
-      bubbles.appendChild(b);
-      window.setTimeout(() => b.remove(), seconds * 1000);
-    }, 400);
+      // Fewer screws on narrow screens, so phones get the same density as desktops.
+      if (Math.random() > screws.clientWidth / 1200) return;
+      const s = document.createElement("span");
+      const size = Math.random() * 28 + 34;
+      const seconds = Math.random() * 5 + 5;
+      const start = Math.random() * 360;
+      const turn = (Math.random() < 0.5 ? -1 : 1) * (Math.random() * 540 + 180);
+      s.className = "pf-screw";
+      s.innerHTML = SCREW;
+      s.style.width = `${size * 0.4}px`;
+      s.style.height = `${size}px`;
+      s.style.left = `${Math.random() * 100}%`;
+      s.style.animationDuration = `${seconds}s`;
+      s.style.setProperty("--fall", `${screws.clientHeight + 140}px`);
+      s.style.setProperty("--dx", `${(Math.random() - 0.5) * 80}px`);
+      s.style.setProperty("--r0", `${start}deg`);
+      s.style.setProperty("--r1", `${start + turn}deg`);
+      s.style.setProperty("--o", `${Math.random() * 0.35 + 0.45}`);
+      screws.appendChild(s);
+      window.setTimeout(() => s.remove(), seconds * 1000);
+    }, 450);
 
     switchTo.current = (theme) => {
       switching = true;
@@ -295,9 +312,9 @@ export default function Hero({
     return () => {
       window.removeEventListener("pointermove", onMove);
       io.disconnect();
-      clearInterval(bubbleTimer);
+      clearInterval(screwTimer);
       cancelAnimationFrame(frameId);
-      bubbles.replaceChildren();
+      screws.replaceChildren();
     };
   }, []);
 
@@ -334,7 +351,16 @@ export default function Hero({
       data-theme={active}
       className="pf-hero relative isolate flex min-h-svh flex-col overflow-hidden lg:h-svh lg:min-h-[680px]"
     >
-      <div ref={bubblesRef} aria-hidden className="pointer-events-none absolute inset-0 -z-10 overflow-hidden" />
+      <svg aria-hidden className="absolute h-0 w-0">
+        <defs>
+          <linearGradient id="pf-steel" x1="0" x2="1">
+            <stop offset="0" stopColor="#6f7884" />
+            <stop offset="0.45" stopColor="#d9dee3" />
+            <stop offset="1" stopColor="#5d6570" />
+          </linearGradient>
+        </defs>
+      </svg>
+      <div ref={screwsRef} aria-hidden className="pointer-events-none absolute inset-0 -z-10 overflow-hidden" />
 
       <header className="relative z-30 flex w-full items-center justify-between px-[4%] py-6 lg:py-8">
         <a href="#top" aria-label={`${name}, back to top`} className="flex items-center gap-2">
