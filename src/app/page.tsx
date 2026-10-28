@@ -1,17 +1,12 @@
 import type { Metadata } from "next";
-import { Bodoni_Moda } from "next/font/google";
-import Image from "next/image";
+import { Galada, Inter, Manrope } from "next/font/google";
 import Link from "next/link";
-import Circuit from "./circuit";
-import HeroStage from "./hero-stage";
-import MobileMenu from "./mobile-menu";
+import Hero from "./hero";
 
-// A sharp, high-contrast serif with hairline details for the big headlines.
-const display = Bodoni_Moda({
-  variable: "--font-display",
-  subsets: ["latin"],
-  weight: ["500", "600", "700", "900"],
-});
+// A brush script for the big headlines, Manrope for navigation and labels, Inter for reading.
+const script = Galada({ variable: "--font-galada", subsets: ["latin"], weight: "400" });
+const navFont = Manrope({ variable: "--font-manrope", subsets: ["latin"] });
+const inter = Inter({ variable: "--font-inter", subsets: ["latin"] });
 
 export const metadata: Metadata = {
   title: "MD Kaushik Kamal — Portfolio",
@@ -109,20 +104,19 @@ const EXPERIENCE: Entry[] = [
   },
 ];
 
-const label = "font-mono text-xs uppercase tracking-[0.25em]";
-const button =
-  "rounded-sm px-5 py-3 font-mono text-xs uppercase tracking-[0.2em] transition-colors";
+const label = "font-nav text-xs font-semibold uppercase tracking-[0.25em]";
+const card = "rounded-[28px] border border-pf-line bg-pf-glass p-7";
 
 function Timeline({ title, items }: { title: string; items: Entry[] }) {
   return (
     <div>
-      <h3 className={`${label} text-pf-muted`}>{title}</h3>
+      <h3 className={`${label} text-pf-blue`}>{title}</h3>
       <ul className="mt-5 border-t border-pf-line">
         {items.map((i) => (
           <li key={i.place} className="border-b border-pf-line py-5">
-            <p className="font-serif-display text-2xl font-semibold">{i.place}</p>
+            <p className="text-xl font-semibold">{i.place}</p>
             <p className="mt-1 text-pf-muted">{i.detail}</p>
-            <p className={`${label} mt-2 text-[0.65rem] text-pf-muted`}>
+            <p className={`${label} mt-2 text-[0.65rem] text-pf-teal`}>
               {[i.when, i.where].filter(Boolean).join(" // ")}
             </p>
           </li>
@@ -135,93 +129,18 @@ function Timeline({ title, items }: { title: string; items: Entry[] }) {
 export default function Home() {
   return (
     <div
-      className={`${display.variable} relative min-h-screen overflow-x-clip bg-pf-bg text-pf-ink`}
+      className={`${script.variable} ${navFont.variable} ${inter.variable} font-body relative min-h-screen overflow-x-clip bg-pf-bg text-pf-ink`}
     >
       <div className="pf-grain" aria-hidden />
 
-      {/* Hero */}
-      <HeroStage
-        background={
-          <>
-            <div className="pf-glow absolute inset-0" />
-            <Circuit />
-            <div
-              aria-hidden
-              className="absolute inset-0 bg-gradient-to-b from-pf-bg/40 via-transparent to-pf-bg"
-            />
-          </>
-        }
-      >
-        <header className="relative z-10 mx-auto flex w-full max-w-6xl items-center justify-between px-6 py-6">
-          <a href="#top" aria-label={`${NAME} — back to top`}>
-            <Image src="/k-logo.png" alt="" width={56} height={56} priority className="h-14 w-14" />
-          </a>
-          <nav className={`${label} hidden gap-8 text-pf-ink sm:flex`}>
-            {NAV.map((n) => (
-              <a key={n.href} href={n.href} className="transition-opacity hover:opacity-60">
-                {n.label}
-              </a>
-            ))}
-          </nav>
-          <div className="flex items-center gap-3">
-            <a href="#contact" className={`${button} bg-pf-ink text-pf-bg hover:opacity-85`}>
-              Get in touch
-            </a>
-            <MobileMenu links={NAV} />
-          </div>
-        </header>
-
-        <div className="relative z-10 mx-auto grid w-full max-w-6xl flex-1 items-center gap-10 px-6 py-10 md:grid-cols-2"
-        >
-          <p className={`${label} hidden self-end text-[0.65rem] text-pf-ink/70 md:block`}>
-            Click anywhere to strike
-          </p>
-          <div>
-            <p className={`${label} text-pf-ink [text-shadow:0_1px_10px_rgba(6,19,33,0.9)]`}>
-              Engineering Science // Jeonbuk National University
-            </p>
-            <h1 className="font-serif-display mt-6 text-5xl font-semibold leading-[0.95] min-[420px]:text-6xl sm:text-7xl">
-              Curiosity meets engineering.
-            </h1>
-            <p className="mt-6 max-w-md text-lg leading-relaxed text-[#e4f5fa] [text-shadow:0_1px_12px_rgba(6,19,33,0.9)]">
-              I&apos;m {NAME}, an engineering student who learns by building. I start with what
-              I&apos;m curious about and make it real, one project at a time.
-            </p>
-            <div className="mt-8 flex flex-wrap gap-3">
-              <a href="#work" className={`${button} bg-pf-ink text-pf-bg hover:opacity-85`}>
-                See my work
-              </a>
-              <a
-                href="#about"
-                className={`${button} border border-pf-ink/50 hover:border-pf-ink`}
-              >
-                About me
-              </a>
-            </div>
-          </div>
-        </div>
-
-        <p
-          aria-hidden
-          className={`${label} absolute right-4 top-1/2 hidden -translate-y-1/2 text-[0.65rem] text-pf-ink/80 [writing-mode:vertical-rl] lg:block`}
-        >
-          Bangladesh → South Korea
-        </p>
-
-        <div
-          aria-hidden
-          className="font-serif-display pointer-events-none relative z-10 select-none px-4 text-[clamp(4rem,17.5vw,17rem)] font-black uppercase leading-[0.78] tracking-[-0.03em] [text-shadow:0_0_60px_rgba(164,217,233,0.25)]"
-        >
-          Kaushik
-        </div>
-      </HeroStage>
+      <Hero name={NAME} links={NAV} />
 
       <main className="relative z-10 mx-auto max-w-6xl px-6">
         {/* About */}
         <section id="about" className="grid gap-8 border-t border-pf-line py-20 md:grid-cols-[1fr_2fr]">
-          <h2 className={`${label} text-pf-muted`}>About</h2>
+          <h2 className={`${label} text-pf-teal`}>About</h2>
           <div className="max-w-2xl space-y-5 text-lg leading-relaxed">
-            <p className="font-serif-display text-3xl font-medium leading-snug sm:text-4xl">
+            <p className="font-script text-4xl leading-snug sm:text-5xl">
               I build what I&apos;m learning.
             </p>
             <p className="text-pf-muted">
@@ -234,29 +153,30 @@ export default function Home() {
 
         {/* Work */}
         <section id="work" className="border-t border-pf-line py-20">
-          <h2 className={`${label} text-pf-muted`}>Selected work</h2>
+          <h2 className={`${label} text-pf-teal`}>Selected work</h2>
           <ul className="mt-10 grid gap-6 md:grid-cols-2">
             {PROJECTS.map((p) => {
               const body = (
                 <>
-                  <p className={`${label} text-[0.65rem] text-pf-muted`}>{p.tech}</p>
-                  <h3 className="font-serif-display mt-4 text-4xl font-semibold">{p.title}</h3>
+                  <p className={`${label} text-[0.65rem] text-pf-teal`}>{p.tech}</p>
+                  <h3 className="font-script mt-4 text-4xl">{p.title}</h3>
                   <p className="mt-3 text-pf-muted">{p.description}</p>
-                  <p className={`${label} mt-8`}>{p.cta ? `${p.cta} →` : "Innovation fair winner"}</p>
+                  <p className={`${label} mt-8 text-pf-blue`}>
+                    {p.cta ? `${p.cta} →` : "Innovation fair winner"}
+                  </p>
                 </>
               );
-              const card =
-                "block h-full rounded-sm border border-pf-line p-7 transition-colors hover:border-pf-ink";
+              const link = `${card} block h-full transition hover:-translate-y-1 hover:border-pf-blue`;
               return (
                 <li key={p.title}>
                   {!p.href ? (
-                    <div className="block h-full rounded-sm border border-pf-line p-7">{body}</div>
+                    <div className={`${card} block h-full`}>{body}</div>
                   ) : p.internal ? (
-                    <Link href={p.href} className={card}>
+                    <Link href={p.href} className={link}>
                       {body}
                     </Link>
                   ) : (
-                    <a href={p.href} target="_blank" rel="noreferrer" className={card}>
+                    <a href={p.href} target="_blank" rel="noreferrer" className={link}>
                       {body}
                     </a>
                   )}
@@ -268,7 +188,7 @@ export default function Home() {
 
         {/* Journey */}
         <section id="journey" className="border-t border-pf-line py-20">
-          <h2 className={`${label} text-pf-muted`}>Journey</h2>
+          <h2 className={`${label} text-pf-teal`}>Journey</h2>
           <div className="mt-10 grid gap-12 md:grid-cols-2">
             <Timeline title="Education" items={EDUCATION} />
             <Timeline title="Experience" items={EXPERIENCE} />
@@ -277,13 +197,13 @@ export default function Home() {
 
         {/* Contact */}
         <section id="contact" className="relative border-t border-pf-line py-24">
-          <h2 className={`${label} text-pf-muted`}>Contact</h2>
-          <p className="font-serif-display mt-6 max-w-3xl text-5xl font-semibold leading-tight sm:text-6xl">
+          <h2 className={`${label} text-pf-teal`}>Contact</h2>
+          <p className="font-script mt-6 max-w-3xl text-6xl leading-tight sm:text-7xl">
             Let&apos;s build something.
           </p>
           <a
             href={`mailto:${EMAIL}`}
-            className="mt-8 inline-block break-all border-b border-pf-ink pb-1 text-lg"
+            className="mt-8 inline-block break-all border-b border-pf-blue pb-1 text-lg transition-colors hover:text-pf-blue"
           >
             {EMAIL}
           </a>

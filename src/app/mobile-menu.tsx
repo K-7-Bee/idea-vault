@@ -14,7 +14,7 @@ export default function MobileMenu({ links }: { links: { label: string; href: st
         aria-expanded={open}
         aria-controls="mobile-menu"
         aria-label={open ? "Close menu" : "Open menu"}
-        className="flex h-11 w-11 items-center justify-center rounded-sm border border-pf-line"
+        className="flex h-11 w-11 items-center justify-center rounded-full border border-pf-line bg-pf-glass"
       >
         <span className="relative block h-3 w-5" aria-hidden>
           <span
@@ -38,7 +38,7 @@ export default function MobileMenu({ links }: { links: { label: string; href: st
       {open && (
         <nav
           id="mobile-menu"
-          className="absolute inset-x-0 top-full z-20 border-y border-pf-line bg-pf-bg/95 px-6 py-4 backdrop-blur"
+          className="absolute inset-x-4 top-full z-20 rounded-[28px] border border-pf-line bg-pf-bg/95 px-6 py-2 backdrop-blur"
         >
           <ul className="flex flex-col">
             {links.map((l) => (
@@ -46,7 +46,7 @@ export default function MobileMenu({ links }: { links: { label: string; href: st
                 <a
                   href={l.href}
                   onClick={() => setOpen(false)}
-                  className="block py-4 font-mono text-sm uppercase tracking-[0.25em]"
+                  className="font-nav block py-4 text-sm font-semibold uppercase tracking-[0.25em]"
                 >
                   {l.label}
                 </a>

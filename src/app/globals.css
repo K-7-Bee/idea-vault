@@ -84,12 +84,17 @@
   color: var(--on-accent);
 }
 
-/* Portfolio page palette: always midnight navy, whatever the device's light/dark setting. */
+/* Portfolio page palette: slate, soft white, teal and sky blue, whatever the device's
+   light/dark setting. */
 :root {
-  --pf-bg: #061321;
-  --pf-ink: #a4d9e9;
-  --pf-muted: #7f98aa;
-  --pf-line: rgba(164, 217, 233, 0.16);
+  --pf-bg: #31363f;
+  --pf-deep: #1e2127;
+  --pf-ink: #eeeeee;
+  --pf-muted: rgba(238, 238, 238, 0.7);
+  --pf-teal: #76abae;
+  --pf-blue: #60b5ff;
+  --pf-line: rgba(238, 238, 238, 0.12);
+  --pf-glass: rgba(238, 238, 238, 0.05);
 }
 
 @theme inline {
@@ -101,7 +106,13 @@
   --color-pf-ink: var(--pf-ink);
   --color-pf-muted: var(--pf-muted);
   --color-pf-line: var(--pf-line);
-  --font-serif-display: var(--font-display);
+  --color-pf-deep: var(--pf-deep);
+  --color-pf-teal: var(--pf-teal);
+  --color-pf-blue: var(--pf-blue);
+  --color-pf-glass: var(--pf-glass);
+  --font-script: var(--font-galada);
+  --font-nav: var(--font-manrope);
+  --font-body: var(--font-inter);
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --color-field: var(--field);
@@ -186,13 +197,6 @@ html {
   scroll-behavior: smooth;
 }
 
-/* Soft blue light behind the portfolio hero. */
-.pf-glow {
-  background:
-    radial-gradient(ellipse 60% 55% at 25% 45%, rgba(48, 104, 150, 0.28), transparent 70%),
-    radial-gradient(ellipse 50% 45% at 85% 15%, rgba(164, 217, 233, 0.07), transparent 70%);
-}
-
 /* A restrained film grain over the whole page. */
 .pf-grain {
   pointer-events: none;
@@ -204,21 +208,92 @@ html {
   background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='160' height='160'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 1  0 0 0 0 1  0 0 0 0 1  0 0 0 0.9 0'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>");
 }
 
-/* A short bright dash that travels along a circuit trace. */
-.pf-pulse {
-  stroke-dasharray: 4 96;
-  stroke-dashoffset: 100;
-  animation: pf-pulse 8s linear infinite;
+/* The hero's colours. They're registered so the browser can fade between the two themes. */
+@property --hero-inner {
+  syntax: "<color>";
+  inherits: true;
+  initial-value: #466f95;
 }
 
-@keyframes pf-pulse {
-  to {
-    stroke-dashoffset: 0;
+@property --hero-accent {
+  syntax: "<color>";
+  inherits: true;
+  initial-value: #60b5ff;
+}
+
+.pf-hero {
+  --hero-inner: #466f95;
+  --hero-accent: var(--pf-blue);
+  background: radial-gradient(circle at center, var(--hero-inner) 0%, var(--pf-bg) 50%, var(--pf-deep) 100%);
+  transition:
+    --hero-inner 1.5s cubic-bezier(0.65, 0, 0.35, 1),
+    --hero-accent 1.5s cubic-bezier(0.65, 0, 0.35, 1);
+}
+
+.pf-hero[data-theme="teal"] {
+  --hero-inner: #506b71;
+  --hero-accent: var(--pf-teal);
+}
+
+.pf-title {
+  font-family: var(--font-galada), cursive;
+  font-size: clamp(3.25rem, 8vw, 9rem);
+  line-height: 0.85;
+  white-space: nowrap;
+}
+
+/* Bubbles rising through the hero. */
+.pf-bubble {
+  position: absolute;
+  bottom: -50px;
+  border-radius: 9999px;
+  border: 1px solid rgba(238, 238, 238, 0.45);
+  background: radial-gradient(circle at 30% 30%, rgba(255, 255, 255, 0.55), rgba(255, 255, 255, 0.05) 45%, transparent 70%);
+  animation: pf-rise 6s linear forwards;
+}
+
+@keyframes pf-rise {
+  0% {
+    transform: translateY(0) translateX(0) rotate(0deg);
+    opacity: 0;
+  }
+  10%,
+  90% {
+    opacity: 0.4;
+  }
+  100% {
+    transform: translateY(-110vh) translateX(30px) rotate(360deg);
+    opacity: 0;
+  }
+}
+
+/* The K fades in, then bobs up and down forever. */
+.pf-enter {
+  animation: pf-fade 1.5s ease-out 0.3s both;
+}
+
+.pf-float {
+  animation: pf-float 6s ease-in-out infinite;
+}
+
+@keyframes pf-fade {
+  from {
+    opacity: 0;
+  }
+}
+
+@keyframes pf-float {
+  50% {
+    transform: translateY(-20px);
   }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .pf-pulse {
-    display: none;
+  .pf-hero {
+    transition: none;
+  }
+  .pf-enter,
+  .pf-float {
+    animation: none;
   }
 }
