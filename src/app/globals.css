@@ -297,3 +297,39 @@ html {
     animation: none;
   }
 }
+
+/* BYTE bobs gently and blinks now and then. */
+.pf-byte {
+  animation: pf-bob 3s ease-in-out infinite;
+}
+
+.pf-eye {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: pf-blink 6s infinite;
+}
+
+@keyframes pf-bob {
+  50% {
+    transform: translateY(-9px);
+  }
+}
+
+@keyframes pf-blink {
+  0%,
+  46%,
+  49%,
+  100% {
+    transform: scaleY(1);
+  }
+  47% {
+    transform: scaleY(0.1);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pf-byte,
+  .pf-eye {
+    animation: none;
+  }
+}

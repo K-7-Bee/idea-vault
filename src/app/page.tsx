@@ -1,7 +1,10 @@
 import type { Metadata } from "next";
 import { Galada, Inter, Manrope } from "next/font/google";
 import Link from "next/link";
+import Companion from "./companion";
 import Hero from "./hero";
+import MotorExplorer from "./motor-explorer";
+import OhmLab from "./ohm-lab";
 
 // A brush script for the big headlines, Manrope for navigation and labels, Inter for reading.
 const script = Galada({ variable: "--font-galada", subsets: ["latin"], weight: "400" });
@@ -20,6 +23,7 @@ const EMAIL = "koushikkamal6@gmail.com";
 const NAV = [
   { label: "About", href: "#about" },
   { label: "Work", href: "#work" },
+  { label: "Lab", href: "#lab" },
   { label: "Journey", href: "#journey" },
   { label: "Contact", href: "#contact" },
 ];
@@ -186,6 +190,30 @@ export default function Home() {
           </ul>
         </section>
 
+        {/* Lab */}
+        <section id="lab" className="border-t border-pf-line py-20">
+          <h2 className={`${label} text-pf-teal`}>Lab</h2>
+          <p className="font-script mt-6 text-4xl sm:text-5xl">Play with the engineering.</p>
+          <p className="mt-4 max-w-2xl text-pf-muted">
+            Two small experiments from what I&apos;ve studied: turn a motor over in 3D, and push a
+            circuit around to see Ohm&apos;s law at work.
+          </p>
+          <div className="mt-10 grid gap-6 lg:grid-cols-2">
+            <article className={`${card} min-w-0`}>
+              <p className={`${label} text-[0.65rem] text-pf-blue`}>01 // Mechanical</p>
+              <h3 className="font-script mt-3 text-4xl">Motor explorer</h3>
+              <p className="mb-6 mt-2 text-pf-muted">Drag to turn it, scroll or pinch to zoom, and click a part.</p>
+              <MotorExplorer />
+            </article>
+            <article className={`${card} min-w-0`}>
+              <p className={`${label} text-[0.65rem] text-pf-blue`}>02 // Electrical</p>
+              <h3 className="font-script mt-3 text-4xl">Ohm&apos;s law lab</h3>
+              <p className="mb-6 mt-2 text-pf-muted">A battery and one resistor. Move the sliders.</p>
+              <OhmLab />
+            </article>
+          </div>
+        </section>
+
         {/* Journey */}
         <section id="journey" className="border-t border-pf-line py-20">
           <h2 className={`${label} text-pf-teal`}>Journey</h2>
@@ -224,8 +252,10 @@ export default function Home() {
         </section>
       </main>
 
+      <Companion email={EMAIL} links={LINKS} />
+
       <footer
-        className={`${label} relative z-10 mx-auto flex max-w-6xl items-center justify-between border-t border-pf-line px-6 py-6 text-[0.65rem] text-pf-muted`}
+        className={`${label} relative z-10 mx-auto flex max-w-6xl max-sm:pb-40 items-center justify-between border-t border-pf-line px-6 py-6 text-[0.65rem] text-pf-muted`}
       >
         <span>© {NAME}</span>
         <Link href="/login" className="transition-opacity hover:opacity-60">

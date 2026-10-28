@@ -2,6 +2,7 @@
 
 import Image from "next/image";
 import { useEffect, useRef, useState, type ReactNode } from "react";
+import { OPEN_TERMINAL } from "./companion";
 import MobileMenu from "./mobile-menu";
 
 // The portfolio hero: the lightning K floats in the middle and tilts toward the pointer,
@@ -357,6 +358,15 @@ export default function Hero({
           ))}
         </nav>
         <div className="flex items-center gap-3">
+          <button
+            type="button"
+            aria-label="Open the terminal"
+            title="Terminal (~)"
+            onClick={() => window.dispatchEvent(new Event(OPEN_TERMINAL))}
+            className="grid h-11 w-11 place-items-center rounded-full border border-pf-line bg-pf-glass font-mono text-sm transition-colors hover:border-[var(--hero-accent)] hover:text-[var(--hero-accent)]"
+          >
+            &gt;_
+          </button>
           <a
             href="#contact"
             className="hidden rounded-full bg-black/35 px-7 py-3.5 text-sm font-semibold transition hover:-translate-y-0.5 hover:bg-black/55 sm:block"
