@@ -1,15 +1,18 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Galada, Inter, Manrope } from "next/font/google";
 import Link from "next/link";
-import Companion from "./companion";
-import Hero from "./hero";
-import MotorExplorer from "./motor-explorer";
-import OhmLab from "./ohm-lab";
+import Companion from "./portfolio/companion";
+import Hero from "./portfolio/hero";
+import MotorExplorer from "./portfolio/motor-explorer";
+import OhmLab from "./portfolio/ohm-lab";
 
 // A brush script for the big headlines, Manrope for navigation and labels, Inter for reading.
 const script = Galada({ variable: "--font-galada", subsets: ["latin"], weight: "400" });
 const navFont = Manrope({ variable: "--font-manrope", subsets: ["latin"] });
 const inter = Inter({ variable: "--font-inter", subsets: ["latin"] });
+
+// Match the phone's browser bar to the slate page.
+export const viewport: Viewport = { themeColor: "#31363f" };
 
 export const metadata: Metadata = {
   title: "MD Kaushik Kamal — Portfolio",
@@ -133,7 +136,7 @@ function Timeline({ title, items }: { title: string; items: Entry[] }) {
 export default function Home() {
   return (
     <div
-      className={`${script.variable} ${navFont.variable} ${inter.variable} font-body relative min-h-screen overflow-x-clip bg-pf-bg text-pf-ink`}
+      className={`${script.variable} ${navFont.variable} ${inter.variable} portfolio font-body relative min-h-screen overflow-x-clip bg-pf-bg text-pf-ink`}
     >
       <div className="pf-grain" aria-hidden />
 

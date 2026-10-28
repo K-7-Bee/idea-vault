@@ -28,8 +28,8 @@
   }
 }
 
-/* The vault and login screens get their own warmer palette. Scoped with :has() so the
-   portfolio page at / keeps the plain colours above. */
+/* The vault and login screens get their own warmer palette. Scoped with :has() so it only
+   applies on those screens; pages with no palette of their own (like 404) keep the plain one. */
 :root:has(.vault) {
   --background: #f6f3ee;
   --foreground: #1c1917;
@@ -86,6 +86,12 @@
 
 /* Portfolio page palette: slate, soft white, teal and sky blue, whatever the device's
    light/dark setting. */
+:root:has(.portfolio) {
+  color-scheme: dark;
+  --background: #31363f;
+  --foreground: #eeeeee;
+}
+
 :root {
   --pf-bg: #31363f;
   --pf-deep: #1e2127;
@@ -129,7 +135,7 @@
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-geist-sans), system-ui, sans-serif;
 }
 
 /* Vault animations: new ideas pop in, saving sets off a little burst of sparks. */

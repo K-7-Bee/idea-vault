@@ -1,7 +1,7 @@
 // A small on-device queue (IndexedDB) for ideas that haven't reached Supabase yet.
 // IndexedDB can hold photos and voice notes, which localStorage can't.
 
-export type QueuedFile = { id: string; file: File };
+type QueuedFile = { id: string; file: File };
 export type QueuedIdea = {
   id: string;
   content: string;

@@ -1,36 +1,34 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Idea Vault
 
-## Getting Started
+MD Kaushik Kamal's personal site: a portfolio at `/` and a private, offline-capable idea vault at `/vault`.
 
-First, run the development server:
+- **Portfolio** (`src/app/page.tsx`, parts in `src/app/portfolio/`): an interactive hero, projects, an engineering lab (3D motor explorer and an Ohm's law simulator), BYTE the robot and a secret terminal (press `~`).
+- **Vault** (`src/app/vault/`, login at `/login`): capture ideas with tags, photos, files and voice notes. It works offline and syncs when you're back online. Only one email address can log in.
+
+Built with Next.js, Tailwind CSS, Supabase and three.js.
+
+## Run it locally
 
 ```bash
+npm install
+cp .env.example .env.local   # then fill in the values
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open http://localhost:3000.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Environment variables
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+| Name | What it is |
+| --- | --- |
+| `NEXT_PUBLIC_SUPABASE_URL` | Your Supabase project URL |
+| `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | Your Supabase publishable (anon) key |
+| `ALLOWED_EMAIL` | The only email allowed into `/vault` |
 
-## Learn More
+## Database
 
-To learn more about Next.js, take a look at the following resources:
+Run the SQL files in `supabase/` in the Supabase SQL editor, in order: `schema.sql`, `002_tags.sql`, `003_files.sql`.
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## Deploy
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+Deploy anywhere that runs Next.js, such as Vercel. Set the three environment variables above in the host's project settings.
