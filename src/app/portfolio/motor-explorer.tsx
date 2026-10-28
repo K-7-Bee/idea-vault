@@ -198,14 +198,17 @@ export default function MotorExplorer() {
   return (
     <div>
       <div
-        ref={host}
         role="img"
         aria-label="Interactive 3D model of an electric motor"
         className="relative h-80 overflow-hidden rounded-2xl border border-pf-line bg-[radial-gradient(circle,#3f4a58,var(--pf-deep)_75%)]"
       >
-        <p className="absolute inset-0 grid place-items-center text-sm text-pf-muted">
-          {status === "failed" ? "The 3D model couldn't load. Your browser may not support WebGL." : "Loading 3D model…"}
-        </p>
+        {status !== "ready" && (
+          <p className="absolute inset-0 grid place-items-center px-6 text-center text-sm text-pf-muted">
+            {status === "failed" ? "The 3D model couldn't load. Your browser may not support WebGL." : "Loading 3D model…"}
+          </p>
+        )}
+        {/* three.js owns this box: it puts its canvas here, so React keeps nothing else inside. */}
+        <div ref={host} className="absolute inset-0" />
       </div>
       <div className="mt-4 flex flex-wrap gap-3">
         <button

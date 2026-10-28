@@ -338,7 +338,7 @@ export default function Hero({
 
       <header className="relative z-30 flex w-full items-center justify-between px-[4%] py-6 lg:py-8">
         <a href="#top" aria-label={`${name}, back to top`} className="flex items-center gap-2">
-          <Image src="/k-logo.png" alt="" width={44} height={44} loading="eager" className="h-11 w-11" />
+          <Image src="/k-mark.png" alt="" width={44} height={44} loading="eager" className="h-11 w-11" />
           <span className="font-script text-2xl">Kaushik</span>
         </a>
         <nav
@@ -427,10 +427,11 @@ export default function Hero({
             />
             <div ref={tiltRef} className="[transform-style:preserve-3d]">
               <Image
-                src="/k-logo.png"
+                src="/k-mark.png"
                 alt=""
-                width={384}
-                height={384}
+                width={768}
+                height={768}
+                sizes="(min-width: 1024px) 40vw, 78vw"
                 loading="eager"
                 fetchPriority="high"
                 className="h-[min(78vw,360px)] w-auto drop-shadow-[0_20px_40px_rgba(0,0,0,0.45)] lg:h-[min(64vh,40vw)]"
