@@ -18,6 +18,23 @@ function check(error: Failure, allowDuplicate = false) {
   throw new Error(error.message);
 }
 
+// Keep the queue's deletion marker until both storage and the database are clean.
+export async function deleteSavedIdea(supabase: SupabaseClient, item: QueuedIdea) {
+  const records = await supabase.from("idea_files").select("path").eq("idea_id", item.id);
+  check(records.error);
+  const paths = new Set((records.data ?? []).map((file) => file.path));
+  if (item.files.length) {
+    const { data, error } = await supabase.auth.getUser();
+    check(error);
+    if (!data.user) throw new Error("Log in again to finish deleting.");
+    for (const { id, file } of item.files) {
+      paths.add(`${data.user.id}/${item.id}/${id}-${safeFileName(file.name)}`);
+    }
+  }
+  if (paths.size) check((await supabase.storage.from(BUCKET).remove([...paths])).error);
+  check((await supabase.from("ideas").delete().eq("id", item.id)).error);
+}
+
 // Sends one queued idea (and its files) to Supabase. Safe to run again after a failure:
 // the idea and every file have fixed ids, so anything already sent is skipped, not duplicated.
 export async function pushIdea(

@@ -8,6 +8,7 @@ export type QueuedIdea = {
   tags: string[];
   created_at: string;
   files: QueuedFile[];
+  deleted?: boolean;
 };
 
 const DB_NAME = "idea-vault";

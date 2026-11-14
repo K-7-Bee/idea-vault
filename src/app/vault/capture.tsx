@@ -7,7 +7,7 @@ import { useRecorder } from "./use-recorder";
 import { useLocalValue } from "./use-local-value";
 import { useOnline } from "./use-online";
 import { addQueued, listQueued, removeQueued, type QueuedIdea } from "@/lib/outbox";
-import { NetworkError, looksOffline, pushIdea } from "@/lib/sync";
+import { NetworkError, looksOffline, pushIdea, deleteSavedIdea } from "@/lib/sync";
 import {
   BoardIcon,
   ChipIcon,
@@ -72,17 +72,18 @@ const REFRESH_AFTER_MS = 45 * 60 * 1000;
 // One page of ideas (newest first) matching the filters, starting after `before`.
 function searchIdeas(
   supabase: SupabaseClient,
-  f: { term: string; tag: string | null; status: string | null; before?: string },
+  f: { term: string; tag: string | null; status: string | null; before?: { created_at: string; id: string } },
 ) {
   let q = supabase
     .from("ideas")
     .select(IDEA_COLUMNS)
     .order("created_at", { ascending: false })
+    .order("id", { ascending: false })
     .limit(PAGE_SIZE);
   if (f.term) q = q.ilike("content", `%${f.term.replace(/[\\%_]/g, "\\$&")}%`);
   if (f.tag) q = q.contains("tags", [f.tag]);
   if (f.status) q = q.eq("status", f.status);
-  if (f.before) q = q.lt("created_at", f.before);
+  if (f.before) q = q.or(`created_at.lt.${f.before.created_at},and(created_at.eq.${f.before.created_at},id.lt.${f.before.id})`);
   return q;
 }
 
@@ -159,6 +160,7 @@ export default function Capture({
   const signedAt = useRef(0);
   const syncing = useRef(false);
   const syncAgain = useRef(false);
+  const deletedIds = useRef(new Set<string>());
   const syncRef = useRef<() => Promise<void>>(async () => {});
 
   const filtering = query.trim() !== "" || activeTag !== null || activeStatus !== null;
@@ -194,7 +196,7 @@ export default function Capture({
               (!activeTag || i.tags.includes(activeTag)) &&
               (!activeStatus || i.status === activeStatus),
           );
-          setIdeas([...waiting, ...withUrls]);
+          setIdeas([...waiting, ...withUrls].filter((i) => !deletedIds.current.has(i.id)));
           setHasMore((data ?? []).length === PAGE_SIZE);
         }
       }
@@ -213,15 +215,19 @@ export default function Capture({
       term: query.trim(),
       tag: activeTag,
       status: activeStatus,
-      before: last.created_at,
+      before: { created_at: last.created_at, id: last.id },
     });
     if (error) {
       setError(error.message);
     } else if (id === requestId.current) {
       const more = await withFileUrls(supabase, (data ?? []) as unknown as RawIdea[]);
+      if (id !== requestId.current) {
+        setLoadingMore(false);
+        return;
+      }
       setIdeas((list) => {
         const seen = new Set(list.map((i) => i.id));
-        return [...list, ...more.filter((i) => !seen.has(i.id))];
+        return [...list, ...more.filter((i) => !seen.has(i.id) && !deletedIds.current.has(i.id))];
       });
       setHasMore((data ?? []).length === PAGE_SIZE);
     }
@@ -282,14 +288,22 @@ export default function Capture({
       const supabase = createClient();
       for (const item of await listQueued()) {
         try {
+          if (item.deleted) {
+            await deleteSavedIdea(supabase, item);
+            await removeQueued(item.id);
+            continue;
+          }
           const { idea, failures } = await pushIdea(supabase, item);
           // Keep the item queued if a file failed, so the file isn't lost; the next sync retries it.
           if (!failures.length) await removeQueued(item.id);
-          setIdeas((list) => list.map((i) => (i.id === item.id ? idea : i)));
+          setIdeas((list) => list.map((i) => (i.id === item.id
+            ? failures.length ? { ...idea, waiting: true, queuedFiles: queuedToView(item).queuedFiles, syncError: failures.join("; ") } : idea
+            : i)));
           if (failures.length) setError(`Some files failed: ${failures.join("; ")}`);
         } catch (e) {
           if (e instanceof NetworkError) break; // no connection yet; try again later
           const message = e instanceof Error ? e.message : "Could not sync.";
+          if (item.deleted) setError(`Deletion will retry: ${message}`);
           setIdeas((list) =>
             list.map((i) => (i.id === item.id ? { ...i, syncError: message } : i)),
           );
@@ -316,8 +330,14 @@ export default function Capture({
     listQueued()
       .then((queued) => {
         if (cancelled || queued.length === 0) return;
+        for (const item of queued.filter((q) => q.deleted)) {
+          deletedIds.current.add(item.id);
+          track(item.id, null);
+          adjustTagCounts(item.tags, []);
+        }
+        setIdeas((list) => list.filter((i) => !deletedIds.current.has(i.id)));
         const have = new Set(ideasRef.current.map((i) => i.id));
-        const fresh = queued.filter((q) => !have.has(q.id));
+        const fresh = queued.filter((q) => !q.deleted && !have.has(q.id));
         if (fresh.length) {
           setIdeas((list) => [...fresh.map(queuedToView).reverse(), ...list]);
           for (const q of fresh) track(q.id, { status: "raw", created_at: q.created_at });
@@ -344,7 +364,7 @@ export default function Capture({
     window.addEventListener("online", run);
     document.addEventListener("visibilitychange", onVisible);
     const timer = setInterval(() => {
-      if (ideasRef.current.some((i) => i.waiting)) run();
+      run(); // Deletion markers may remain queued without a visible card.
     }, 20000);
     return () => {
       window.removeEventListener("online", run);
@@ -389,15 +409,7 @@ export default function Capture({
   }
 
   async function discardQueued(idea: ViewIdea) {
-    if (!confirm("Discard this idea? It was never saved to the vault.")) return;
-    try {
-      await removeQueued(idea.id);
-    } catch {
-      // already gone
-    }
-    setIdeas((list) => list.filter((i) => i.id !== idea.id));
-    adjustTagCounts(idea.tags, []);
-    track(idea.id, null);
+    await deleteIdea(idea);
   }
 
   function matchesFilters(idea: Idea) {
@@ -600,30 +612,29 @@ export default function Capture({
 
   async function deleteIdea(idea: Idea) {
     if (!confirm("Delete this idea and its files? This can't be undone.")) return;
-    const index = ideas.findIndex((i) => i.id === idea.id);
-    setIdeas((list) => list.filter((i) => i.id !== idea.id));
-    adjustTagCounts(idea.tags, []);
-    track(idea.id, null);
-    setError("");
-
-    const supabase = createClient();
-    // Deleting the idea also deletes its file records; the stored files are removed after.
-    const { error } = await supabase.from("ideas").delete().eq("id", idea.id);
-    if (error) {
-      setIdeas((list) => {
-        const copy = [...list];
-        copy.splice(Math.min(index, copy.length), 0, idea);
-        return copy;
-      });
-      adjustTagCounts([], idea.tags);
-      track(idea.id, { status: idea.status, created_at: idea.created_at });
-      setError(error.message);
+    if (syncing.current) {
+      setError("Sync is in progress. Please try deleting again when it finishes.");
       return;
     }
-    if (idea.files.length) {
-      const removed = await supabase.storage.from(BUCKET).remove(idea.files.map((f) => f.path));
-      if (removed.error) setError(`Idea deleted, but its files could not be removed: ${removed.error.message}`);
+    syncing.current = true;
+    try {
+      const queued = (await listQueued()).find((item) => item.id === idea.id);
+      await addQueued({
+        ...(queued ?? { id: idea.id, content: idea.content, tags: idea.tags,
+          created_at: idea.created_at, files: [] }),
+        deleted: true,
+      });
+      deletedIds.current.add(idea.id);
+      setIdeas((list) => list.filter((i) => i.id !== idea.id));
+      adjustTagCounts(idea.tags, []);
+      track(idea.id, null);
+      setError("");
+    } catch {
+      setError("Could not save the deletion on this device. Please try again.");
+    } finally {
+      syncing.current = false;
     }
+    await syncQueue();
   }
 
   async function deleteFile(idea: Idea, file: FileItem) {
@@ -640,7 +651,8 @@ export default function Capture({
     setError("");
 
     const supabase = createClient();
-    const { error } = await supabase.from("idea_files").delete().eq("id", file.id);
+    const removed = await supabase.storage.from(BUCKET).remove([file.path]);
+    const error = removed.error ?? (await supabase.from("idea_files").delete().eq("id", file.id)).error;
     if (error) {
       setIdeas((list) =>
         list.map((i) => (i.id === idea.id ? { ...i, files: [...i.files, file] } : i)),
@@ -648,8 +660,6 @@ export default function Capture({
       setError(error.message);
       return;
     }
-    const removed = await supabase.storage.from(BUCKET).remove([file.path]);
-    if (removed.error) setError(`File removed, but it could not be erased: ${removed.error.message}`);
   }
 
   const sortedTags = Object.entries(tagCounts)

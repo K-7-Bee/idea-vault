@@ -32,7 +32,7 @@ export default function LoginPage() {
 
   return (
     <div className="vault min-h-screen text-foreground">
-      <main className="mx-auto flex min-h-screen max-w-sm flex-col justify-center gap-6 p-6">
+      <main id="main-content" tabIndex={-1} className="mx-auto flex min-h-screen max-w-sm flex-col justify-center gap-6 p-6">
         <div className="flex flex-col items-center gap-3 text-center">
           <span className="grid h-14 w-14 place-items-center rounded-2xl bg-accent text-on-accent shadow-lg shadow-accent/30">
             <SparkIcon className="h-7 w-7" />
@@ -46,6 +46,7 @@ export default function LoginPage() {
         >
           <input
             type="email"
+            aria-label="Email address"
             required
             autoComplete="email"
             placeholder="Your email"
@@ -55,6 +56,7 @@ export default function LoginPage() {
           />
           <input
             type="password"
+            aria-label="Password"
             required
             autoComplete="current-password"
             placeholder="Password"

@@ -1,18 +1,25 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 
 // The nav links for small screens: a button that opens a full-width panel under the header.
 export default function MobileMenu({ links }: { links: { label: string; href: string }[] }) {
   const [open, setOpen] = useState(false);
+  const toggle = useRef<HTMLButtonElement>(null);
 
   return (
-    <div className="sm:hidden">
+    <div className="xl:hidden" onKeyDown={(event) => {
+      if (event.key === "Escape" && open) {
+        setOpen(false);
+        toggle.current?.focus();
+      }
+    }}>
       <button
         type="button"
+        ref={toggle}
         onClick={() => setOpen((o) => !o)}
         aria-expanded={open}
-        aria-controls="mobile-menu"
+        aria-controls={open ? "mobile-menu" : undefined}
         aria-label={open ? "Close menu" : "Open menu"}
         className="flex h-11 w-11 items-center justify-center rounded-full border border-pf-line bg-pf-glass"
       >
@@ -38,6 +45,7 @@ export default function MobileMenu({ links }: { links: { label: string; href: st
       {open && (
         <nav
           id="mobile-menu"
+          aria-label="Sections"
           className="absolute inset-x-4 top-full z-20 rounded-[28px] border border-pf-line bg-pf-bg/95 px-6 py-2 backdrop-blur"
         >
           <ul className="flex flex-col">

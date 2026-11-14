@@ -15,7 +15,7 @@ const PARTS: Record<string, string> = {
   "Cooling fin": "Adds surface area so the heat from the windings escapes into the air.",
 };
 
-type Controls = { pause: () => void; reset: () => void };
+type Controls = { pause: () => void; reset: () => void; select: (name: string | null) => void };
 
 export default function MotorExplorer() {
   const host = useRef<HTMLDivElement>(null);
@@ -23,6 +23,7 @@ export default function MotorExplorer() {
   const [status, setStatus] = useState<"idle" | "ready" | "failed">("idle");
   const [spinning, setSpinning] = useState(true);
   const [selected, setSelected] = useState<string | null>(null);
+  const selectedRef = useRef<string | null>(null);
 
   useEffect(() => {
     const el = host.current;
@@ -45,6 +46,7 @@ export default function MotorExplorer() {
       renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
       el.replaceChildren(renderer.domElement);
       renderer.domElement.className = "block h-full w-full cursor-grab active:cursor-grabbing";
+      renderer.domElement.setAttribute("aria-hidden", "true");
 
       const orbit = new OrbitControls(camera, renderer.domElement);
       orbit.enableDamping = true;
@@ -112,6 +114,7 @@ export default function MotorExplorer() {
         raycaster.setFromCamera(pointer, camera);
         const name = (raycaster.intersectObjects(meshes)[0]?.object.userData.name as string) ?? null;
         highlight(name);
+        selectedRef.current = name;
         setSelected(name);
       };
       renderer.domElement.addEventListener("pointerdown", onDown);
@@ -119,6 +122,7 @@ export default function MotorExplorer() {
 
       let spin = !reduced;
       controls.current = {
+        select: highlight,
         pause: () => (spin = !spin),
         reset: () => {
           camera.position.copy(home);
@@ -156,6 +160,7 @@ export default function MotorExplorer() {
 
       setStatus("ready");
       setSpinning(spin);
+      highlight(selectedRef.current);
 
       dispose = () => {
         cancelAnimationFrame(frameId);
@@ -198,18 +203,50 @@ export default function MotorExplorer() {
   return (
     <div>
       <div
-        role="img"
-        aria-label="Interactive 3D model of an electric motor"
+        role="group"
+        aria-label="Motor model. Use the part buttons below for a keyboard-accessible explanation."
         className="relative h-80 overflow-hidden rounded-2xl border border-pf-line bg-[radial-gradient(circle,#3f4a58,var(--pf-deep)_75%)]"
       >
         {status !== "ready" && (
           <p className="absolute inset-0 grid place-items-center px-6 text-center text-sm text-pf-muted">
-            {status === "failed" ? "The 3D model couldn't load. Your browser may not support WebGL." : "Loading 3D model…"}
+            {status === "failed" ? "The 3D model couldn't load. Explore every part using the diagram and buttons below." : "Loading 3D model… You can also explore the parts below."}
           </p>
         )}
         {/* three.js owns this box: it puts its canvas here, so React keeps nothing else inside. */}
         <div ref={host} className="absolute inset-0" />
       </div>
+      <figure className="mt-5 rounded-2xl border border-pf-line bg-pf-deep p-4">
+        <svg viewBox="0 0 400 180" role="img" aria-labelledby="motor-diagram-title motor-diagram-description" className="h-auto w-full">
+          <title id="motor-diagram-title">Simplified motor cross-section</title>
+          <desc id="motor-diagram-description">A housing surrounds the rotor. The shaft runs through the rotor and both end rims. Cooling fins sit outside the housing.</desc>
+          <g fill="none" strokeWidth="3">
+            <rect x="80" y="50" width="240" height="90" rx="10" stroke="#eeeeee" />
+            <rect x="105" y="75" width="190" height="40" rx="6" stroke="#76abae" />
+            <path d="M30 95h340M90 50v90M310 50v90" stroke="#60b5ff" />
+            <path d="M125 40v10m35-10v10m35-10v10m35-10v10m35-10v10" stroke="#76abae" />
+          </g>
+          <g fill="#eeeeee" fontSize="13" textAnchor="middle">
+            <text x="200" y="26">Cooling fins</text>
+            <text x="200" y="68">Housing</text>
+            <text x="200" y="90">Rotor</text>
+            <text x="200" y="164">Drive shaft through the centre</text>
+            <text x="56" y="126">Rim</text><text x="344" y="126">Rim</text>
+          </g>
+        </svg>
+        <figcaption className="mt-2 text-xs leading-relaxed text-pf-muted">Concept diagram, not to scale. Choose a part to read its role, with or without the 3D view.</figcaption>
+      </figure>
+      <fieldset className="mt-5">
+        <legend className="text-sm font-semibold">Explore a motor part</legend>
+        <div className="mt-3 flex flex-wrap gap-2">
+          {Object.keys(PARTS).map((name) => (
+            <button key={name} type="button" aria-pressed={selected === name} aria-controls="motor-part-description" onClick={() => {
+              selectedRef.current = name;
+              setSelected(name);
+              controls.current?.select(name);
+            }} className={`${button} ${selected === name ? "border-pf-blue bg-pf-blue/10 text-pf-blue" : ""}`}>{name}</button>
+          ))}
+        </div>
+      </fieldset>
       <div className="mt-4 flex flex-wrap gap-3">
         <button
           type="button"
@@ -226,13 +263,13 @@ export default function MotorExplorer() {
           Reset view
         </button>
       </div>
-      <p aria-live="polite" className="mt-4 min-h-[3lh] font-mono text-sm leading-relaxed text-pf-blue">
+      <p id="motor-part-description" aria-live="polite" className="mt-4 min-h-[3lh] font-mono text-sm leading-relaxed text-pf-blue">
         {selected ? (
           <>
             <span className="text-pf-ink">{selected}.</span> {PARTS[selected]}
           </>
         ) : (
-          "Click a part of the motor to see what it does."
+          "Choose a part above, or click it in the 3D view, to learn what it does."
         )}
       </p>
     </div>

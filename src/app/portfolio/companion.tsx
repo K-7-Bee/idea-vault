@@ -3,8 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 
-// BYTE, a little robot that turns up once you scroll past the hero and hands out tips, and a
-// secret terminal that opens with the ~ key, the header button or by asking BYTE.
+// BYTE stays quiet until opened. The terminal is available from the header or the ~ key.
 
 export const OPEN_TERMINAL = "pf:terminal";
 
@@ -40,7 +39,6 @@ export default function Companion({
   const [bubble, setBubble] = useState<string | null>(null);
   const tip = useRef(-1);
   const hide = useRef(0);
-  const greeted = useRef(false);
 
   function say(text: string) {
     setBubble(text);
@@ -59,7 +57,9 @@ export default function Companion({
 
   function jump(id: string) {
     closeTerminal();
-    document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "start" });
+    const target = document.getElementById(id);
+    target?.scrollIntoView({ behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "instant" : "smooth", block: "start" });
+    target?.focus({ preventScroll: true });
   }
 
   const commands: Record<string, () => string | void> = {
@@ -69,8 +69,8 @@ export default function Companion({
       "Engineering science student at Jeonbuk National University, with a diploma in electrical technology. Learns by building.",
     projects: () => "Waste-to-Energy Lighting (first prize) · Cha Restaurant website · Idea Vault app",
     lab: () => jump("lab"),
-    motor: () => jump("lab"),
-    ohm: () => jump("lab"),
+    motor: () => jump("motor-explorer"),
+    ohm: () => jump("ohm-lab"),
     journey: () => jump("journey"),
     contact: () => {
       jump("contact");
@@ -83,7 +83,6 @@ export default function Companion({
     },
     robot: () => {
       closeTerminal();
-      greeted.current = true;
       setShown(true);
       say("BYTE reporting for duty!");
     },
@@ -122,20 +121,9 @@ export default function Companion({
     document.addEventListener("keydown", onKey);
     window.addEventListener(OPEN_TERMINAL, onOpen);
 
-    // BYTE turns up once the hero has scrolled away, so he doesn't cover the headline.
-    const hero = document.getElementById("top");
-    const io = new IntersectionObserver(([entry]) => {
-      if (entry.isIntersecting || greeted.current) return;
-      greeted.current = true;
-      setShown(true);
-      say("Hello! I'm BYTE. Click me for tips.");
-    });
-    if (hero) io.observe(hero);
-
     return () => {
       document.removeEventListener("keydown", onKey);
       window.removeEventListener(OPEN_TERMINAL, onOpen);
-      io.disconnect();
       clearTimeout(hide.current);
     };
   }, []);
@@ -143,47 +131,57 @@ export default function Companion({
   return (
     <>
       <div
-        className={`fixed bottom-4 right-4 z-40 grid justify-items-end gap-2 transition-all duration-500 sm:bottom-6 sm:right-6 ${
-          shown ? "translate-y-0 opacity-100" : "pointer-events-none translate-y-8 opacity-0"
-        }`}
+        className="fixed bottom-4 right-4 z-40 grid justify-items-end gap-2 sm:bottom-6 sm:right-6"
       >
-        <p
-          role="status"
-          aria-live="polite"
-          className={`max-w-56 rounded-2xl border border-pf-blue/40 bg-pf-bg/95 px-4 py-3 text-sm shadow-[0_10px_30px_rgba(0,0,0,0.35)] backdrop-blur transition-opacity ${
-            bubble ? "opacity-100" : "opacity-0"
-          }`}
-        >
-          {bubble}
-        </p>
-        <button
-          type="button"
-          aria-label="Talk to BYTE the robot"
-          onClick={() => {
-            tip.current = (tip.current + 1) % TIPS.length;
-            say(TIPS[tip.current]);
-          }}
-          className="pf-byte drop-shadow-[0_0_12px_rgba(96,181,255,0.35)]"
-        >
-          <svg viewBox="0 0 110 120" aria-hidden className="h-20 w-[4.5rem] sm:h-24 sm:w-[5.5rem]">
-            <path d="M55 18V8" stroke="#60b5ff" strokeWidth="4" />
-            <circle cx="55" cy="7" r="5" fill="#60b5ff" />
-            <rect x="14" y="22" width="82" height="70" rx="22" fill="#3d434e" stroke="#60b5ff" strokeWidth="3" />
-            <rect x="23" y="37" width="64" height="36" rx="13" fill="#1e2127" />
-            <ellipse className="pf-eye" cx="42" cy="55" rx="8" ry="10" fill="#60b5ff" />
-            <ellipse className="pf-eye" cx="69" cy="55" rx="8" ry="10" fill="#60b5ff" />
-            <path d="M46 80q9 6 18 0" stroke="#76abae" strokeWidth="3" fill="none" />
-            <path d="M30 93v15M80 93v15" stroke="#76abae" strokeWidth="5" strokeLinecap="round" />
-          </svg>
+        <button type="button" aria-expanded={shown} aria-controls={shown ? "byte-guide" : undefined}
+          onClick={() => { setShown(!shown); setBubble(null); clearTimeout(hide.current); }}
+          className="min-h-11 rounded-full border border-pf-line bg-pf-deep px-4 py-2 text-sm text-pf-ink shadow-lg">
+          {shown ? "Close guide" : "BYTE \u00b7 Guide"}
         </button>
-        <button
-          type="button"
-          onClick={openTerminal}
-          className="font-mono text-[0.65rem] uppercase tracking-[0.2em] text-pf-muted transition-colors hover:text-pf-blue"
-        >
-          <span className="sm:hidden">Open terminal</span>
-          <span className="max-sm:hidden">Press ~ for terminal</span>
-        </button>
+        {shown && (
+          <section id="byte-guide" aria-label="BYTE guide" className="grid max-w-[calc(100vw-2rem)] justify-items-end gap-2 rounded-2xl border border-pf-line bg-pf-deep/95 p-4 text-pf-ink shadow-xl">
+            <nav aria-label="BYTE shortcuts" className="flex flex-wrap gap-4 text-sm text-pf-blue">
+              <a href="#work">Projects</a><a href="#lab">Lab</a><a href="#contact">Contact</a>
+            </nav>
+            <p
+              role="status"
+              aria-live="polite"
+              className={`max-w-56 rounded-2xl border border-pf-blue/40 bg-pf-bg/95 px-4 py-3 text-sm shadow-[0_10px_30px_rgba(0,0,0,0.35)] backdrop-blur transition-opacity ${
+                bubble ? "opacity-100" : "opacity-0"
+              }`}
+            >
+              {bubble}
+            </p>
+            <button
+              type="button"
+              aria-label="Talk to BYTE the robot"
+              onClick={() => {
+                tip.current = (tip.current + 1) % TIPS.length;
+                say(TIPS[tip.current]);
+              }}
+              className="pf-byte drop-shadow-[0_0_12px_rgba(96,181,255,0.35)]"
+            >
+              <svg viewBox="0 0 110 120" aria-hidden className="h-20 w-[4.5rem] sm:h-24 sm:w-[5.5rem]">
+                <path d="M55 18V8" stroke="#60b5ff" strokeWidth="4" />
+                <circle cx="55" cy="7" r="5" fill="#60b5ff" />
+                <rect x="14" y="22" width="82" height="70" rx="22" fill="#3d434e" stroke="#60b5ff" strokeWidth="3" />
+                <rect x="23" y="37" width="64" height="36" rx="13" fill="#1e2127" />
+                <ellipse className="pf-eye" cx="42" cy="55" rx="8" ry="10" fill="#60b5ff" />
+                <ellipse className="pf-eye" cx="69" cy="55" rx="8" ry="10" fill="#60b5ff" />
+                <path d="M46 80q9 6 18 0" stroke="#76abae" strokeWidth="3" fill="none" />
+                <path d="M30 93v15M80 93v15" stroke="#76abae" strokeWidth="5" strokeLinecap="round" />
+              </svg>
+            </button>
+            <button
+              type="button"
+              onClick={openTerminal}
+              className="font-mono text-[0.65rem] uppercase tracking-[0.2em] text-pf-muted transition-colors hover:text-pf-blue"
+            >
+              <span className="sm:hidden">Open terminal</span>
+              <span className="max-sm:hidden">Press ~ for terminal</span>
+            </button>
+          </section>
+        )}
       </div>
 
       <dialog

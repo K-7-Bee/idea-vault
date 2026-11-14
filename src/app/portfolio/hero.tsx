@@ -1,7 +1,7 @@
 "use client";
 
 import Image from "next/image";
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 import { OPEN_TERMINAL } from "./companion";
 import MobileMenu from "./mobile-menu";
 
@@ -58,11 +58,11 @@ const PARTS: Record<Theme, Icon[]> = {
 
 // The first six float in front of the text, the last three behind the K.
 const SLOTS = [
-  { top: "25%", left: "30%", size: 120 },
+  { top: "25%", left: "40%", size: 96 },
   { top: "62%", left: "42%", size: 64 },
   { top: "28%", left: "64%", size: 132 },
   { top: "14%", left: "48%", size: 84 },
-  { top: "76%", left: "22%", size: 72 },
+  { top: "76%", left: "38%", size: 64 },
   { top: "60%", left: "68%", size: 104 },
   { top: "16%", left: "38%", size: 56, opacity: 0.7 },
   { top: "52%", left: "56%", size: 48, opacity: 0.6 },
@@ -127,6 +127,14 @@ function Disc({ icon, accent }: { icon: Icon; accent: boolean }) {
 
 const nav = "font-nav text-xs uppercase tracking-[0.25em]";
 
+const SIMPLE_HERO = "(prefers-reduced-motion: reduce), (max-width: 1279px), (pointer: coarse)";
+function subscribeMotion(listener: () => void) {
+  const media = window.matchMedia(SIMPLE_HERO);
+  media.addEventListener("change", listener);
+  return () => media.removeEventListener("change", listener);
+}
+const simpleSnapshot = () => window.matchMedia(SIMPLE_HERO).matches;
+
 export default function Hero({
   name,
   links,
@@ -136,6 +144,7 @@ export default function Hero({
 }) {
   const [active, setActive] = useState<Theme>("blue");
   const [shown, setShown] = useState<Theme>("blue");
+  const simple = useSyncExternalStore(subscribeMotion, simpleSnapshot, () => true);
 
   const heroRef = useRef<HTMLElement>(null);
   const tiltRef = useRef<HTMLDivElement>(null);
@@ -155,9 +164,15 @@ export default function Hero({
     if (!hero || !tilt || !front || !back || !screws) return;
     const parts = partsRef.current.filter((p): p is HTMLDivElement => !!p);
 
-    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+    if (simple) {
+      tilt.style.transform = "";
+      tilt.style.filter = "";
+      front.style.transform = "";
+      back.style.transform = "";
+      parts.forEach((part) => { part.style.transform = ""; part.getAnimations().forEach((animation) => animation.cancel()); });
+      busy.current = false;
       switchTo.current = setShown;
-      return;
+      return () => { switchTo.current = null; };
     }
 
     const state = parts.map(() => ({ rx: 0, ry: 0, angle: Math.random() * 360, baseX: 0, baseY: 0 }));
@@ -231,7 +246,7 @@ export default function Hero({
 
     // Screws drop from above the hero, spinning as they fall, and fade out at the bottom.
     const screwTimer = window.setInterval(() => {
-      if (!visible || document.hidden) return;
+      if (!visible || document.hidden || screws.childElementCount >= 5) return;
       // Fewer screws on narrow screens, so phones get the same density as desktops.
       if (Math.random() > screws.clientWidth / 1200) return;
       const s = document.createElement("span");
@@ -252,7 +267,7 @@ export default function Hero({
       s.style.setProperty("--o", `${Math.random() * 0.35 + 0.45}`);
       screws.appendChild(s);
       window.setTimeout(() => s.remove(), seconds * 1000);
-    }, 450);
+    }, 1500);
 
     switchTo.current = (theme) => {
       switching = true;
@@ -316,7 +331,7 @@ export default function Hero({
       cancelAnimationFrame(frameId);
       screws.replaceChildren();
     };
-  }, []);
+  }, [simple]);
 
   function choose(theme: Theme) {
     if (busy.current || theme === active) return;
@@ -349,7 +364,7 @@ export default function Hero({
       ref={heroRef}
       id="top"
       data-theme={active}
-      className="pf-hero relative isolate flex min-h-svh flex-col overflow-hidden lg:h-svh lg:min-h-[680px]"
+      className="pf-hero relative isolate flex min-h-svh flex-col overflow-hidden xl:h-svh xl:min-h-[680px]"
     >
       <svg aria-hidden className="absolute h-0 w-0">
         <defs>
@@ -362,22 +377,20 @@ export default function Hero({
       </svg>
       <div ref={screwsRef} aria-hidden className="pointer-events-none absolute inset-0 -z-10 overflow-hidden" />
 
-      <header className="relative z-30 flex w-full items-center justify-between px-[4%] py-6 lg:py-8">
+      <header className="relative z-30 flex w-full items-center justify-between px-[4%] py-6 xl:py-8">
         <a href="#top" aria-label={`${name}, back to top`} className="flex items-center gap-2">
           <Image src="/k-mark.png" alt="" width={44} height={44} loading="eager" className="h-11 w-11" />
           <span className="font-script text-2xl">Kaushik</span>
         </a>
         <nav
           aria-label="Sections"
-          className="hidden gap-1 rounded-full border border-pf-ink/20 bg-pf-ink/[0.08] p-1.5 shadow-[0_8px_32px_rgba(0,0,0,0.1),inset_0_0_0_1px_rgba(238,238,238,0.1)] backdrop-blur-xl sm:flex"
+          className="hidden gap-1 rounded-full border border-pf-ink/20 bg-pf-ink/[0.08] p-1.5 shadow-[0_8px_32px_rgba(0,0,0,0.1),inset_0_0_0_1px_rgba(238,238,238,0.1)] backdrop-blur-xl xl:flex"
         >
-          {links.map((l, i) => (
+          {links.map((l) => (
             <a
               key={l.href}
               href={l.href}
-              className={`font-nav rounded-full px-5 py-2 text-sm font-medium transition-colors hover:bg-[var(--hero-accent)] hover:text-pf-bg ${
-                i === 0 ? "bg-[var(--hero-accent)] text-pf-bg" : "text-pf-muted"
-              }`}
+              className="font-nav rounded-full px-4 py-2 text-sm font-medium text-pf-muted transition-colors hover:bg-[var(--hero-accent)] hover:text-pf-bg"
             >
               {l.label}
             </a>
@@ -404,25 +417,26 @@ export default function Hero({
       </header>
 
       {/* Parts that float behind the K. */}
-      <div ref={backRef} aria-hidden className="pointer-events-none absolute inset-0 -z-[5] max-lg:hidden">
+      <div ref={backRef} aria-hidden className="pointer-events-none absolute inset-0 -z-[5] max-xl:hidden">
         {SLOTS.slice(FRONT).map((_, i) => part(FRONT + i))}
       </div>
 
-      <div className="relative flex flex-1 flex-col gap-10 px-[4%] pb-10 lg:flex-row lg:justify-between lg:gap-0 lg:pb-12">
-        <div className="relative z-10 flex flex-col gap-7 lg:pt-6">
+      <div className="relative flex flex-1 flex-col gap-10 px-[4%] pb-10 xl:flex-row xl:justify-between xl:gap-0 xl:pb-12">
+        <div className="relative z-10 flex flex-col gap-7 xl:pt-6">
           <h1 className="pf-title">
             Curiosity
             <br />
             meets
             {/* On large screens the last word sits in the right-hand column instead. */}
-            <span className="lg:sr-only">
+            <span className="xl:sr-only">
               <br />
               engineering
             </span>
           </h1>
           <p className="max-w-[26rem] text-lg leading-relaxed text-pf-muted">
-            I&apos;m {name}, an engineering student who learns by building. I start with what
-            I&apos;m curious about and make it real, one project at a time.
+            I&apos;m {name}, an engineering science student at Jeonbuk National University,
+            with a background in electrical technology. I learn by building circuits,
+            simulations, and practical web tools.
           </p>
           <a
             href="#work"
@@ -433,7 +447,7 @@ export default function Hero({
               +
             </span>
           </a>
-          <div className="flex items-center gap-4 lg:mt-auto">
+          <div className="flex items-center gap-4 xl:mt-auto">
             <span className="grid h-12 w-12 place-items-center rounded-xl border border-pf-line bg-pf-glass text-[var(--hero-accent)]">
               <Glyph icon="bolt" className="h-6 w-6" />
             </span>
@@ -445,7 +459,7 @@ export default function Hero({
         </div>
 
         {/* The K: it fades in, bobs gently and tilts toward the pointer. */}
-        <div className="pf-enter pointer-events-none relative grid place-items-center lg:absolute lg:inset-0 lg:z-[1]">
+        <div className="pf-enter pointer-events-none relative grid place-items-center xl:absolute xl:inset-0 xl:z-[1]">
           <div className="pf-float [perspective:1000px]">
             <div
               aria-hidden
@@ -460,7 +474,7 @@ export default function Hero({
                 sizes="(min-width: 1024px) 40vw, 78vw"
                 loading="eager"
                 fetchPriority="high"
-                className="h-[min(78vw,360px)] w-auto drop-shadow-[0_20px_40px_rgba(0,0,0,0.45)] lg:h-[min(64vh,40vw)]"
+                className="h-[min(78vw,360px)] w-auto drop-shadow-[0_20px_40px_rgba(0,0,0,0.45)] xl:h-[min(64vh,40vw)]"
               />
             </div>
           </div>
@@ -470,15 +484,15 @@ export default function Hero({
         <div
           ref={frontRef}
           aria-hidden
-          className="pointer-events-none absolute inset-0 z-20 max-lg:hidden"
+          className="pointer-events-none absolute inset-0 z-20 max-xl:hidden"
         >
           {SLOTS.slice(0, FRONT).map((_, i) => part(i))}
         </div>
 
-        <div className="relative z-10 flex flex-col items-center gap-10 lg:w-[420px] lg:items-end lg:justify-between lg:pt-6 lg:text-right">
-          <div className="flex flex-col items-center gap-6 lg:items-end">
+        <div className="relative z-10 flex flex-col items-center gap-10 xl:w-[420px] xl:items-end xl:justify-between xl:pt-6 xl:text-right">
+          <div className="flex flex-col items-center gap-6 xl:items-end">
             <p className={`${nav} text-[0.65rem] text-pf-muted`}>Choose a chapter</p>
-            <div className="flex gap-4 pt-16">
+            <div className="flex gap-4 pt-8 xl:pt-16">
               {CHAPTERS.map((c) => (
                 <button
                   key={c.theme}
@@ -526,7 +540,7 @@ export default function Hero({
               ))}
             </div>
           </div>
-          <p aria-hidden className="pf-title text-right max-lg:hidden">
+          <p aria-hidden className="pf-title text-right max-xl:hidden">
             engineering
           </p>
         </div>

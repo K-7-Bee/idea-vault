@@ -1,7 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
-import SwRegister from "./sw-register";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -14,17 +13,21 @@ const geistMono = Geist_Mono({
 });
 
 export const viewport: Viewport = {
-  themeColor: [
-    { media: "(prefers-color-scheme: light)", color: "#ffffff" },
-    { media: "(prefers-color-scheme: dark)", color: "#0a0a0a" },
-  ],
+  themeColor: "#31363f",
 };
 
 export const metadata: Metadata = {
-  title: "Idea Vault",
-  description: "Personal idea vault",
-  appleWebApp: { capable: true, title: "Vault", statusBarStyle: "default" },
-  icons: { apple: "/pwa-icon/180" },
+  title: { default: "MD Kaushik Kamal — Portfolio", template: "%s | MD Kaushik Kamal" },
+  description: "Engineering projects, practical web tools, and interactive experiments by MD Kaushik Kamal.",
+  applicationName: "Kaushik's Portfolio",
+  icons: { icon: "/k-mark.png", apple: "/k-mark.png" },
+  openGraph: {
+    title: "MD Kaushik Kamal — Engineering Portfolio",
+    description: "Engineering science, electrical foundations, and learning by building.",
+    siteName: "MD Kaushik Kamal",
+    type: "website",
+  },
+  twitter: { card: "summary", title: "MD Kaushik Kamal — Portfolio", description: "Engineering projects, practical web tools, and interactive experiments." },
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
@@ -35,7 +38,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
       <body className="min-h-full flex flex-col">
-        <SwRegister />
+        <a href="#main-content" className="skip-link">Skip to main content</a>
         {children}
       </body>
     </html>

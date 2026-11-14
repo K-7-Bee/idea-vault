@@ -9,7 +9,7 @@ import { SparkIcon } from "./icons";
 export default function VaultPage() {
   return (
     <div className="vault min-h-screen text-foreground">
-      <main className="mx-auto max-w-6xl px-4 pb-16 pt-6 sm:px-6 sm:pt-10">
+      <main id="main-content" tabIndex={-1} className="mx-auto max-w-6xl px-4 pb-16 pt-6 sm:px-6 sm:pt-10">
         <header className="mb-6 flex items-center justify-between gap-4">
           <div className="flex items-center gap-3">
             <span className="grid h-10 w-10 place-items-center rounded-xl bg-accent text-on-accent shadow-sm shadow-accent/30">
@@ -45,6 +45,7 @@ async function ideaIndex(supabase: Awaited<ReturnType<typeof createClient>>) {
       .from("ideas")
       .select("id, tags, status, created_at")
       .order("created_at", { ascending: false })
+      .order("id", { ascending: false })
       .range(from, from + STEP - 1);
     if (!data) break;
     rows.push(...data);
@@ -60,6 +61,7 @@ async function VaultContent() {
       .from("ideas")
       .select(IDEA_COLUMNS)
       .order("created_at", { ascending: false })
+      .order("id", { ascending: false })
       .limit(PAGE_SIZE),
     ideaIndex(supabase),
   ]);
