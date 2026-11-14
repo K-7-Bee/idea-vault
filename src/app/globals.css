@@ -411,3 +411,131 @@ html {
     animation: none;
   }
 }
+
+/* Browser start page (/start): follows the device's light/dark setting. */
+:root:has(.startpage) {
+  color-scheme: light;
+  --background: #eef1f4;
+  --foreground: #1e2127;
+  --link: #1d6fb8;
+}
+
+.startpage {
+  --sp-bg: #eef1f4;
+  --sp-ink: #1e2127;
+  --sp-muted: rgba(30, 33, 39, 0.62);
+  --sp-field: #ffffff;
+  --sp-line: rgba(30, 33, 39, 0.12);
+  --sp-tile: rgba(255, 255, 255, 0.7);
+  --sp-accent: #1d6fb8;
+  --sp-on-accent: #ffffff;
+  --sp-error: #b42318;
+  --sp-glow-a: rgba(96, 181, 255, 0.35);
+  --sp-glow-b: rgba(118, 171, 174, 0.35);
+  background: var(--sp-bg);
+  color: var(--sp-ink);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:has(.startpage) {
+    color-scheme: dark;
+    --background: #31363f;
+    --foreground: #eeeeee;
+    --link: #60b5ff;
+  }
+
+  .startpage {
+    --sp-bg: #31363f;
+    --sp-ink: #eeeeee;
+    --sp-muted: rgba(238, 238, 238, 0.68);
+    --sp-field: rgba(238, 238, 238, 0.07);
+    --sp-line: rgba(238, 238, 238, 0.14);
+    --sp-tile: rgba(238, 238, 238, 0.05);
+    --sp-accent: #60b5ff;
+    --sp-on-accent: #1e2127;
+    --sp-error: #ffb4a8;
+    --sp-glow-a: rgba(70, 111, 149, 0.55);
+    --sp-glow-b: rgba(118, 171, 174, 0.25);
+  }
+}
+
+.startpage .sp-muted {
+  color: var(--sp-muted);
+}
+
+.startpage .sp-search {
+  background: var(--sp-field);
+  border: 1px solid var(--sp-line);
+  box-shadow: 0 10px 30px -18px rgba(0, 0, 0, 0.45);
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+.startpage .sp-search:focus-within {
+  border-color: var(--sp-accent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--sp-accent) 25%, transparent);
+}
+
+/* The search box shows its own focus ring, so the input itself doesn't need one. */
+.startpage .sp-search input:focus-visible {
+  outline: none;
+}
+
+.startpage .sp-button {
+  min-height: 36px;
+  background: var(--sp-accent);
+  color: var(--sp-on-accent);
+}
+
+.startpage .sp-tile {
+  min-height: 44px;
+  background: var(--sp-tile);
+  border: 1px solid var(--sp-line);
+  transition: border-color 0.2s, transform 0.2s;
+}
+
+.startpage .sp-tile:hover {
+  border-color: var(--sp-accent);
+  transform: translateY(-2px);
+}
+
+.startpage .sp-initial {
+  background: color-mix(in srgb, var(--sp-accent) 18%, transparent);
+  color: var(--sp-accent);
+}
+
+.startpage :where(a, button):focus-visible {
+  outline-color: var(--sp-accent);
+}
+
+/* Two soft colour blobs drifting slowly behind the content. */
+.startpage .sp-glow {
+  position: absolute;
+  inset: -20%;
+  background:
+    radial-gradient(40% 40% at 30% 35%, var(--sp-glow-a), transparent 70%),
+    radial-gradient(35% 35% at 70% 65%, var(--sp-glow-b), transparent 70%);
+  filter: blur(20px);
+  animation: sp-drift 24s ease-in-out infinite alternate;
+  pointer-events: none;
+}
+
+@keyframes sp-drift {
+  from {
+    transform: translate3d(-4%, -2%, 0) rotate(0deg);
+  }
+  to {
+    transform: translate3d(4%, 3%, 0) rotate(8deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .startpage .sp-glow,
+  .startpage .sp-tile {
+    animation: none;
+    transition: none;
+  }
+}
+
+.startpage .sp-error {
+  color: var(--sp-error);
+}
