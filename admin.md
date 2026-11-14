@@ -8,7 +8,7 @@ See [shared-file.md](shared-file.md) for the current handoff and change history.
 
 ## Current status
 
-No pending questions. No new approval is needed for the documentation task that created this file.
+Current audit is complete; application repairs await owner approval. See ADMIN-AUDIT-001 below and [the repair plan](docs/REPAIR_PLAN.md). Prior planning/preservation decisions in `docs/vault/DECISIONS.md` remain recorded separately.
 
 ## How to use this file
 
@@ -45,4 +45,20 @@ Copy this template below when a real question arises. Replace the ID and placeho
 
 ## Questions and decision history
 
-No questions recorded yet.
+### ADMIN-AUDIT-001 — Review audit and authorize the first repair slice
+
+- Date: 2026-11-15
+- Question from: Codex
+- Status: Pending
+- Question: Review the audit and approve the next bounded slice: R0 source/data preservation, followed by a separately reviewed R1 initial-read error repair. Confirm whether project workflow exists outside this checkout and the completion/publication eligibility of the three existing public case studies before any publishing changes.
+- Why a decision is needed: Current assignment explicitly requires stopping after audit. Source has raw/exploring/building/done ideas and a static public catalog, not the requested private project lifecycle and Completed+Published bridge. The original 3.0 guide file is absent now.
+- Proposed action and affected files: [REPAIR_PLAN](docs/REPAIR_PLAN.md) lists exact existing files, staged scope, risks, tests, rollback and unresolved content. No app edits in the audit. Recommended first source repair would handle initial errors in `src/app/vault/page.tsx` with focused tests; no schema change.
+- Recommendation and tradeoffs: Preserve the existing app/rows/files; verify live/device backup and isolated restore before data/schema changes. Do not start the full new-feature roadmap or silently rename statuses.
+- Work awaiting this answer: Application repairs, publishing changes, source deletion and migration. Secure source/export access and restore target are also needed for actual preservation.
+- Related handoff or diff: 2026-11-15 audit entry in `shared-file.md`; four new `docs/` audit files. No redesign or deployment performed.
+
+**Admin answer →**
+
+**Answer source:** Pending owner response; no approval inferred.
+
+**Agent follow-up:** Audit complete; application code unchanged. Await review.

@@ -1,0 +1,356 @@
+{
+  "browser": "Chrome/157.0.8103.78",
+  "results": [
+    {
+      "size": "desktop",
+      "view": "portfolio",
+      "width": 1440,
+      "height": 1000,
+      "pageWidth": 1425,
+      "overflow": false,
+      "visible": true,
+      "heading": "Curiosity meets\nengineering.",
+      "fonts": {
+        "heading": "Manrope, Inter, Arial, sans-serif",
+        "body": "Inter, Arial, sans-serif"
+      },
+      "smallTargets": [
+        {
+          "text": "K\nKaushik / Engineering",
+          "height": 36
+        },
+        {
+          "text": "koushikkamal6@gmail.com ↗",
+          "height": 40.09375
+        }
+      ],
+      "palette": {
+        "petal": "#ECCBD9",
+        "alice": "#E1EFF6",
+        "sky": "#97D2FB",
+        "baby": "#83BCFF",
+        "aqua": "#80FFE8",
+        "orange": "#FF6B35",
+        "peach": "#F7C59F",
+        "beige": "#EFEFD0",
+        "steel": "#004E89",
+        "baltic": "#1A659E"
+      },
+      "background": "rgba(0, 0, 0, 0)",
+      "controls": 10
+    },
+    {
+      "size": "desktop",
+      "view": "vault",
+      "width": 1440,
+      "height": 1000,
+      "pageWidth": 1425,
+      "overflow": false,
+      "visible": true,
+      "heading": "Workspace overview",
+      "fonts": {
+        "heading": "Manrope, Inter, Arial, sans-serif",
+        "body": "Inter, Arial, sans-serif"
+      },
+      "smallTargets": [],
+      "palette": {
+        "petal": "#ECCBD9",
+        "alice": "#E1EFF6",
+        "sky": "#97D2FB",
+        "baby": "#83BCFF",
+        "aqua": "#80FFE8",
+        "orange": "#FF6B35",
+        "peach": "#F7C59F",
+        "beige": "#EFEFD0",
+        "steel": "#004E89",
+        "baltic": "#1A659E"
+      },
+      "background": "rgb(9, 28, 43)",
+      "controls": 12
+    },
+    {
+      "size": "ipad-landscape",
+      "view": "portfolio",
+      "width": 1180,
+      "height": 820,
+      "pageWidth": 1180,
+      "overflow": false,
+      "visible": true,
+      "heading": "Curiosity meets\nengineering.",
+      "fonts": {
+        "heading": "Manrope, Inter, Arial, sans-serif",
+        "body": "Inter, Arial, sans-serif"
+      },
+      "smallTargets": [
+        {
+          "text": "K\nKaushik / Engineering",
+          "height": 36
+        },
+        {
+          "text": "koushikkamal6@gmail.com ↗",
+          "height": 40.09375
+        }
+      ],
+      "palette": {
+        "petal": "#ECCBD9",
+        "alice": "#E1EFF6",
+        "sky": "#97D2FB",
+        "baby": "#83BCFF",
+        "aqua": "#80FFE8",
+        "orange": "#FF6B35",
+        "peach": "#F7C59F",
+        "beige": "#EFEFD0",
+        "steel": "#004E89",
+        "baltic": "#1A659E"
+      },
+      "background": "rgba(0, 0, 0, 0)",
+      "controls": 10
+    },
+    {
+      "size": "ipad-landscape",
+      "view": "vault",
+      "width": 1180,
+      "height": 820,
+      "pageWidth": 1180,
+      "overflow": false,
+      "visible": true,
+      "heading": "Workspace overview",
+      "fonts": {
+        "heading": "Manrope, Inter, Arial, sans-serif",
+        "body": "Inter, Arial, sans-serif"
+      },
+      "smallTargets": [],
+      "palette": {
+        "petal": "#ECCBD9",
+        "alice": "#E1EFF6",
+        "sky": "#97D2FB",
+        "baby": "#83BCFF",
+        "aqua": "#80FFE8",
+        "orange": "#FF6B35",
+        "peach": "#F7C59F",
+        "beige": "#EFEFD0",
+        "steel": "#004E89",
+        "baltic": "#1A659E"
+      },
+      "background": "rgb(9, 28, 43)",
+      "controls": 12
+    },
+    {
+      "size": "ipad-portrait",
+      "view": "portfolio",
+      "width": 820,
+      "height": 1180,
+      "pageWidth": 820,
+      "overflow": false,
+      "visible": true,
+      "heading": "Curiosity meets\nengineering.",
+      "fonts": {
+        "heading": "Manrope, Inter, Arial, sans-serif",
+        "body": "Inter, Arial, sans-serif"
+      },
+      "smallTargets": [
+        {
+          "text": "K\nKaushik / Engineering",
+          "height": 36
+        },
+        {
+          "text": "koushikkamal6@gmail.com ↗",
+          "height": 40.09375
+        }
+      ],
+      "palette": {
+        "petal": "#ECCBD9",
+        "alice": "#E1EFF6",
+        "sky": "#97D2FB",
+        "baby": "#83BCFF",
+        "aqua": "#80FFE8",
+        "orange": "#FF6B35",
+        "peach": "#F7C59F",
+        "beige": "#EFEFD0",
+        "steel": "#004E89",
+        "baltic": "#1A659E"
+      },
+      "background": "rgba(0, 0, 0, 0)",
+      "controls": 10
+    },
+    {
+      "size": "ipad-portrait",
+      "view": "vault",
+      "width": 820,
+      "height": 1180,
+      "pageWidth": 820,
+      "overflow": false,
+      "visible": true,
+      "heading": "Workspace overview",
+      "fonts": {
+        "heading": "Manrope, Inter, Arial, sans-serif",
+        "body": "Inter, Arial, sans-serif"
+      },
+      "smallTargets": [],
+      "palette": {
+        "petal": "#ECCBD9",
+        "alice": "#E1EFF6",
+        "sky": "#97D2FB",
+        "baby": "#83BCFF",
+        "aqua": "#80FFE8",
+        "orange": "#FF6B35",
+        "peach": "#F7C59F",
+        "beige": "#EFEFD0",
+        "steel": "#004E89",
+        "baltic": "#1A659E"
+      },
+      "background": "rgb(9, 28, 43)",
+      "controls": 12
+    },
+    {
+      "size": "mobile",
+      "view": "portfolio",
+      "width": 390,
+      "height": 844,
+      "pageWidth": 390,
+      "overflow": false,
+      "visible": true,
+      "heading": "Curiosity meets\nengineering.",
+      "fonts": {
+        "heading": "Manrope, Inter, Arial, sans-serif",
+        "body": "Inter, Arial, sans-serif"
+      },
+      "smallTargets": [
+        {
+          "text": "K\nKaushik / Engineering",
+          "height": 36
+        },
+        {
+          "text": "koushikkamal6@gmail.com ↗",
+          "height": 17
+        }
+      ],
+      "palette": {
+        "petal": "#ECCBD9",
+        "alice": "#E1EFF6",
+        "sky": "#97D2FB",
+        "baby": "#83BCFF",
+        "aqua": "#80FFE8",
+        "orange": "#FF6B35",
+        "peach": "#F7C59F",
+        "beige": "#EFEFD0",
+        "steel": "#004E89",
+        "baltic": "#1A659E"
+      },
+      "background": "rgba(0, 0, 0, 0)",
+      "controls": 11
+    },
+    {
+      "size": "mobile",
+      "view": "vault",
+      "width": 390,
+      "height": 844,
+      "pageWidth": 390,
+      "overflow": false,
+      "visible": true,
+      "heading": "Workspace overview",
+      "fonts": {
+        "heading": "Manrope, Inter, Arial, sans-serif",
+        "body": "Inter, Arial, sans-serif"
+      },
+      "smallTargets": [],
+      "palette": {
+        "petal": "#ECCBD9",
+        "alice": "#E1EFF6",
+        "sky": "#97D2FB",
+        "baby": "#83BCFF",
+        "aqua": "#80FFE8",
+        "orange": "#FF6B35",
+        "peach": "#F7C59F",
+        "beige": "#EFEFD0",
+        "steel": "#004E89",
+        "baltic": "#1A659E"
+      },
+      "background": "rgb(9, 28, 43)",
+      "controls": 13
+    },
+    {
+      "size": "small-mobile",
+      "view": "portfolio",
+      "width": 320,
+      "height": 740,
+      "pageWidth": 320,
+      "overflow": false,
+      "visible": true,
+      "heading": "Curiosity meets\nengineering.",
+      "fonts": {
+        "heading": "Manrope, Inter, Arial, sans-serif",
+        "body": "Inter, Arial, sans-serif"
+      },
+      "smallTargets": [
+        {
+          "text": "K\nKaushik / Engineering",
+          "height": 40
+        },
+        {
+          "text": "koushikkamal6@gmail.com ↗",
+          "height": 17
+        }
+      ],
+      "palette": {
+        "petal": "#ECCBD9",
+        "alice": "#E1EFF6",
+        "sky": "#97D2FB",
+        "baby": "#83BCFF",
+        "aqua": "#80FFE8",
+        "orange": "#FF6B35",
+        "peach": "#F7C59F",
+        "beige": "#EFEFD0",
+        "steel": "#004E89",
+        "baltic": "#1A659E"
+      },
+      "background": "rgba(0, 0, 0, 0)",
+      "controls": 11
+    },
+    {
+      "size": "small-mobile",
+      "view": "vault",
+      "width": 320,
+      "height": 740,
+      "pageWidth": 320,
+      "overflow": false,
+      "visible": true,
+      "heading": "Workspace overview",
+      "fonts": {
+        "heading": "Manrope, Inter, Arial, sans-serif",
+        "body": "Inter, Arial, sans-serif"
+      },
+      "smallTargets": [],
+      "palette": {
+        "petal": "#ECCBD9",
+        "alice": "#E1EFF6",
+        "sky": "#97D2FB",
+        "baby": "#83BCFF",
+        "aqua": "#80FFE8",
+        "orange": "#FF6B35",
+        "peach": "#F7C59F",
+        "beige": "#EFEFD0",
+        "steel": "#004E89",
+        "baltic": "#1A659E"
+      },
+      "background": "rgb(9, 28, 43)",
+      "controls": 13
+    }
+  ],
+  "switching": true,
+  "interaction": {
+    "menuOpen": true,
+    "saveMessage": "Preview only: nothing was saved. This text stays in this tab until you leave or reload.",
+    "storage": {
+      "local": 0,
+      "session": 0
+    }
+  },
+  "focus": {
+    "text": "＋ Attach",
+    "outline": "solid",
+    "outlineWidth": "3px"
+  },
+  "reduced": true,
+  "errors": []
+}

@@ -43,3 +43,7 @@ next-env.d.ts
 # local env files
 .env*
 !.env.example
+
+# Private preservation artifacts (still keep backups outside the repository).
+*.vaultbackup
+/vault-backups/

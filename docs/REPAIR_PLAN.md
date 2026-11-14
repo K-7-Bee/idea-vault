@@ -1,0 +1,42 @@
+# Repair plan — approval required before application changes
+
+2026-11-15. Current assignment ends after audit and this plan. No redesign, app modules, source repairs, SQL changes, deletion, migration, new dependency, external integration or deployment is authorized by this document.
+
+Read [repository map](REPOSITORY_MAP.md), [actual architecture](IDEA_VAULT_ARCHITECTURE.md), and [features/findings](EXISTING_FEATURES.md). Earlier `docs/vault/ROADMAP.md` is a future development proposal; do not start its shell/project phases as a substitute for repairing the current application.
+
+## Safest order
+
+| Stage | Concrete scope / files that would be affected | Risks / acceptance checks | Rollback and approval boundary |
+| --- | --- | --- | --- |
+| R0 — reconcile source and preserve data | Confirm deployed schema/branch/project identity, capture-device inventory, restore original guide or approve a current authoritative spec. Reuse `scripts/vault/README.md`, preservation tools and `docs/vault/MIGRATION.md`; update evidence/docs only. | Both phone and PC may hold unsent files/tombstones. Real DB+object+device exports must reconcile IDs/content/tags/status/dates/bytes, expected nine ideas and orphans. Test isolated restore and access controls; do not merely create an archive. | No live changes. Keep sources/exports intact. Need secure access, private backup location and separate restore target; no secrets in chat. |
+| R1 — small error-handling repair | AUD-001/002/005. Existing `src/app/vault/page.tsx`, `src/lib/ideas.ts`, `src/app/vault/capture.tsx`, `src/app/vault/logout-button.tsx`; targeted tests in `tests/`. First slice can be initial read errors only. | Don't hide data behind empty states; file errors must retain metadata; failed logout must not claim success or erase queue. Tests cover initial/partial index/signing/logout failures and successful baseline. No schema needed. | Revert only slice source changes, retain data. Owner approves exact slice before edits; read-only/error-only behavior can be isolated from data changes. |
+| R2 — privacy and authorization | AUD-004, AUTH-01/02. Existing proxy/Supabase helpers/outbox/sync/capture/logout/worker and isolated tests; a new reviewed SQL policy migration only if live audit confirms need. | Avoid queue reassignment or deletion, auth lockout, offline leaks. Test trusted owner, anonymous and second user via direct SDK; session expiry/account switches/cache races; forged parent/path and all original files. No new login. | Preserve old blobs and queue export; reversible rollout. Any SQL and owner-binding backfill require verified backup and explicit migration approval. Never weaken RLS for convenience. |
+| R3 — attachment integrity and multi-device edits | AUD-003, DATA-01/02. Existing `capture.tsx`, `src/lib/sync.ts`, `outbox.ts`, file helpers; additive recoverable operation/revision schema only after review. | No atomic DB+storage promise. Verify partial uploads/deletes/retries, duplicate payload mismatch, orphan inventory, same-record PC/phone edits, affected-row checks and recoverability. | Disable new mutation path while retaining operation evidence and bytes; additive schema retained. No source byte purge during rollback. Exact archive/purge policy needs approval. |
+| R4 — accessible existing UI | AUD-006, UI-01. Existing `capture.tsx` and scoped `globals.css` only where needed. | Add explicit labels/live errors/focus without redesign; keyboard and screen-reader checks, mobile widths 320/390/768px, desktop 1280px, dark/light/reduced motion; no public/start regressions. | Revert focused markup/style slice; no data impact. Approval required for app changes. |
+| R5 — approved public cleanup | Later final-prompt requirement, not a broken-feature fix: `src/app/page.tsx`, `portfolio/hero.tsx`, `motor-explorer.tsx`, `ohm-lab.tsx`, `companion.tsx`, `src/app/projects/layout.tsx`, selected CSS and possibly package files. | Inventory/archive first; update Lab anchors, terminal commands/tips, navigation and dependency usage. Do not remove useful verified content or start-page styles/fonts. Validate all public routes, metadata, phone/keyboard layout. | Retain source in Git/archive before removal; revert a small cleanup commit. Explicit deletion/design approval required; no changes in this audit. |
+| R6 — project/publication boundary, only after schema/content decisions | Existing public catalog/consumers above, `src/app/projects/[slug]/page.tsx`, current Vault/auth helpers; exact private extension/projection files and SQL to be proposed after live schema audit. No authoritative existing publishing module found to repair. | Preserve all IDs and original ideas; use requested project stages and independent publish approval; one allowlisted projection. Test every surface: Completed+unpublished hidden, incomplete+published hidden, Completed+Published approved fields only, unpublish/revert removes direct page/metadata/media/cached exposure. | Keep static content as explicit owner-reviewed fallback only, not automatic publication. No destructive import/status remap or schema migration without backup/approval. |
+
+After approval of a stage, present exact scope/files, implement only that stage, run its checks, record successes/failures/limits and stop for review. No automatic advance through the whole plan.
+
+## Decisions for owner review
+
+1. **Which project workflow exists outside this checkout?** Current code only has idea folders raw/exploring/building/done. Preserve them unchanged. Proposed direction: separate idea inbox from the required project stages Exploring/Analyzing/Building/Completed; do not silently equate raw with Analyzing or delete Done records. Verify actual live schema before proposing any extension.
+2. **Which existing public entries are eligible?** Waste-to-Energy Lighting, Cha Restaurant and Idea Vault are currently public static case studies. Confirm completion and explicit publication for each; source presence is not new approval under the requested rule. Until approved repair, retain current source unchanged rather than fabricate eligibility flags.
+3. **Approve a first repair slice?** Recommend R0 preservation/source reconciliation, then R1 initial read-error handling. Do not jump to Portfolio Manager or Drive implementation. Security/device preservation work remains necessary before data changes.
+4. **Source/document reconciliation:** original `IDEA_VAULT_3_CODEX_MASTER_GUIDE.md` is missing now; current final prompt differs from earlier plans in statuses, Story/Animation structure, palette, AI provider and delivery order. Restore the original or confirm authoritative requirements before future feature planning. Current audit instruction overrides future implementation prompts for this turn.
+5. **Offline recovery/retention:** confirm trusted-device behavior, handling of unsent drafts/files on logout, and recoverable deletion/purge policy. Recommend lock/preserve/export, never silent deletion. Previously unanswered settings remain unanswered.
+
+Supabase remains the metadata/idea database; owner already chose Drive for attachments/recordings. Do not ask that storage split again. OAuth scopes/callbacks/account setup and Gemini configuration belong to later approved integration stages; no credential request is needed to finish this audit.
+
+## Factual content needed later
+
+- Exact transformer internship organization, internship date ranges/roles, actual responsibilities/tools and learning outcomes for both placements. Current labels alone do not justify richer claims.
+- Confirm education details/dates and intended public skill levels; actual Innovation Fair certificate title/date/issuer/image/permission.
+- Résumé file and approval, project photos/evidence/contributions/results/limitations, approved contact/social links.
+- Actual project status/publication decisions and live project records if managed outside this checkout.
+
+Do not invent achievements, measurements, completed projects or missing assets while waiting for that information.
+
+## Audit exit criteria and current result
+
+Four new audit documents created without replacing existing plans. Actual route/data/auth/UI map recorded with reuse/repair disposition; confirmed problems separated from risks/gaps. Current tests (13), lint, typecheck and fresh build pass. No current browser/live verification, backup/restore, migration or deployment claimed. Application code remains unchanged. Stop for owner review here.

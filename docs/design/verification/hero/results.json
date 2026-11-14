@@ -1,0 +1,276 @@
+{
+  "results": [
+    {
+      "name": "desktop",
+      "width": 1440,
+      "pageWidth": 1440,
+      "overflow": false,
+      "heading": "Curiosity meets\nengineering.",
+      "images": [
+        {
+          "src": "portfolio-hero-1672.webp",
+          "loaded": true,
+          "width": 1672
+        },
+        {
+          "src": "k-mark.png",
+          "loaded": true,
+          "width": 768
+        }
+      ],
+      "smallTargets": [],
+      "headlineRect": {
+        "x": 100.796875,
+        "y": 284.375,
+        "width": 730,
+        "height": 158.71875,
+        "top": 284.375,
+        "right": 830.796875,
+        "bottom": 443.09375,
+        "left": 100.796875
+      },
+      "imageRect": {
+        "x": 0,
+        "y": 36.5,
+        "width": 1440,
+        "height": 777.59375,
+        "top": 36.5,
+        "right": 1440,
+        "bottom": 814.09375,
+        "left": 0
+      },
+      "storage": {
+        "local": 0,
+        "session": 0
+      },
+      "palette": {
+        "petal": "#ECCBD9",
+        "alice": "#E1EFF6",
+        "sky": "#97D2FB",
+        "baby": "#83BCFF",
+        "aqua": "#80FFE8"
+      }
+    },
+    {
+      "name": "ipad-landscape",
+      "width": 1180,
+      "pageWidth": 1180,
+      "overflow": false,
+      "heading": "Curiosity meets\nengineering.",
+      "images": [
+        {
+          "src": "portfolio-hero-1672.webp",
+          "loaded": true,
+          "width": 1672
+        },
+        {
+          "src": "k-mark.png",
+          "loaded": true,
+          "width": 768
+        }
+      ],
+      "smallTargets": [],
+      "headlineRect": {
+        "x": 82.59375,
+        "y": 263.578125,
+        "width": 730,
+        "height": 130.09375,
+        "top": 263.578125,
+        "right": 812.59375,
+        "bottom": 393.671875,
+        "left": 82.59375
+      },
+      "imageRect": {
+        "x": 0,
+        "y": 36.5,
+        "width": 1180,
+        "height": 702.171875,
+        "top": 36.5,
+        "right": 1180,
+        "bottom": 738.671875,
+        "left": 0
+      },
+      "storage": {
+        "local": 0,
+        "session": 0
+      },
+      "palette": {
+        "petal": "#ECCBD9",
+        "alice": "#E1EFF6",
+        "sky": "#97D2FB",
+        "baby": "#83BCFF",
+        "aqua": "#80FFE8"
+      }
+    },
+    {
+      "name": "ipad-portrait",
+      "width": 820,
+      "pageWidth": 820,
+      "overflow": false,
+      "heading": "Curiosity meets\nengineering.",
+      "images": [
+        {
+          "src": "portfolio-hero-1672.webp",
+          "loaded": true,
+          "width": 1672
+        },
+        {
+          "src": "k-mark.png",
+          "loaded": true,
+          "width": 768
+        }
+      ],
+      "smallTargets": [],
+      "headlineRect": {
+        "x": 49.1875,
+        "y": 259.1875,
+        "width": 590,
+        "height": 124.78125,
+        "top": 259.1875,
+        "right": 639.1875,
+        "bottom": 383.96875,
+        "left": 49.1875
+      },
+      "imageRect": {
+        "x": 0,
+        "y": 36.5,
+        "width": 820,
+        "height": 720,
+        "top": 36.5,
+        "right": 820,
+        "bottom": 756.5,
+        "left": 0
+      },
+      "storage": {
+        "local": 0,
+        "session": 0
+      },
+      "palette": {
+        "petal": "#ECCBD9",
+        "alice": "#E1EFF6",
+        "sky": "#97D2FB",
+        "baby": "#83BCFF",
+        "aqua": "#80FFE8"
+      }
+    },
+    {
+      "name": "mobile",
+      "width": 390,
+      "pageWidth": 390,
+      "overflow": false,
+      "heading": "Curiosity meets\nengineering.",
+      "images": [
+        {
+          "src": "portfolio-hero-960.webp",
+          "loaded": true,
+          "width": 960
+        },
+        {
+          "src": "k-mark.png",
+          "loaded": true,
+          "width": 768
+        }
+      ],
+      "smallTargets": [],
+      "headlineRect": {
+        "x": 24,
+        "y": 199.296875,
+        "width": 342,
+        "height": 87.625,
+        "top": 199.296875,
+        "right": 366,
+        "bottom": 286.921875,
+        "left": 24
+      },
+      "imageRect": {
+        "x": 0,
+        "y": 486.109375,
+        "width": 390,
+        "height": 430,
+        "top": 486.109375,
+        "right": 390,
+        "bottom": 916.109375,
+        "left": 0
+      },
+      "storage": {
+        "local": 0,
+        "session": 0
+      },
+      "palette": {
+        "petal": "#ECCBD9",
+        "alice": "#E1EFF6",
+        "sky": "#97D2FB",
+        "baby": "#83BCFF",
+        "aqua": "#80FFE8"
+      }
+    },
+    {
+      "name": "small-mobile",
+      "width": 320,
+      "pageWidth": 320,
+      "overflow": false,
+      "heading": "Curiosity meets\nengineering.",
+      "images": [
+        {
+          "src": "portfolio-hero-960.webp",
+          "loaded": true,
+          "width": 960
+        },
+        {
+          "src": "k-mark.png",
+          "loaded": true,
+          "width": 768
+        }
+      ],
+      "smallTargets": [],
+      "headlineRect": {
+        "x": 20,
+        "y": 191.59375,
+        "width": 280,
+        "height": 77.6875,
+        "top": 191.59375,
+        "right": 300,
+        "bottom": 269.28125,
+        "left": 20
+      },
+      "imageRect": {
+        "x": 0,
+        "y": 520,
+        "width": 320,
+        "height": 430,
+        "top": 520,
+        "right": 320,
+        "bottom": 950,
+        "left": 0
+      },
+      "storage": {
+        "local": 0,
+        "session": 0
+      },
+      "palette": {
+        "petal": "#ECCBD9",
+        "alice": "#E1EFF6",
+        "sky": "#97D2FB",
+        "baby": "#83BCFF",
+        "aqua": "#80FFE8"
+      }
+    }
+  ],
+  "menuOpen": true,
+  "menuEscape": {
+    "closed": true,
+    "focus": "SUMMARY"
+  },
+  "ctaMessage": "Work remains an existing section of your portfolio. This preview contains only the proposed hero.",
+  "reducedMotion": {
+    "matched": true,
+    "transition": "0s"
+  },
+  "keyboard": {
+    "focused": "SUMMARY",
+    "outline": "solid",
+    "outlineWidth": "3px"
+  },
+  "errors": [],
+  "externalRequests": []
+}

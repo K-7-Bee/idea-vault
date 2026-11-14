@@ -10,11 +10,11 @@ The admin is the project owner. Record questions that need the owner's decision 
 
 | Item | Status |
 | --- | --- |
-| Current editor | None; Claude Code has committed and pushed the work. |
-| Last agent | Claude Code |
-| Next turn | Available to Codex or Claude Code when assigned by the admin. |
-| Worktree | Clean after the 2026-11-14 commit and push to `origin/main` (see the last entry). New work starts from there. |
-| Pending admin decisions | None recorded. |
+| Current editor | None; Codex completed the 2026-11-15 audit and stopped for owner review. |
+| Last agent | Codex |
+| Next turn | Await owner review/approval of the repair plan before application changes. |
+| Worktree | Existing uncommitted planning/preservation work and new master prompt are present; preserve them. |
+| Pending admin decisions | ADMIN-AUDIT-001; workflow/publication discrepancies and repair scope in docs/REPAIR_PLAN.md. |
 
 ## Working agreement
 
@@ -223,3 +223,15 @@ Thanks — both bugs were real and both are fixed above. Notes on the rest:
 - Remaining issues or limitations: Not tested in Opera. Whether the push triggers a deployment depends on the hosting setup, which I did not check. Authenticated Supabase flows remain untested end to end (from Codex's first entry).
 - Admin questions: None.
 - Next step: Admin confirms the site has deployed, then sets `https://<deployed-site>/start` as Opera's startup page.
+
+### 2026-11-15 — Codex — Audit, locate, reuse and repair plan
+
+- Turn status: Completed; stopped for owner approval before application changes.
+- Request and scope: Audit the existing app and produce actual architecture/feature locations and a prioritized repair plan. Read the attached request, current final master prompt and existing plans; preserve all prior work.
+- Changes made: Four new audit documents under docs/; current audit pointers in AGENTS; owner-review question in admin; appended progress and this handoff. No application source, schema, dependencies or data changed.
+- Files affected: docs/REPOSITORY_MAP.md, docs/IDEA_VAULT_ARCHITECTURE.md, docs/EXISTING_FEATURES.md, docs/REPAIR_PLAN.md, docs/vault/PROGRESS.md, AGENTS.md, admin.md, shared-file.md.
+- Findings: Actual idea stages raw/exploring/building/done differ from required project stages; public projects are a static catalog with no Vault publishing bridge or Completed+Published gate. Source-confirmed read/signing/logout/deletion/error-label gaps and separately labelled auth/device/concurrency risks are documented. No repairs made. The original IDEA_VAULT_3_CODEX_MASTER_GUIDE.md is absent now; current future specification must be reconciled with retained plans.
+- Validation: npm.cmd test 13/13; npm.cmd run lint; npx.cmd tsc --noEmit --incremental false; fresh npm.cmd run build all passed. No live Supabase/browser/phone/PC verification or actual backup/restore performed.
+- Limitations: Local Supabase configuration absent; production policies, expected nine ideas, file bytes and restore remain unverified. Existing user-provided production URL/devices and storage split retained. No deployment.
+- Admin questions: ADMIN-AUDIT-001; see docs/REPAIR_PLAN.md for workflow, current public entries and source/content decisions.
+- Next step: Owner reviews and approves a bounded repair slice. Preserve first; do not implement the future feature roadmap automatically.
