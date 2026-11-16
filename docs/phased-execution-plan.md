@@ -1,0 +1,16 @@
+# Ordered execution and recovery boundaries
+
+2026-11-16. Every implementation slice must name exact files, risks, acceptance evidence and rollback before mutation. The rows below are proposals; they are not proof that a feature exists.
+
+| Order | Scope and files | Risk and acceptance | Rollback |
+| --- | --- | --- | --- |
+| 0 Preservation | `scripts/vault/`, focused tests and private recovery workspace; current recovery documented under `docs/vault/` | All database tables now present locally; complete bytes/device/key/API evidence still required. Never migrate production while this gate is incomplete | Stop dedicated local database only; retain volumes, source, keys and reports |
+| 1 Existing reliability/security | Bounded changes to Vault page/capture, signing, logout, sync/outbox/worker; exact files selected per finding | Preserve all existing flows; test errors, expiry, ownership, cache isolation, retries and concurrent edits. Initial read-error handling already exists in working tree; do not replace blindly | Revert only the slice; keep blobs, tombstones and operation evidence |
+| 2 Public cleanup | Inventory/archive public hero/motor/Ohm/terminal consumers and scoped CSS before a reviewed change | No broken anchors/routes; use verified content only; keyboard/mobile/reduced-motion checks | Retain archived source/assets; revert cleanup without private-data changes |
+| 3 Portfolio Manager | New authenticated portfolio routes/components and server data layer; reviewed additive draft/revision schema after gate | One login; draft/save/preview/history work; public output unchanged until explicit publication | Disable editor writes/routes; retain drafts/revisions |
+| 4 Project/publication bridge | Reviewed additive project/link/projection schema, DAL and public consumers | Original ideas retained; independent stages/publication; all Completed + Published and revocation/cache privacy tests pass | Disable new publishing; retain records; restore compatible renderer without exposing private fields |
+| 5 Execution and labs | Project tasks/journal/decisions, engineering evidence/BOM, Story Studio library/bibles/shot panels | Real saved-data workflows; no fabricated metrics, renderer or unnecessary simulator | Disable individual modules while retaining their records |
+| 6 Integrations | Server-only Drive OAuth/token/file adapter and optional Gemini adapter/settings | Actual consent/configuration; expiry/denial/quota/disconnect; selected context, citations, budgets and reviewed proposals | Disable/revoke provider; retain original data and accepted work |
+| 7 Release | Tests, private preview, runbook, deployment configuration and monitoring | Fresh build/lint/typecheck, real-device/accessibility/end-to-end/security and complete recovery evidence; explicit deployment review | Compatible prior app, retained additive schema and reconciliation of later writes; never overwrite production with an old snapshot |
+
+This reconciles the later portfolio-oriented delivery sequence with the original guide's preservation and project-execution requirements. Do not silently rename existing idea statuses. Missing factual content and actual provider/account setup become focused inputs only when required by their slice. No new paid service or integration is assumed.
