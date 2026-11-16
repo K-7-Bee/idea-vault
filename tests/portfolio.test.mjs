@@ -35,3 +35,18 @@ test('public pages do not link to removed sections', () => {
 test('public case study does not claim the private vault page is cached offline', () => {
   assert.ok(!read('src/lib/projects.ts').includes('caches the vault page'));
 });
+
+test('the contact email never appears whole in public source, and three is gone with the motor demo', () => {
+  for (const file of ['src/app/page.tsx', 'src/app/portfolio/email-link.tsx', 'src/lib/projects.ts']) {
+    assert.ok(!/[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+\.[A-Za-z]{2,}/.test(read(file)), `${file} contains a full email address`);
+  }
+  const pkg = JSON.parse(read('package.json'));
+  assert.equal(pkg.dependencies.three, undefined);
+  assert.ok(read('src/app/portfolio/_archive/README.md').includes('reinstall'));
+});
+
+test('Idea Vault case study reflects the shipped conditional edits and archive', () => {
+  const source = read('src/lib/projects.ts');
+  assert.ok(!source.includes('More work remains around edits from multiple devices'));
+  assert.ok(source.includes('simulated backend'));
+});

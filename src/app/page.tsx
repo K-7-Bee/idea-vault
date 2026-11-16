@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import Image from "next/image";
 import Link from "next/link";
+import EmailLink from "./portfolio/email-link";
 import MobileMenu from "./portfolio/mobile-menu";
 import { portfolioFonts } from "./portfolio/fonts";
 import heroBg from "./portfolio/hero-bg.png";
@@ -16,7 +17,8 @@ export const metadata: Metadata = {
 };
 
 const NAME = "MD Kaushik Kamal";
-const EMAIL = "koushikkamal6@gmail.com";
+// Split so the full address never appears in the page source (see EmailLink).
+const EMAIL = { user: "koushikkamal6", domain: "gmail.com" };
 
 // Journal is part of the planned navigation; it stays hidden until a real entry is published.
 const NAV = [
@@ -268,9 +270,12 @@ export default function Home() {
             <p className={`${eyebrow} text-pf-aqua`}>Contact</p>
             <h2 className="font-nav mt-3 max-w-2xl text-3xl font-extrabold tracking-tight sm:text-5xl">Let&apos;s build something.</h2>
             <p className="mt-4 max-w-xl text-white/85">Open to engineering internship conversations and project collaboration.</p>
-            <a href={`mailto:${EMAIL}`} className="font-nav mt-8 inline-flex max-w-full items-center gap-3 break-all rounded-full bg-white px-6 py-3 font-bold text-[#0a2540] transition hover:bg-pf-aqua">
-              <Icon name="mail" className="h-5 w-5 shrink-0" /> {EMAIL}
-            </a>
+            <EmailLink
+              user={EMAIL.user}
+              domain={EMAIL.domain}
+              icon={<Icon name="mail" className="h-5 w-5 shrink-0" />}
+              className="font-nav mt-8 inline-flex max-w-full items-center gap-3 break-all rounded-full bg-white px-6 py-3 font-bold text-[#0a2540] transition hover:bg-pf-aqua"
+            />
             <ul className="font-nav mt-8 flex flex-wrap gap-3 text-sm font-semibold">
               {LINKS.map((l) => (
                 <li key={l.label}>

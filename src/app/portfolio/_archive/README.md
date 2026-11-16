@@ -10,3 +10,6 @@ no falling screws, no Ohm's law demo and no decorative spinning motor. Nothing e
 
 The `_archive` folder is private to the App Router and is never routed. To restore one, move it back
 to `src/app/portfolio/` and import it from `src/app/page.tsx`.
+
+These files are excluded from TypeScript and ESLint. The `three` and `@types/three` packages were
+removed on 2026-11-17 because only `motor-explorer.tsx` used them; reinstall both before restoring it.

@@ -15,6 +15,8 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // Retired public demos, kept for reference only (see its README).
+    "src/app/portfolio/_archive/**",
   ]),
 ]);
 
