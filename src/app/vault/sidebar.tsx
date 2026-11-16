@@ -3,12 +3,9 @@ import { SparkIcon } from "./icons";
 import { Suspense } from "react";
 import NavLinks, { NavList } from "./nav-links";
 
-// From the final master prompt's private navigation. None of these modules exist yet, so they are
+// From the final master prompt's private navigation. These modules don't exist yet, so they are
 // shown as planned rather than as links that lead nowhere.
 const PLANNED = [
-  "Engineering Lab",
-  "Story Studio",
-  "Project Library",
   "Portfolio Manager",
   "Learning / Career",
   "Integrations",
@@ -33,7 +30,7 @@ export function VaultTopBar() {
   return (
     <header className="flex flex-wrap items-center justify-between gap-x-4 gap-y-3 border-b border-line px-4 py-4 sm:px-6 xl:hidden">
       <Brand />
-      <nav aria-label="Workspace" className="flex items-center gap-1 text-sm font-medium">
+      <nav aria-label="Workspace" className="order-last flex w-full flex-wrap items-center gap-1 text-sm font-medium">
         <Suspense fallback={<NavList variant="bar" pathname="" />}><NavLinks variant="bar" /></Suspense>
       </nav>
       <LogoutButton />
@@ -61,7 +58,7 @@ export default function VaultSidebar() {
         <div className="min-w-0">
           <p className="truncate text-sm font-semibold">Kaushik</p>
           <p className="flex items-center gap-1.5 text-xs text-muted">
-            <span aria-hidden className="h-2 w-2 rounded-full bg-[var(--status-done)]" /> Workspace owner
+            <span aria-hidden className="h-2 w-2 rounded-full bg-[var(--status-completed)]" /> Workspace owner
           </p>
         </div>
         <div className="shrink-0 [&_button]:whitespace-nowrap">

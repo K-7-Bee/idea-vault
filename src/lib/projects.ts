@@ -53,7 +53,7 @@ export const projects: Project[] = [
     category: "Personal software",
     summary: "A private app for capturing ideas with tags, files, and voice notes, with a local outbox for saving through connection interruptions.",
     technologies: ["Next.js", "React", "Supabase", "Tailwind CSS", "IndexedDB", "PWA"],
-    overview: "An idea often arrives before there is time to organize it. Idea Vault combines a quick capture form with tags and four stages—raw, exploring, building, and done—so a small note can become something to work on later.",
+    overview: "An idea often arrives before there is time to organize it. Idea Vault combines a quick capture form with tags and four stages—exploring, analyzing, building, and completed—so a small note can become something to work on later.",
     flow: [
       { title: "Capture on the device", description: "Text, tags, and pending attachments go into an IndexedDB outbox first." },
       { title: "Sync when connected", description: "Fixed idea and file IDs let interrupted uploads retry without creating new copies." },

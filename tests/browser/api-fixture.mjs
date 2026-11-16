@@ -8,12 +8,35 @@ const OTHER = '22222222-2222-4222-8222-222222222222';
 const IDEA = '33333333-3333-4333-8333-333333333333';
 const FILE = '44444444-4444-4444-8444-444444444444';
 const sessions = new Map(), signed = new Map();
-let ideas, files, objects, rules, events;
+let ideas, files, objects, rules, events, work;
+// Phase 2 tables (migrations 006/007). Imitates their triggers and keys; not PostgreSQL.
+const WORK_TABLES = ['projects', 'project_milestones', 'project_tasks', 'project_entries', 'project_components', 'project_links',
+  'story_bible_entries', 'story_characters', 'story_relationships', 'story_units', 'story_timeline_events', 'story_continuity'];
+const LEVELS = ['season', 'episode', 'scene', 'shot'];
+const failure = (status, code, message) => ({ status, body: { code, message } });
+function levelProblem(row) {
+  if (!row.parent_id) return null;
+  const parent = work.story_units.find((u) => u.id === row.parent_id && u.project_id === row.project_id);
+  if (!parent) return failure(409, '23503', 'parent missing');
+  if (LEVELS.indexOf(parent.kind) >= LEVELS.indexOf(row.kind)) return failure(400, '23514', 'A ' + row.kind + ' cannot be placed inside a ' + parent.kind + '.');
+  return null;
+}
+function touch(row) { row.version += 1; row.updated_at = new Date().toISOString(); }
+function clearLinks(table, id) {
+  const unlink = (target, column) => work[target].filter((r) => r[column] === id).forEach((r) => { r[column] = null; touch(r); });
+  if (table === 'project_milestones') unlink('project_tasks', 'milestone_id');
+  if (table === 'story_units') { unlink('story_timeline_events', 'unit_id'); unlink('story_continuity', 'unit_id'); }
+  if (table === 'story_characters') {
+    work.story_relationships = work.story_relationships.filter((r) => r.from_character_id !== id && r.to_character_id !== id);
+    unlink('story_continuity', 'character_id');
+  }
+}
 function reset() {
   sessions.clear(); signed.clear(); rules = []; events = [];
+  work = Object.fromEntries(WORK_TABLES.map((t) => [t, []]));
   const created_at = '2026-11-15T00:00:00.000Z';
   ideas = [{ id: IDEA, user_id: OWNER, title: null, content: 'Fixture original #test', original_content: 'Fixture original #test',
-    tags: ['test'], status: 'raw', created_at, updated_at: null, archived_at: null }];
+    tags: ['test'], status: 'exploring', created_at, updated_at: null, archived_at: null }];
   const path = `${OWNER}/${IDEA}/${FILE}-fixture.txt`;
   files = [{ id: FILE, user_id: OWNER, idea_id: IDEA, path, name: 'fixture.txt', mime_type: 'text/plain', size: 16, created_at }];
   objects = new Map([[path, Buffer.from('synthetic bytes!')]]);
@@ -36,8 +59,10 @@ function matches(row, params) {
   for (const [key, value] of params) {
     if (['select', 'order', 'limit', 'offset', 'or'].includes(key)) continue;
     if (value.startsWith('eq.')) {
-      const expected = key === 'tags' ? array(value.slice(3)) : value.slice(3);
-      if (JSON.stringify(row[key]) !== JSON.stringify(expected)) return false;
+      if (key === 'tags') { if (JSON.stringify(row[key]) !== JSON.stringify(array(value.slice(3)))) return false; }
+      else if (row[key] === null || row[key] === undefined || String(row[key]) !== value.slice(3)) return false;
+    } else if (value.startsWith('in.(')) {
+      if (!value.slice(4, -1).split(',').includes(String(row[key]))) return false;
     } else if (value.startsWith('cs.')) {
       if (!array(value.slice(3)).every((tag) => row[key].includes(tag))) return false;
     } else if (value.startsWith('ilike.')) {
@@ -53,7 +78,7 @@ function matches(row, params) {
 const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, 'http://127.0.0.1:4317');
   res.setHeader('Access-Control-Allow-Origin', 'http://127.0.0.1:4318');
-  res.setHeader('Access-Control-Allow-Headers', 'authorization, apikey, content-type, x-client-info, x-supabase-api-version, prefer, range, range-unit, x-upsert, cache-control');
+  res.setHeader('Access-Control-Allow-Headers', 'authorization, apikey, content-type, x-client-info, x-supabase-api-version, accept-profile, content-profile, prefer, range, range-unit, x-upsert, cache-control');
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PATCH, DELETE, OPTIONS');
   res.setHeader('Access-Control-Expose-Headers', 'Content-Range');
   const event = { method: req.method, path: url.pathname, status: null };
@@ -77,9 +102,10 @@ const server = http.createServer(async (req, res) => {
         const body = json();
         if (body.rules) rules = body.rules;
         if (body.edit) Object.assign(ideas.find((idea) => idea.id === body.edit.id), body.edit);
+        if (body.editRow) { const row = work[body.editRow.table].find((r) => r.id === body.editRow.id); Object.assign(row, body.editRow.changes); touch(row); }
         return reply(200, {});
       }
-      if (url.pathname === '/_test/state') return reply(200, { ideas, files,
+      if (url.pathname === '/_test/state') return reply(200, { ideas, files, work,
         objects: [...objects].map(([path, data]) => ({ path, size: data.length })), events });
       return reply(404, {});
     }
@@ -115,17 +141,55 @@ const server = http.createServer(async (req, res) => {
     const owner = identity.id;
     if (url.pathname.startsWith('/rest/v1/')) {
       const table = url.pathname.slice('/rest/v1/'.length);
-      if (!['ideas', 'idea_files'].includes(table)) return reply(404, {});
-      const rows = table === 'ideas' ? ideas : files;
+      if (!['ideas', 'idea_files', ...WORK_TABLES].includes(table)) return reply(404, {});
+      const isWork = WORK_TABLES.includes(table);
+      const rows = table === 'ideas' ? ideas : table === 'idea_files' ? files : work[table];
       let found = rows.filter((row) => row.user_id === owner && matches(row, url.searchParams));
-      if (req.method === 'POST') {
+      if (isWork && req.method === 'POST') {
+        const body = json(); const additions = Array.isArray(body) ? body : [body];
+        const now = new Date().toISOString();
+        const made = [];
+        for (const input of additions) {
+          if (input.user_id !== owner) return reply(403, { code: '42501', message: 'new row violates row-level security policy' });
+          if (rows.some((r) => r.id === input.id)) return reply(409, { code: '23505', message: 'duplicate key' });
+          const row = { position: 0, ...input, created_at: now, updated_at: now, version: 1 };
+          if (table === 'projects') {
+            Object.assign(row, { stage: 'exploring', publication_status: 'private', summary: '', goals: '', source_idea_id: null, ...input,
+              created_at: now, updated_at: now, version: 1, archived_at: null });
+            if (row.source_idea_id) {
+              if (!ideas.some((i) => i.id === row.source_idea_id && i.user_id === owner)) return reply(409, { code: '23503', message: 'idea fk' });
+              if (work.projects.some((p) => p.source_idea_id === row.source_idea_id)) return reply(409, { code: '23505', message: 'projects_source_idea_key' });
+            }
+          } else if (!work.projects.some((p) => p.id === row.project_id && p.user_id === owner)) {
+            return reply(409, { code: '23503', message: 'project fk' });
+          }
+          if (table === 'story_units') { const problem = levelProblem(row); if (problem) return reply(problem.status, problem.body); }
+          made.push(row);
+        }
+        rows.push(...made); found = made;
+      } else if (isWork && req.method === 'PATCH') {
+        const update = json();
+        for (const key of ['id', 'user_id', 'created_at', 'updated_at', 'version', ...(table === 'projects' ? [] : ['project_id'])]) delete update[key];
+        if (table === 'projects' && update.source_idea_id) delete update.source_idea_id;
+        for (const row of found) {
+          const next = { ...row, ...update };
+          if (table === 'story_units') { const problem = levelProblem(next); if (problem) return reply(problem.status, problem.body); }
+          if (table === 'projects' && 'archived_at' in update) next.archived_at = update.archived_at == null ? null : (row.archived_at ?? new Date().toISOString());
+          Object.assign(row, next); touch(row);
+        }
+      } else if (isWork && req.method === 'DELETE') {
+        if (table === 'story_units' && found.some((u) => work.story_units.some((c) => c.parent_id === u.id))) {
+          return reply(409, { code: '23503', message: 'update or delete on table "story_units" violates foreign key constraint' });
+        }
+        for (const row of found) { rows.splice(rows.indexOf(row), 1); clearLinks(table, row.id); }
+      } else if (req.method === 'POST') {
         const body = json(); const additions = Array.isArray(body) ? body : [body];
         for (const row of additions) {
           if (row.user_id !== owner || (table === 'idea_files' && !ideas.some((idea) => idea.id === row.idea_id && idea.user_id === owner))) return reply(403, { message: 'Fixture ownership denied' });
           if (rows.some((entry) => entry.id === row.id)) return reply(409, { code: '23505', message: 'duplicate key' });
         }
         found = additions.map((row) => ({ id: randomUUID(), created_at: new Date().toISOString(),
-          ...(table === 'ideas' ? { status: 'raw', tags: [], title: null } : {}), ...row,
+          ...(table === 'ideas' ? { status: 'exploring', tags: [], title: null } : {}), ...row,
           // Mirrors migration 004's trigger: the server owns these values.
           ...(table === 'ideas' ? { original_content: row.content, updated_at: null, archived_at: null } : {}) }));
         rows.push(...found);
@@ -143,7 +207,10 @@ const server = http.createServer(async (req, res) => {
         }
       } else if (req.method === 'DELETE') {
         for (const row of found) rows.splice(rows.indexOf(row), 1);
-        if (table === 'ideas') files = files.filter((file) => !found.some((idea) => idea.id === file.idea_id));
+        if (table === 'ideas') {
+          files = files.filter((file) => !found.some((idea) => idea.id === file.idea_id));
+          work.projects.filter((p) => found.some((idea) => idea.id === p.source_idea_id)).forEach((p) => { p.source_idea_id = null; touch(p); });
+        }
       }
       found = [...found].sort((a, b) => b.created_at.localeCompare(a.created_at) || b.id.localeCompare(a.id));
       found = found.slice(Number(url.searchParams.get('offset') ?? 0), Number(url.searchParams.get('offset') ?? 0) + Number(url.searchParams.get('limit') ?? 1000));

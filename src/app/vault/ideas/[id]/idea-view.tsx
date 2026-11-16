@@ -18,6 +18,7 @@ import { FileIcon } from "../../icons";
 import { STATUS_COLOR, STATUS_INFO } from "../../status";
 import { useOnline } from "../../use-online";
 import { useSessionGate } from "../../use-session-gate";
+import ConvertToProject from "./convert-to-project";
 
 const field =
   "w-full rounded-xl border border-line bg-field p-3 text-base text-ink outline-none transition focus:border-accent focus:ring-4 focus:ring-accent/15";
@@ -149,7 +150,7 @@ export default function IdeaView({ ownerId, initial }: { ownerId: string; initia
                   onChange={(e) => setDraft({ ...draft, status: e.target.value })}
                   className={`${field} capitalize`}
                 >
-                  {STATUSES.map((s) => <option key={s} value={s}>{s}</option>)}
+                  {STATUSES.map((s) => <option key={s} value={s}>{STATUS_INFO[s]?.label ?? s}</option>)}
                 </select>
               </label>
               <div className="flex flex-wrap gap-2">
@@ -268,6 +269,7 @@ export default function IdeaView({ ownerId, initial }: { ownerId: string; initia
             </div>
           )}
         </article>
+        {!archived && !editing && <ConvertToProject ownerId={ownerId} idea={idea} />}
       </div>
     </>
   );

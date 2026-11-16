@@ -1246,19 +1246,19 @@ test('locking during replay retains the queue record when an old completion arri
   assert.ok(!JSON.stringify(h.render()).includes('stale replay result'));
 });
 
-test('dashboard stats count existing stages, recent ideas and six UTC months without renaming stages', () => {
+test('dashboard stats count the stored stages (migration 005), recent ideas and six UTC months', () => {
   const { vaultStats } = load('src/lib/vault-stats.ts');
   const now = new Date('2026-11-16T12:00:00Z');
   const stats = vaultStats([
-    { status: 'raw', created_at: '2026-11-15T00:00:00Z' },
-    { status: 'exploring', created_at: '2026-11-01T00:00:00Z' },
+    { status: 'exploring', created_at: '2026-11-15T00:00:00Z' },
+    { status: 'analyzing', created_at: '2026-11-01T00:00:00Z' },
     { status: 'building', created_at: '2026-06-30T23:59:59Z' },
-    { status: 'done', created_at: '2026-06-01T00:00:00Z' },
-    { status: 'done', created_at: '2026-05-31T23:59:59Z' },
+    { status: 'completed', created_at: '2026-06-01T00:00:00Z' },
+    { status: 'completed', created_at: '2026-05-31T23:59:59Z' },
     { status: 'archived', created_at: 'not a date' },
   ], now);
   assert.equal(stats.total, 6);
-  assert.deepEqual({ ...stats.byStage }, { raw: 1, exploring: 1, building: 1, done: 2 });
+  assert.deepEqual({ ...stats.byStage }, { exploring: 1, analyzing: 1, building: 1, completed: 2 });
   assert.equal(stats.other, 1);
   assert.equal(stats.thisWeek, 1);
   assert.deepEqual(Array.from(stats.months, (m) => m.key), ['2026-06', '2026-07', '2026-08', '2026-09', '2026-10', '2026-11']);

@@ -114,7 +114,7 @@ export default function Dashboard({ stats }: { stats: VaultStats }) {
       <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
         <div>
           <h2 id="overview-heading" className="text-2xl font-bold tracking-tight">Workspace overview</h2>
-          <p className="mt-1 text-sm text-muted">Capture ideas and move them from raw to done. Figures refresh each time the vault loads.</p>
+          <p className="mt-1 text-sm text-muted">Capture ideas and move them from exploring to completed. Figures refresh each time the vault loads.</p>
         </div>
         <a href="#ideas" className="rounded-full bg-accent px-5 py-2.5 text-sm font-semibold text-on-accent shadow-sm shadow-accent/30 transition hover:brightness-105">
           + New idea
@@ -123,9 +123,9 @@ export default function Dashboard({ stats }: { stats: VaultStats }) {
 
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         <StatCard label="Ideas" value={stats.total} note={`+${stats.thisWeek} in the last 7 days`} color="var(--accent)" />
-        <StatCard label="Exploring" value={stats.byStage.exploring} note={STATUS_INFO.exploring.blurb} color={STATUS_INFO.exploring.color} />
+        <StatCard label="Analyzing" value={stats.byStage.analyzing} note={STATUS_INFO.analyzing.blurb} color={STATUS_INFO.analyzing.color} />
         <StatCard label="Building" value={stats.byStage.building} note={STATUS_INFO.building.blurb} color={STATUS_INFO.building.color} />
-        <StatCard label="Done" value={stats.byStage.done} note={STATUS_INFO.done.blurb} color={STATUS_INFO.done.color} />
+        <StatCard label="Completed" value={stats.byStage.completed} note={STATUS_INFO.completed.blurb} color={STATUS_INFO.completed.color} />
       </div>
 
       <div className="mt-3 grid gap-3 lg:grid-cols-[1.6fr_1fr]">

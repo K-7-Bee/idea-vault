@@ -6,7 +6,9 @@ export const MAX_FILE_BYTES = 25 * 1024 * 1024;
 // How many ideas load at a time.
 export const PAGE_SIZE = 100;
 
-export const STATUSES = ["raw", "exploring", "building", "done"] as const;
+// Stored stage values since migration 005 (was raw/exploring/building/done). New ideas start at
+// "exploring" via the database default.
+export const STATUSES = ["exploring", "analyzing", "building", "completed"] as const;
 
 // Asks the database for an idea plus the files attached to it.
 export const IDEA_COLUMNS =

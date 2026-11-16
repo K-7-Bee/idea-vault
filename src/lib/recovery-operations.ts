@@ -32,7 +32,7 @@ export async function retainDeletedIdea(client: SupabaseClient, item: QueuedIdea
     id, owner_id: item.owner_id!, kind: "idea", prepared: true, saved_at: new Date().toISOString(), idea: current, queued: item,
   } : previous ?? {
     id, owner_id: item.owner_id!, kind: "idea", saved_at: new Date().toISOString(),
-    idea: { id: item.id, content: item.content, tags: item.tags, status: "raw", created_at: item.created_at, files: [] }, queued: item,
+    idea: { id: item.id, content: item.content, tags: item.tags, status: "exploring", created_at: item.created_at, files: [] }, queued: item,
   });
   validate(record, item.owner_id!);
   await saveRecovery(record);

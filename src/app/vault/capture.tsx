@@ -61,7 +61,7 @@ function queuedToView(q: QueuedIdea): ViewIdea {
   return {
     id: q.id,
     content: q.content,
-    status: "raw",
+    status: "exploring", // database default for new ideas (migration 005)
     tags: q.tags,
     created_at: q.created_at,
     files: [],
@@ -123,7 +123,7 @@ const BURST = Array.from({ length: 14 }, (_, i) => {
   return {
     dx: `${Math.round(Math.cos(angle) * reach)}px`,
     dy: `${Math.round(Math.sin(angle) * reach)}px`,
-    color: ["var(--accent)", "var(--status-exploring)", "var(--status-building)", "var(--status-done)"][i % 4],
+    color: ["var(--accent)", "var(--status-analyzing)", "var(--status-building)", "var(--status-completed)"][i % 4],
   };
 });
 
@@ -543,7 +543,7 @@ export default function Capture({
         const fresh = queued.filter((q) => !q.deleted && !have.has(q.id));
         if (fresh.length) {
           setIdeas((list) => [...fresh.map(queuedToView).reverse(), ...list]);
-          for (const q of fresh) track(q.id, { status: "raw", created_at: q.created_at });
+          for (const q of fresh) track(q.id, { status: "exploring", created_at: q.created_at });
           setTagCounts((c) => {
             const next = { ...c };
             for (const q of fresh) for (const t of q.tags) next[t] = (next[t] ?? 0) + 1;
@@ -792,7 +792,7 @@ export default function Capture({
     const shown = queuedToView(item);
     if (matchesFilters(shown)) setIdeas((list) => [shown, ...list]);
     adjustTagCounts([], tags);
-    track(item.id, { status: "raw", created_at: item.created_at });
+    track(item.id, { status: "exploring", created_at: item.created_at });
     setFreshId(item.id);
     const pick = CHEERS[Math.floor(Math.random() * CHEERS.length)];
     setCheer({ key: Date.now(), text: `${pick} That's idea #${meta.size + 1}.` });
@@ -1553,7 +1553,7 @@ export default function Capture({
                   >
                     {STATUSES.map((s) => (
                       <option key={s} value={s}>
-                        {s}
+                        {STATUS_INFO[s]?.label ?? s}
                       </option>
                     ))}
                   </select>

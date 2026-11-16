@@ -47,10 +47,10 @@
   --accent: #ff6b35;
   --on-accent: #1b0d05;
   --accent-soft: #fde3cf;
-  --status-raw: #c9a27e;
-  --status-exploring: #1a659e;
+  --status-exploring: #c9a27e;
+  --status-analyzing: #1a659e;
   --status-building: #ff6b35;
-  --status-done: #12a37a;
+  --status-completed: #12a37a;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -68,10 +68,10 @@
     --accent: #ff6b35;
     --on-accent: #1b0d05;
     --accent-soft: #3a2218;
-    --status-raw: #f7c59f;
-    --status-exploring: #4f9fdc;
+    --status-exploring: #f7c59f;
+    --status-analyzing: #4f9fdc;
     --status-building: #ff6b35;
-    --status-done: #34d399;
+    --status-completed: #34d399;
   }
 }
 

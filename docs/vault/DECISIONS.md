@@ -27,3 +27,10 @@ Retain Next/Tailwind/Supabase and password login; add schema incrementally. Reta
 | V-010 | Phase 5 | AI provider/model, monthly ceiling, context consent and provider retention? Leave disabled until explicit configuration; only selected files/notes and reviewed mutations. | |
 
 Record each answer with date, conversation/file source, authorized scope and resulting follow-up. Later OAuth consent does not authorize Drive-wide indexing, public sharing, destructive file operations or AI access to every file.
+
+## Phase 2 decisions (2026-11-17, in conversation)
+
+| ID | Question | Answer |
+| --- | --- | --- |
+| V-011 | The spec says "maintain current stages Exploring → Analyzing → Building → Completed", but stored stages were raw/exploring/building/done. Relabel, keep, or migrate? | Migrate stored values (raw→exploring, exploring→analyzing, building, done→completed). See `supabase/005_idea_stages.sql`. |
+| V-012 | Phase 2 scope? | 2A projects + 2B Engineering Lab + 2C Story Studio (text/structure). Drive, Gemini, Portfolio Manager and public publishing remain later phases. |

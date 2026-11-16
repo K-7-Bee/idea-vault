@@ -1,7 +1,7 @@
 // Read-only summaries for the Vault dashboard, computed from the idea index the page already loads.
-// No stage is renamed or inferred: counts use the existing raw/exploring/building/done values.
+// Counts use the stored stage values exactly (migration 005: exploring/analyzing/building/completed).
 
-export const DASHBOARD_STAGES = ["raw", "exploring", "building", "done"] as const;
+export const DASHBOARD_STAGES = ["exploring", "analyzing", "building", "completed"] as const;
 export type DashboardStage = (typeof DASHBOARD_STAGES)[number];
 
 export type IdeaMeta = { status: string; created_at: string };
@@ -20,7 +20,7 @@ const WEEK = 7 * 24 * 60 * 60 * 1000;
 const MONTH_LABEL = new Intl.DateTimeFormat("en", { month: "short", timeZone: "UTC" });
 
 export function vaultStats(rows: IdeaMeta[], now: Date, monthCount = 6): VaultStats {
-  const byStage = { raw: 0, exploring: 0, building: 0, done: 0 } as Record<DashboardStage, number>;
+  const byStage = { exploring: 0, analyzing: 0, building: 0, completed: 0 } as Record<DashboardStage, number>;
   let other = 0;
   let thisWeek = 0;
 
