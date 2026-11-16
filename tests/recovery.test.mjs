@@ -145,3 +145,20 @@ test('tag predicates escape PostgreSQL array punctuation, quotes and backslashes
   const h = harness();
   assert.equal(h.api.tagsFilter(['comma,tag', 'brace}', 'quote"', 'slash\\']), '{"comma,tag","brace}","quote\\\"","slash\\\\"}');
 });
+
+test('a recovery record saved before the stage rename (raw/done) can still finish an interrupted restore', async () => {
+  for (const [legacy, stored] of [['raw', 'exploring'], ['done', 'completed']]) {
+    const h = harness();
+    // The idea row was restored already (the database translated its stage); one attachment is still missing.
+    h.state.idea = { ...structuredClone(idea), status: stored, files: [] };
+    const record = { id: 'idea', owner_id: 'owner', kind: 'idea', saved_at: idea.created_at, idea: { ...structuredClone(idea), status: legacy } };
+    await h.api.restoreRecovery(h.client, record, 'owner', h.verify);
+    assert.equal(h.state.idea.files.length, 1, `${legacy} record finishes the restore`);
+  }
+  assert.equal(load({}).currentStage('exploring'), 'exploring');
+  // A genuinely different stage is still refused.
+  const h = harness();
+  h.state.idea = { ...structuredClone(idea), status: 'analyzing', files: [] };
+  const record = { id: 'idea', owner_id: 'owner', kind: 'idea', saved_at: idea.created_at, idea: { ...structuredClone(idea), status: 'done' } };
+  await assert.rejects(h.api.restoreRecovery(h.client, record, 'owner', h.verify), /different saved version/);
+});

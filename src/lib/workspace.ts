@@ -272,6 +272,9 @@ export function cleanValues(config: TableConfig, input: Record<string, unknown>)
         values[field.name] = field.kind === "textarea" ? String(raw).replace(/\s+$/, "") : text;
     }
   }
+  if (config.table === "story_relationships" && values.from_character_id === values.to_character_id) {
+    return { ok: false, message: "Choose two different characters." };
+  }
   return { ok: true, values };
 }
 

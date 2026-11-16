@@ -101,7 +101,7 @@ export default function ProjectWorkspace({ ownerId, initialProject, initialRecor
   function update(table: TableName, change: (rows: Row[]) => Row[]) {
     setRecords((all) => ({ ...all, [table]: change(all[table]) }));
   }
-  function reload(tables: TableName[]) {
+  function reload(tables: TableName[], done: string) {
     void run(async (client): Promise<Outcome<Partial<Records>>> => {
       try {
         const results = await Promise.all(tables.map((t) => client.from(t).select("*").eq("project_id", project.id).eq("user_id", ownerId).limit(1000)));
@@ -110,7 +110,7 @@ export default function ProjectWorkspace({ ownerId, initialProject, initialRecor
       } catch {
         return { ok: false, reason: "failed", message: "Couldn't refresh linked records. Reload the page." };
       }
-    }, null, (fresh) => setRecords((all) => ({ ...all, ...fresh })));
+    }, done, (fresh) => setRecords((all) => ({ ...all, ...fresh })));
   }
 
   const next = nextAction(records.project_tasks);

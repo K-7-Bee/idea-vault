@@ -70,13 +70,19 @@ function sameFile(a: RecoveryFile, b: RecoveryFile) {
   return a.path === b.path && a.name === b.name && a.mime_type === b.mime_type && Number(a.size) === Number(b.size);
 }
 
+// Recovery records saved before migration 005 may hold "raw" or "done"; the database stores
+// them as "exploring" and "completed". (A legacy "exploring" is ambiguous and stays as is.)
+export function currentStage(status: string) {
+  return status === "raw" ? "exploring" : status === "done" ? "completed" : status;
+}
+
 export async function restoreRecovery(client: SupabaseClient, record: RecoveryRecord, ownerId: string, verify: Verify) {
   validate(record, ownerId);
   await verify();
   const result = await client.from("ideas").select(COLUMNS).eq("id", record.idea.id).eq("user_id", ownerId).maybeSingle();
   check(result.error);
   const current = result.data as unknown as RawIdea | null;
-  if (record.kind === "idea" && current && (current.content !== record.idea.content || current.status !== record.idea.status ||
+  if (record.kind === "idea" && current && (current.content !== record.idea.content || current.status !== currentStage(record.idea.status) ||
       JSON.stringify(current.tags) !== JSON.stringify(record.idea.tags) || current.created_at !== record.idea.created_at)) {
     throw new Error("A different saved version of this idea exists. Recovery will not overwrite it.");
   }

@@ -90,6 +90,8 @@ test('cleanValues validates and normalises form input without guessing', () => {
 
   const relationships = ws.TABLES.story_relationships;
   assert.match(ws.cleanValues(relationships, { relationship: 'sister', to_character_id: 'b' }).message, /Character is required/);
+  assert.match(ws.cleanValues(relationships, { from_character_id: 'a', relationship: 'self', to_character_id: 'a' }).message, /two different characters/);
+  assert.equal(ws.cleanValues(relationships, { from_character_id: 'a', relationship: 'sister of', to_character_id: 'b' }).ok, true);
 });
 
 test('unitPath gives the exact scene/shot reference and survives broken parents', () => {

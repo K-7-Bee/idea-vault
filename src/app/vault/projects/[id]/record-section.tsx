@@ -171,7 +171,7 @@ function rowTitle(config: TableConfig, row: Row, records: Records) {
 export default function RecordSection({ table, records, ownerId, projectId, writer, update, reload, intro, layout = "list" }: {
   table: TableName; records: Records; ownerId: string; projectId: string; writer: Writer;
   update: (table: TableName, change: (rows: Row[]) => Row[]) => void;
-  reload: (tables: TableName[]) => void;
+  reload: (tables: TableName[], done: string) => void;
   intro?: string; layout?: "list" | "board" | "tree";
 }) {
   const config = TABLES[table];
@@ -208,7 +208,7 @@ export default function RecordSection({ table, records, ownerId, projectId, writ
     void writer.run((c) => deleteRecord(c, table, ownerId, row), `Deleted ${label}.`, () => {
       update(table, (list) => list.filter((r) => r.id !== row.id));
       const dependents = DEPENDENTS[table];
-      if (dependents) reload(dependents);
+      if (dependents) reload(dependents, `Deleted ${label}.`);
     });
   }
   function swap(a: Row, b: Row) {
@@ -325,7 +325,8 @@ export default function RecordSection({ table, records, ownerId, projectId, writ
       </div>
       {blockedReason && <p className="mb-3 text-sm text-muted">{blockedReason}</p>}
       {adding && (
-        <div className="mb-4">
+        // Scrolls the form into view when it opens, e.g. from "+ Add inside" further down the list.
+        <div className="mb-4 scroll-mt-4" ref={(el) => el?.scrollIntoView({ block: "nearest" })}>
           <RecordForm config={config} records={records} draft={adding} setDraft={setAdding} selfId={null}
             submitLabel={`Add ${label}`} writer={writer} onSubmit={() => add(adding)} onCancel={() => setAdding(null)} />
         </div>
