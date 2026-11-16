@@ -3,6 +3,7 @@
 
 type QueuedFile = { id: string; file: File };
 export type QueuedIdea = {
+  owner_id?: string;
   id: string;
   content: string;
   tags: string[];
@@ -10,6 +11,11 @@ export type QueuedIdea = {
   files: QueuedFile[];
   deleted?: boolean;
 };
+
+// Legacy/foreign records are retained byte-for-byte, never assigned to this login.
+export function ownedQueue(items: QueuedIdea[], ownerId: string): QueuedIdea[] {
+  return items.filter((item) => !!ownerId && item.owner_id === ownerId);
+}
 
 const DB_NAME = "idea-vault";
 const STORE = "outbox";

@@ -12,6 +12,8 @@ export function useRecorder(onDone: (file: File) => void, onError: (message: str
   const starting = useRef(false);
   const discard = useRef(false);
   const unmounted = useRef(false);
+  const suspended = useRef(false);
+  const permissionGeneration = useRef(0);
   const callbacks = useRef({ onDone, onError });
 
   useEffect(() => {
@@ -36,7 +38,8 @@ export function useRecorder(onDone: (file: File) => void, onError: (message: str
   }, [recording]);
 
   async function start() {
-    if (starting.current || recorder.current) return;
+    if (suspended.current || starting.current || recorder.current) return;
+    const generation = permissionGeneration.current;
     if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === "undefined") {
       callbacks.current.onError("This browser can't record audio.");
       return;
@@ -51,7 +54,7 @@ export function useRecorder(onDone: (file: File) => void, onError: (message: str
       return;
     }
     // You left the page while the permission prompt was open: release the microphone.
-    if (unmounted.current) {
+    if (unmounted.current || suspended.current || generation !== permissionGeneration.current) {
       starting.current = false;
       stream.getTracks().forEach((t) => t.stop());
       return;
@@ -100,5 +103,14 @@ export function useRecorder(onDone: (file: File) => void, onError: (message: str
     stop();
   }
 
-  return { recording, seconds, start, stop, cancel };
+  // Stop normally so completed chunks reach the owner's retained pending files.
+  function suspend() {
+    suspended.current = true;
+    permissionGeneration.current++;
+    stop();
+  }
+
+  function resume() { suspended.current = false; }
+
+  return { recording, seconds, start, stop, cancel, suspend, resume };
 }

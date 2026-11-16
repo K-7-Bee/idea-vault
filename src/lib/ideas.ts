@@ -37,14 +37,19 @@ export async function signFiles(
   rows: FileRow[],
 ): Promise<FileItem[]> {
   if (rows.length === 0) return [];
-  const { data } = await supabase.storage
-    .from(BUCKET)
-    .createSignedUrls(
-      rows.map((r) => r.path),
-      3600,
-    );
   const urls = new Map<string, string>();
-  for (const d of data ?? []) if (d.path && d.signedUrl) urls.set(d.path, d.signedUrl);
+  try {
+    const { data, error } = await supabase.storage
+      .from(BUCKET)
+      .createSignedUrls(rows.map((r) => r.path), 3600);
+    if (!error) {
+      for (const d of data ?? []) {
+        if (!d.error && d.path && d.signedUrl) urls.set(d.path, d.signedUrl);
+      }
+    }
+  } catch {
+    // A failed link request must not hide saved ideas or their file metadata.
+  }
   return rows.map((r) => ({ ...r, url: urls.get(r.path) ?? null }));
 }
 

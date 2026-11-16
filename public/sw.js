@@ -1,22 +1,13 @@
-// Lets the vault open with no connection.
-// - Page code and icons: saved the first time they load, then served from the phone.
-// - The /vault page: always fetched fresh when online; the last copy is used when offline.
-// Saving ideas offline is handled by the page itself (an on-device outbox), not here.
+// Cache static assets only. Private navigation requires a network response.
+// Already-open offline capture uses the page's on-device outbox.
 const VERSION = "v1";
 const ASSETS = `vault-assets-${VERSION}`;
-const PAGES = `vault-pages-${VERSION}`;
 
 self.addEventListener("install", () => self.skipWaiting());
 
 self.addEventListener("activate", (event) => {
-  event.waitUntil(
-    (async () => {
-      for (const key of await caches.keys()) {
-        if (key !== ASSETS && key !== PAGES) await caches.delete(key);
-      }
-      await self.clients.claim();
-    })(),
-  );
+  // Retain existing caches; legacy private HTML is never read by this worker.
+  event.waitUntil(self.clients.claim());
 });
 
 self.addEventListener("fetch", (event) => {
@@ -32,7 +23,7 @@ self.addEventListener("fetch", (event) => {
   ) {
     event.respondWith(cacheFirst(request));
   } else if (request.mode === "navigate") {
-    event.respondWith(networkFirstPage(event, url));
+    event.respondWith(networkPage(request, url));
   }
 });
 
@@ -45,23 +36,16 @@ async function cacheFirst(request) {
   return response;
 }
 
-async function networkFirstPage(event, url) {
+async function networkPage(request, url) {
+  const isPrivate = url.pathname === "/vault" || url.pathname.startsWith("/vault/");
   try {
-    const response = await fetch(event.request);
-    // Keep a copy of the vault page, but never a login redirect or an error.
-    if (url.pathname === "/vault" && response.ok && !response.redirected) {
-      const copy = response.clone();
-      event.waitUntil(caches.open(PAGES).then((cache) => cache.put("/vault", copy)));
-    }
-    return response;
+    return await (isPrivate ? fetch(request, { cache: "no-store" }) : fetch(request));
   } catch {
-    if (url.pathname === "/vault") {
-      const cached = await caches.match("/vault", { cacheName: PAGES });
-      if (cached) return cached;
-    }
-    return new Response("You're offline, and this page hasn't been saved on this device yet.", {
+    return new Response(isPrivate
+      ? "You're offline. Connect to the internet to open the Vault."
+      : "You're offline, and this page hasn't been saved on this device yet.", {
       status: 503,
-      headers: { "Content-Type": "text/plain; charset=utf-8" },
+      headers: { "Content-Type": "text/plain; charset=utf-8", "Cache-Control": "no-store" },
     });
   }
 }

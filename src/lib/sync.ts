@@ -4,6 +4,22 @@ import type { QueuedIdea } from "./outbox";
 
 // Thrown when there's simply no connection, so the idea should stay queued and retry later.
 export class NetworkError extends Error {}
+export class QueueOwnerError extends Error {}
+
+function assertActive(active: () => boolean) {
+  if (!active()) throw new QueueOwnerError("Sync paused. Your local work is preserved.");
+}
+
+async function verifyOwner(supabase: SupabaseClient, item: QueuedIdea, active: () => boolean) {
+  assertActive(active);
+  if (!item.owner_id) throw new QueueOwnerError("Local work is preserved and awaiting ownership review.");
+  try {
+    const { data, error } = await supabase.auth.getUser();
+    if (!active() || error || !data.user || data.user.id !== item.owner_id) throw new Error();
+  } catch {
+    throw new QueueOwnerError("Sync paused. Log in as this capture's owner to retry.");
+  }
+}
 
 export function looksOffline(message: string) {
   return /failed to fetch|load failed|networkerror|network request failed|fetch failed/i.test(message);
@@ -19,20 +35,31 @@ function check(error: Failure, allowDuplicate = false) {
 }
 
 // Keep the queue's deletion marker until both storage and the database are clean.
-export async function deleteSavedIdea(supabase: SupabaseClient, item: QueuedIdea) {
+export async function deleteSavedIdea(supabase: SupabaseClient, item: QueuedIdea, active = () => true) {
+  await verifyOwner(supabase, item, active);
+  assertActive(active);
   const records = await supabase.from("idea_files").select("path").eq("idea_id", item.id);
+  assertActive(active);
   check(records.error);
   const paths = new Set((records.data ?? []).map((file) => file.path));
   if (item.files.length) {
-    const { data, error } = await supabase.auth.getUser();
-    check(error);
-    if (!data.user) throw new Error("Log in again to finish deleting.");
     for (const { id, file } of item.files) {
-      paths.add(`${data.user.id}/${item.id}/${id}-${safeFileName(file.name)}`);
+      paths.add(`${item.owner_id}/${item.id}/${id}-${safeFileName(file.name)}`);
     }
   }
-  if (paths.size) check((await supabase.storage.from(BUCKET).remove([...paths])).error);
-  check((await supabase.from("ideas").delete().eq("id", item.id)).error);
+  if ([...paths].some((path) => !path.startsWith(`${item.owner_id}/${item.id}/`))) {
+    throw new QueueOwnerError("Deletion paused: file ownership could not be verified.");
+  }
+  if (paths.size) {
+    await verifyOwner(supabase, item, active);
+    assertActive(active);
+    check((await supabase.storage.from(BUCKET).remove([...paths])).error);
+  }
+  await verifyOwner(supabase, item, active);
+  assertActive(active);
+  check((await supabase.from("ideas").delete().eq("id", item.id).eq("user_id", item.owner_id)).error);
+  await verifyOwner(supabase, item, active);
+  assertActive(active);
 }
 
 // Sends one queued idea (and its files) to Supabase. Safe to run again after a failure:
@@ -40,8 +67,12 @@ export async function deleteSavedIdea(supabase: SupabaseClient, item: QueuedIdea
 export async function pushIdea(
   supabase: SupabaseClient,
   item: QueuedIdea,
+  active = () => true,
 ): Promise<{ idea: Idea; failures: string[] }> {
+  await verifyOwner(supabase, item, active);
+  assertActive(active);
   const added = await supabase.from("ideas").insert({
+    user_id: item.owner_id,
     id: item.id,
     content: item.content,
     tags: item.tags,
@@ -51,18 +82,19 @@ export async function pushIdea(
 
   const failures: string[] = [];
   if (item.files.length) {
-    const { data } = await supabase.auth.getSession();
-    const userId = data.session?.user.id;
-    if (!userId) throw new Error("Log in again to finish syncing.");
-
     for (const { id, file } of item.files) {
-      const path = `${userId}/${item.id}/${id}-${safeFileName(file.name)}`;
+      const path = `${item.owner_id}/${item.id}/${id}-${safeFileName(file.name)}`;
       try {
+        await verifyOwner(supabase, item, active);
+        assertActive(active);
         const up = await supabase.storage
           .from(BUCKET)
           .upload(path, file, { contentType: file.type || undefined });
         check(up.error, true);
+        await verifyOwner(supabase, item, active);
+        assertActive(active);
         const rec = await supabase.from("idea_files").insert({
+          user_id: item.owner_id,
           id,
           idea_id: item.id,
           path,
@@ -72,14 +104,20 @@ export async function pushIdea(
         });
         check(rec.error, true);
       } catch (e) {
-        if (e instanceof NetworkError) throw e;
+        if (e instanceof NetworkError || e instanceof QueueOwnerError) throw e;
         failures.push(`${file.name}: ${e instanceof Error ? e.message : "could not save"}`);
       }
     }
   }
 
+  await verifyOwner(supabase, item, active);
+  assertActive(active);
   const saved = await supabase.from("ideas").select(IDEA_COLUMNS).eq("id", item.id).single();
   check(saved.error);
+  await verifyOwner(supabase, item, active);
+  assertActive(active);
   const [idea] = await withFileUrls(supabase, [saved.data as unknown as RawIdea]);
+  await verifyOwner(supabase, item, active);
+  assertActive(active);
   return { idea, failures };
 }

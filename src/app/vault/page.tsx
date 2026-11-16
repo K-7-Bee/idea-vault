@@ -1,36 +1,26 @@
 import { Suspense } from "react";
 import { createClient } from "@/lib/supabase/server";
 import { IDEA_COLUMNS, PAGE_SIZE, withFileUrls, type RawIdea } from "@/lib/ideas";
+import { vaultStats } from "@/lib/vault-stats";
 import Capture from "./capture";
-import LogoutButton from "./logout-button";
-import { serif } from "./fonts";
-import { SparkIcon } from "./icons";
+import Dashboard from "./dashboard";
+import VaultSidebar, { VaultTopBar } from "./sidebar";
 
 export default function VaultPage() {
   return (
-    <div className="vault min-h-screen text-foreground">
-      <main id="main-content" tabIndex={-1} className="mx-auto max-w-6xl px-4 pb-16 pt-6 sm:px-6 sm:pt-10">
-        <header className="mb-6 flex items-center justify-between gap-4">
-          <div className="flex items-center gap-3">
-            <span className="grid h-10 w-10 place-items-center rounded-xl bg-accent text-on-accent shadow-sm shadow-accent/30">
-              <SparkIcon />
-            </span>
-            <div>
-              <h1 className={`${serif.className} text-3xl leading-none tracking-tight`}>
-                Idea Vault
-              </h1>
-              <p className="mt-1 text-sm text-muted">Catch it before it&apos;s gone.</p>
-            </div>
-          </div>
-          <LogoutButton />
-        </header>
-        {/* Reads your login cookie, so it loads at request time behind a boundary. */}
-        <Suspense
-          fallback={<div className="h-40 animate-pulse rounded-2xl border border-line bg-card" />}
-        >
-          <VaultContent />
-        </Suspense>
-      </main>
+    <div className="vault flex min-h-screen text-foreground">
+      <VaultSidebar />
+      <div className="min-w-0 flex-1">
+        <VaultTopBar />
+        <main id="main-content" tabIndex={-1} className="mx-auto max-w-6xl px-4 pb-16 pt-6 sm:px-6 sm:pt-8">
+          {/* Reads your login cookie, so it loads at request time behind a boundary. */}
+          <Suspense
+            fallback={<div className="h-40 animate-pulse rounded-2xl border border-line bg-card" />}
+          >
+            <VaultContent />
+          </Suspense>
+        </main>
+      </div>
     </div>
   );
 }
@@ -56,6 +46,12 @@ async function ideaIndex(supabase: Awaited<ReturnType<typeof createClient>>) {
 
 async function VaultContent() {
   const supabase = await createClient();
+  const identity = await supabase.auth.getUser().catch(() => null);
+  const user = identity?.data.user;
+  const allowed = process.env.ALLOWED_EMAIL?.trim().toLowerCase();
+  if (identity?.error || !user || !allowed || user.email?.toLowerCase() !== allowed) {
+    return <section role="alert">Unable to verify your account. <a href="/login">Log in again</a></section>;
+  }
   const result = await Promise.all([
     supabase
       .from("ideas")
@@ -83,11 +79,20 @@ async function VaultContent() {
 
   const [ideas, index] = result;
 
+  const initial = await withFileUrls(supabase, ideas.data as unknown as RawIdea[]);
+
   return (
-    <Capture
-      initial={await withFileUrls(supabase, ideas.data as unknown as RawIdea[])}
-      initialTags={index.map((r) => r.tags)}
-      initialMeta={index.map(({ id, status, created_at }) => ({ id, status, created_at }))}
-    />
+    <>
+      <Dashboard stats={vaultStats(index, new Date())} />
+      <section id="ideas" aria-label="Ideas" className="scroll-mt-6">
+        <Capture
+          key={user.id}
+          ownerId={user.id}
+          initial={initial}
+          initialTags={index.map((r) => r.tags)}
+          initialMeta={index.map(({ id, status, created_at }) => ({ id, status, created_at }))}
+        />
+      </section>
+    </>
   );
 }

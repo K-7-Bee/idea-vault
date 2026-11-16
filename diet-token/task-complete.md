@@ -12,3 +12,5 @@ evidence: the command that was run and its result, "diff reviewed",
 commit:   short hash, or "uncommitted"
 -->
 L | 2026-11-15 | verified | Fixed lint conditional and resolved build network failure | npm.cmd run lint clean; npm.cmd run build passed with network access; diff reviewed | uncommitted
+T5 | 2026-11-16 | tested | Phase B public portfolio redesign from owner demo + background; demos archived | npm test 60/60, tsc, eslint, build, headless screenshots | 53d4688
+T6 | 2026-11-16 | tested | Vault UI dashboard shell + Idea Vault palette (UI-only, existing stages) | npm test 61/61, tsc, eslint, build, headless screenshots of synthetic preview | uncommitted (shares files with pending R2 work)

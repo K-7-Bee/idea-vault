@@ -5,9 +5,10 @@ import { createClient } from "@/lib/supabase/client";
 import { extractTags, splitTags } from "@/lib/tags";
 import { useRecorder } from "./use-recorder";
 import { useLocalValue } from "./use-local-value";
+import { useSessionGate } from "./use-session-gate";
 import { useOnline } from "./use-online";
-import { addQueued, listQueued, removeQueued, type QueuedIdea } from "@/lib/outbox";
-import { NetworkError, looksOffline, pushIdea, deleteSavedIdea } from "@/lib/sync";
+import { addQueued, listQueued, ownedQueue, removeQueued, type QueuedIdea } from "@/lib/outbox";
+import { NetworkError, QueueOwnerError, looksOffline, pushIdea, deleteSavedIdea } from "@/lib/sync";
 import {
   BoardIcon,
   ChipIcon,
@@ -70,21 +71,29 @@ function queuedToView(q: QueuedIdea): ViewIdea {
 const REFRESH_AFTER_MS = 45 * 60 * 1000;
 
 // One page of ideas (newest first) matching the filters, starting after `before`.
-function searchIdeas(
+async function searchIdeas(
   supabase: SupabaseClient,
   f: { term: string; tag: string | null; status: string | null; before?: { created_at: string; id: string } },
 ) {
-  let q = supabase
-    .from("ideas")
-    .select(IDEA_COLUMNS)
-    .order("created_at", { ascending: false })
-    .order("id", { ascending: false })
-    .limit(PAGE_SIZE);
-  if (f.term) q = q.ilike("content", `%${f.term.replace(/[\\%_]/g, "\\$&")}%`);
-  if (f.tag) q = q.contains("tags", [f.tag]);
-  if (f.status) q = q.eq("status", f.status);
-  if (f.before) q = q.or(`created_at.lt.${f.before.created_at},and(created_at.eq.${f.before.created_at},id.lt.${f.before.id})`);
-  return q;
+  try {
+    let q = supabase
+      .from("ideas")
+      .select(IDEA_COLUMNS)
+      .order("created_at", { ascending: false })
+      .order("id", { ascending: false })
+      .limit(PAGE_SIZE);
+    if (f.term) q = q.ilike("content", `%${f.term.replace(/[\\%_]/g, "\\$&")}%`);
+    if (f.tag) q = q.contains("tags", [f.tag]);
+    if (f.status) q = q.eq("status", f.status);
+    if (f.before) q = q.or(`created_at.lt.${f.before.created_at},and(created_at.eq.${f.before.created_at},id.lt.${f.before.id})`);
+    const result = await q;
+    if (result.error || !result.data) {
+      return { data: null, error: { message: "Unable to load ideas. Please try again." } };
+    }
+    return { data: result.data, error: null };
+  } catch {
+    return { data: null, error: { message: "Unable to load ideas. Please try again." } };
+  }
 }
 
 // Just enough about each idea to count folders and work out the streak.
@@ -121,10 +130,12 @@ function countTags(lists: string[][]) {
 }
 
 export default function Capture({
+  ownerId,
   initial,
   initialTags,
   initialMeta,
 }: {
+  ownerId: string;
   initial: Idea[];
   initialTags: string[][];
   initialMeta: Meta[];
@@ -135,7 +146,7 @@ export default function Capture({
   const [cheer, setCheer] = useState<{ key: number; text: string } | null>(null);
   const [freshId, setFreshId] = useState<string | null>(null);
   const [promptIndex, setPromptIndex] = useState(() => initial.length % PROMPTS.length);
-  const [text, setText] = useLocalValue("vault-draft", "");
+  const [text, setText] = useLocalValue(`vault-draft:${ownerId}`, "");
   const [view, setView] = useLocalValue("vault-view", "list");
   const grid = view === "grid";
   const online = useOnline();
@@ -143,7 +154,12 @@ export default function Capture({
   const [hasMore, setHasMore] = useState(initial.length >= PAGE_SIZE);
   const [loadingMore, setLoadingMore] = useState(false);
   const [pending, setPending] = useState<File[]>([]);
+  const [interruptedUpload, setInterruptedUpload] = useState(false);
+  const activeUploads = useRef(new Set<{ files: File[] }>());
   const [error, setError] = useState("");
+  const [preservedWork, setPreservedWork] = useState(false);
+  const [signingId, setSigningId] = useState<string | null>(null);
+  const signingPending = useRef(false);
   const [query, setQuery] = useState("");
   const [activeTag, setActiveTag] = useState<string | null>(null);
   const [activeStatus, setActiveStatus] = useState<string | null>(null);
@@ -163,6 +179,39 @@ export default function Capture({
   const deletedIds = useRef(new Set<string>());
   const syncRef = useRef<() => Promise<void>>(async () => {});
 
+  const workspace = useRef<HTMLDivElement>(null);
+  const pauseRecording = useRef<() => void>(() => {});
+  const { gate, locked, retry: retrySession } = useSessionGate(ownerId, (isLocked) => {
+    if (workspace.current) {
+      workspace.current.hidden = isLocked;
+      workspace.current.inert = isLocked;
+      workspace.current.style.display = isLocked ? "none" : "";
+      if (isLocked) workspace.current.querySelectorAll("audio, video").forEach((media) => (media as HTMLMediaElement).pause());
+    }
+    if (isLocked) {
+      pauseRecording.current();
+      if (activeUploads.current.size) {
+        const files = [...activeUploads.current].flatMap((upload) => upload.files);
+        setPending((pendingFiles) => [...new Set([...pendingFiles, ...files])]);
+        setInterruptedUpload(true);
+        setIdeas((list) => list.map((idea) => idea.uploading ? { ...idea, uploading: undefined } : idea));
+      }
+    }
+  });
+
+  async function remote(ticket: number) {
+    if (!gate.valid(ticket)) throw new QueueOwnerError("Session verification required.");
+    if (navigator.onLine === false) throw new NetworkError("You are offline.");
+    try {
+      const identity = await createClient().auth.getUser();
+      if (!gate.valid(ticket)) throw new Error();
+      if (identity.error || identity.data.user?.id !== ownerId) { gate.lock(); throw new Error(); }
+    } catch {
+      if (gate.valid(ticket)) gate.lock();
+      throw new QueueOwnerError("Session verification required. Your work is preserved.");
+    }
+  }
+
   const filtering = query.trim() !== "" || activeTag !== null || activeStatus !== null;
 
   // Re-run the search whenever the search box or the chosen tag changes.
@@ -172,19 +221,21 @@ export default function Capture({
       return;
     }
     const id = ++requestId.current;
+    const ticket = gate.ticket();
     const timer = setTimeout(async () => {
+      if (!gate.valid(ticket)) return;
       const supabase = createClient();
       const { data, error } = await searchIdeas(supabase, {
         term: query.trim(),
         tag: activeTag,
         status: activeStatus,
       });
-      if (id !== requestId.current) return; // a newer search replaced this one
+      if (!gate.valid(ticket) || id !== requestId.current) return; // a newer search replaced this one
       if (error) {
         setError(looksOffline(error.message) ? "You're offline. Search needs a connection." : error.message);
       } else {
         const withUrls = await withFileUrls(supabase, (data ?? []) as unknown as RawIdea[]);
-        if (id === requestId.current) {
+        if (gate.valid(ticket) && id === requestId.current) {
           // Ideas still waiting to sync aren't on the server yet; keep the ones that match.
           const term = query.trim().toLowerCase();
           const ids = new Set(withUrls.map((i) => i.id));
@@ -202,9 +253,11 @@ export default function Capture({
       }
     }, 250);
     return () => clearTimeout(timer);
-  }, [query, activeTag, activeStatus]);
+  }, [query, activeTag, activeStatus, gate, locked]);
 
   async function loadMore() {
+    if (!gate.allowed()) return;
+    const ticket = gate.ticket();
     const last = [...ideas].reverse().find((i) => !i.waiting);
     if (!last || loadingMore) return;
     const id = requestId.current;
@@ -217,11 +270,15 @@ export default function Capture({
       status: activeStatus,
       before: { created_at: last.created_at, id: last.id },
     });
+    if (!gate.valid(ticket) || id !== requestId.current) {
+      setLoadingMore(false);
+      return;
+    }
     if (error) {
       setError(error.message);
-    } else if (id === requestId.current) {
+    } else if (gate.valid(ticket) && id === requestId.current) {
       const more = await withFileUrls(supabase, (data ?? []) as unknown as RawIdea[]);
-      if (id !== requestId.current) {
+      if (!gate.valid(ticket) || id !== requestId.current) {
         setLoadingMore(false);
         return;
       }
@@ -234,6 +291,29 @@ export default function Capture({
     setLoadingMore(false);
   }
 
+  async function retryFileLinks(idea: ViewIdea) {
+    if (!gate.allowed()) return;
+    const ticket = gate.ticket();
+    if (signingPending.current) return;
+    signingPending.current = true;
+    setSigningId(idea.id);
+    try {
+      const fresh = await signFiles(createClient(), idea.files);
+      if (!gate.valid(ticket)) return;
+      const byId = new Map(fresh.map((file) => [file.id, file]));
+      setIdeas((list) => list.map((current) => current.id === idea.id ? {
+        ...current,
+        files: current.files.map((file) => byId.get(file.id)?.url ? byId.get(file.id)! : file),
+      } : current));
+    } catch {
+      if (!gate.valid(ticket)) return;
+      setError("Unable to refresh attachment links. Please try again.");
+    } finally {
+      signingPending.current = false;
+      setSigningId(null);
+    }
+  }
+
   // Keep file links fresh: renew them when you come back to the app or leave it open a long time.
   useEffect(() => {
     ideasRef.current = ideas;
@@ -243,20 +323,20 @@ export default function Capture({
     signedAt.current = Date.now();
 
     async function refreshUrls() {
-      if (document.visibilityState !== "visible") return;
+      if (!gate.allowed() || document.visibilityState !== "visible") return;
+      const ticket = gate.ticket();
       if (Date.now() - signedAt.current < REFRESH_AFTER_MS) return;
       // Don't cut off a voice note that is playing.
       if ([...document.querySelectorAll("audio")].some((a) => !a.paused)) return;
       const files = ideasRef.current.flatMap((i) => i.files);
-      const previous = signedAt.current;
-      signedAt.current = Date.now();
       if (files.length === 0) return;
 
       const fresh = await signFiles(createClient(), files);
+      if (!gate.valid(ticket)) return;
       if (!fresh.some((f) => f.url)) {
-        signedAt.current = previous; // couldn't reach the server; try again soon
         return;
       }
+      signedAt.current = Date.now();
       const byId = new Map(fresh.map((f) => [f.id, f]));
       setIdeas((list) =>
         list.map((i) => ({
@@ -275,10 +355,12 @@ export default function Capture({
       document.removeEventListener("visibilitychange", refreshUrls);
       clearInterval(timer);
     };
-  }, []);
+  }, [gate]);
 
   // Ideas written on this device that haven't reached the database yet are sent from here.
   async function syncQueue() {
+    if (!gate.allowed() || navigator.onLine === false) return;
+    const ticket = gate.ticket();
     if (syncing.current) {
       syncAgain.current = true; // something new was queued mid-sync; go round again after
       return;
@@ -286,21 +368,34 @@ export default function Capture({
     syncing.current = true;
     try {
       const supabase = createClient();
-      for (const item of await listQueued()) {
+      const queued = await listQueued();
+      if (!gate.valid(ticket)) return;
+      const owned = ownedQueue(queued, ownerId);
+      setPreservedWork(owned.length !== queued.length);
+      for (const item of owned) {
+        if (!gate.valid(ticket)) break;
         try {
           if (item.deleted) {
-            await deleteSavedIdea(supabase, item);
+            await deleteSavedIdea(supabase, item, () => gate.valid(ticket));
+            if (!gate.valid(ticket)) return;
             await removeQueued(item.id);
             continue;
           }
-          const { idea, failures } = await pushIdea(supabase, item);
+          const { idea, failures } = await pushIdea(supabase, item, () => gate.valid(ticket));
+          if (!gate.valid(ticket)) return;
           // Keep the item queued if a file failed, so the file isn't lost; the next sync retries it.
           if (!failures.length) await removeQueued(item.id);
+          if (!gate.valid(ticket)) return;
           setIdeas((list) => list.map((i) => (i.id === item.id
             ? failures.length ? { ...idea, waiting: true, queuedFiles: queuedToView(item).queuedFiles, syncError: failures.join("; ") } : idea
             : i)));
           if (failures.length) setError(`Some files failed: ${failures.join("; ")}`);
         } catch (e) {
+          if (!gate.valid(ticket)) return;
+          if (e instanceof QueueOwnerError) {
+            gate.lock();
+            break;
+          }
           if (e instanceof NetworkError) break; // no connection yet; try again later
           const message = e instanceof Error ? e.message : "Could not sync.";
           if (item.deleted) setError(`Deletion will retry: ${message}`);
@@ -327,10 +422,15 @@ export default function Capture({
   // On opening: show ideas still waiting on this device, then try to send them.
   useEffect(() => {
     let cancelled = false;
+    if (!gate.allowed()) return;
+    const ticket = gate.ticket();
     listQueued()
-      .then((queued) => {
-        if (cancelled || queued.length === 0) return;
-        for (const item of queued.filter((q) => q.deleted)) {
+      .then((all) => {
+        if (cancelled || !gate.valid(ticket)) return;
+        const queued = ownedQueue(all, ownerId);
+        setPreservedWork(queued.length !== all.length);
+        if (queued.length === 0) return;
+        for (const item of queued.filter((q) => q.deleted && !deletedIds.current.has(q.id))) {
           deletedIds.current.add(item.id);
           track(item.id, null);
           adjustTagCounts(item.tags, []);
@@ -353,7 +453,7 @@ export default function Capture({
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [ownerId, gate, locked]);
 
   // Try again when the connection comes back, when you return to the app, and every 20 seconds.
   useEffect(() => {
@@ -376,6 +476,7 @@ export default function Capture({
   // Press "/" anywhere (outside a text box) to jump to search.
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
+      if (!gate.allowed()) return;
       if (e.key !== "/" || e.ctrlKey || e.metaKey || e.altKey) return;
       if (e.target instanceof Element && e.target.closest("input, textarea, select, [contenteditable]")) return;
       e.preventDefault();
@@ -383,7 +484,7 @@ export default function Capture({
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, []);
+  }, [gate]);
 
   useEffect(() => () => clearTimeout(cheerTimer.current), []);
 
@@ -398,6 +499,7 @@ export default function Capture({
   }
 
   function takeSpark() {
+    if (!gate.allowed()) return;
     const prompt = PROMPTS[promptIndex];
     setText(text.trim() ? `${text.trimEnd()}\n${prompt} ` : `${prompt} `);
     setPromptIndex((i) => (i + 1) % PROMPTS.length);
@@ -405,6 +507,7 @@ export default function Capture({
   }
 
   function shuffleSpark() {
+    if (!gate.allowed()) return;
     setPromptIndex((i) => (i + 1 + Math.floor(Math.random() * (PROMPTS.length - 1))) % PROMPTS.length);
   }
 
@@ -421,27 +524,38 @@ export default function Capture({
   }
 
   async function changeStatus(id: string, status: string) {
+    if (!gate.allowed()) return;
+    const ticket = gate.ticket();
     const current = ideas.find((i) => i.id === id);
     const before = current?.status;
     if (!before || before === status || current?.waiting) return;
-    setIdeas((list) => list.map((i) => (i.id === id ? { ...i, status } : i)));
-    track(id, { status, created_at: current.created_at });
-    setError("");
-    const { error } = await createClient().from("ideas").update({ status }).eq("id", id);
-    if (error) {
-      setIdeas((list) => list.map((i) => (i.id === id ? { ...i, status: before } : i)));
-      track(id, { status: before, created_at: current.created_at });
-      setError(error.message);
+    try {
+      await remote(ticket);
+      if (!gate.valid(ticket)) return;
+      const { error } = await createClient().from("ideas").update({ status }).eq("id", id);
+      if (!gate.valid(ticket)) return;
+      if (error) { setError(error.message); return; }
+      setIdeas((list) => list.map((i) => (i.id === id ? { ...i, status } : i)));
+      track(id, { status, created_at: current.created_at });
+      setError("");
+    } catch {
+      if (gate.valid(ticket)) setError("Unable to change status. Please try again.");
     }
   }
 
   const recorder = useRecorder(
-    (file) => addFiles([file]),
+    (file) => setPending((files) => [...files, file]),
     (message) => setError(message),
   );
 
+  useEffect(() => {
+    pauseRecording.current = () => recorder.suspend();
+    if (!gate.allowed()) recorder.suspend();
+    else recorder.resume();
+  });
+
   function addFiles(list: Iterable<File> | null) {
-    if (!list) return;
+    if (!gate.allowed() || !list) return;
     const ok: File[] = [];
     const tooBig: string[] = [];
     for (const f of list) {
@@ -457,14 +571,17 @@ export default function Capture({
     if (fileInput.current) fileInput.current.value = "";
   }
 
-  async function uploadFiles(ideaId: string, files: File[]) {
+  async function uploadFiles(ideaId: string, files: File[], ticket: number) {
+    await remote(ticket);
+    if (!gate.valid(ticket)) return;
     const supabase = createClient();
-    const { data: auth } = await supabase.auth.getUser();
-    const userId = auth.user?.id;
+    const userId = ownerId;
     const rows: FileRow[] = [];
     const failures: string[] = [];
 
     for (const file of files) {
+      await remote(ticket);
+      if (!gate.valid(ticket)) return;
       if (!userId) {
         failures.push(`${file.name}: not logged in`);
         continue;
@@ -473,13 +590,17 @@ export default function Capture({
       const up = await supabase.storage
         .from(BUCKET)
         .upload(path, file, { contentType: file.type || undefined });
+      if (!gate.valid(ticket)) return;
       if (up.error) {
         failures.push(`${file.name}: ${up.error.message}`);
         continue;
       }
+      await remote(ticket);
+      if (!gate.valid(ticket)) return;
       const rec = await supabase
         .from("idea_files")
         .insert({
+          user_id: ownerId,
           idea_id: ideaId,
           path,
           name: file.name,
@@ -488,7 +609,10 @@ export default function Capture({
         })
         .select("id, path, name, mime_type, size")
         .single();
+      if (!gate.valid(ticket)) return;
       if (rec.error || !rec.data) {
+        await remote(ticket);
+        if (!gate.valid(ticket)) return;
         await supabase.storage.from(BUCKET).remove([path]);
         failures.push(`${file.name}: ${rec.error?.message ?? "could not save"}`);
       } else {
@@ -496,7 +620,9 @@ export default function Capture({
       }
     }
 
+    if (!gate.valid(ticket)) return;
     const signed = await signFiles(supabase, rows);
+    if (!gate.valid(ticket)) return;
     setIdeas((list) =>
       list.map((i) =>
         i.id === ideaId ? { ...i, files: [...i.files, ...signed], uploading: undefined } : i,
@@ -506,6 +632,8 @@ export default function Capture({
   }
 
   async function addToIdea(ideaId: string, list: FileList | null) {
+    if (!gate.allowed()) return;
+    const ticket = gate.ticket();
     const files = list ? [...list] : [];
     if (editFileInput.current) editFileInput.current.value = "";
     const ok = files.filter((f) => f.size <= MAX_FILE_BYTES);
@@ -514,10 +642,14 @@ export default function Capture({
       tooBig.length ? `Too big (max ${formatSize(MAX_FILE_BYTES)}): ${tooBig.join(", ")}` : "",
     );
     if (ok.length === 0) return;
+    const upload = { files: ok };
+    activeUploads.current.add(upload);
     setIdeas((all) => all.map((i) => (i.id === ideaId ? { ...i, uploading: ok.length } : i)));
     try {
-      await uploadFiles(ideaId, ok);
+      await uploadFiles(ideaId, ok, ticket);
+      if (!gate.valid(ticket)) return;
     } catch (e) {
+      if (!gate.valid(ticket)) return;
       setIdeas((all) => all.map((i) => (i.id === ideaId ? { ...i, uploading: undefined } : i)));
       setError(
         e instanceof Error && looksOffline(e.message)
@@ -526,11 +658,15 @@ export default function Capture({
             ? e.message
             : "Could not upload the files.",
       );
+    } finally {
+      activeUploads.current.delete(upload);
     }
   }
 
   async function save(e: React.FormEvent) {
     e.preventDefault();
+    if (!gate.allowed()) return;
+    const ticket = gate.ticket();
     const content = text.trim();
     const files = pending;
     if (!content && files.length === 0) return;
@@ -539,6 +675,7 @@ export default function Capture({
     // Every idea goes to the on-device outbox first, so it survives a dropped connection
     // or a closed app. It is then sent to the database as soon as possible.
     const item: QueuedIdea = {
+      owner_id: ownerId,
       id: crypto.randomUUID(),
       content,
       tags,
@@ -548,10 +685,12 @@ export default function Capture({
     try {
       await addQueued(item);
     } catch {
+      if (!gate.valid(ticket)) return;
       setError("This browser couldn't store the idea on your device. Try again.");
       return;
     }
 
+    if (!gate.valid(ticket)) return;
     const shown = queuedToView(item);
     if (matchesFilters(shown)) setIdeas((list) => [shown, ...list]);
     adjustTagCounts([], tags);
@@ -562,7 +701,8 @@ export default function Capture({
     clearTimeout(cheerTimer.current);
     cheerTimer.current = setTimeout(() => setCheer(null), 2400);
     setText("");
-    setPending([]);
+    setPending((current) => current.filter((file) => !files.includes(file)));
+    setInterruptedUpload(false);
     setError("");
     await syncQueue();
   }
@@ -577,6 +717,7 @@ export default function Capture({
   }
 
   function startEdit(idea: Idea) {
+    if (!gate.allowed()) return;
     setEditingId(idea.id);
     setExpandedId(idea.id);
     setEditText(idea.content);
@@ -584,33 +725,32 @@ export default function Capture({
   }
 
   async function saveEdit(idea: Idea) {
+    if (!gate.allowed()) return;
+    const ticket = gate.ticket();
     const content = editText.trim();
     if (!content && idea.files.length === 0) {
       setError("An idea needs some text or a file. Delete it instead if you don't want it.");
       return;
     }
     const tags = extractTags(content);
-    const old = { content: idea.content, tags: idea.tags };
-    const apply = (c: string, t: string[]) =>
-      setIdeas((list) => list.map((i) => (i.id === idea.id ? { ...i, content: c, tags: t } : i)));
-
-    apply(content, tags);
-    adjustTagCounts(old.tags, tags);
-    setEditingId(null);
-    setError("");
-
-    const { error } = await createClient()
-      .from("ideas")
-      .update({ content, tags })
-      .eq("id", idea.id);
-    if (error) {
-      apply(old.content, old.tags);
-      adjustTagCounts(tags, old.tags);
-      setError(error.message);
+    try {
+      await remote(ticket);
+      if (!gate.valid(ticket)) return;
+      const { error } = await createClient().from("ideas").update({ content, tags }).eq("id", idea.id);
+      if (!gate.valid(ticket)) return;
+      if (error) { setError(error.message); return; }
+      setIdeas((list) => list.map((i) => i.id === idea.id ? { ...i, content, tags } : i));
+      adjustTagCounts(idea.tags, tags);
+      setEditingId(null);
+      setError("");
+    } catch {
+      if (gate.valid(ticket)) setError("Unable to save edits. Please try again.");
     }
   }
 
   async function deleteIdea(idea: Idea) {
+    if (!gate.allowed()) return;
+    const ticket = gate.ticket();
     if (!confirm("Delete this idea and its files? This can't be undone.")) return;
     if (syncing.current) {
       setError("Sync is in progress. Please try deleting again when it finishes.");
@@ -619,17 +759,26 @@ export default function Capture({
     syncing.current = true;
     try {
       const queued = (await listQueued()).find((item) => item.id === idea.id);
+      if (!gate.valid(ticket)) return;
+      if (queued && queued.owner_id !== ownerId) {
+        setPreservedWork(true);
+        setError("Local work for this idea is preserved and needs ownership review before deletion.");
+        return;
+      }
       await addQueued({
         ...(queued ?? { id: idea.id, content: idea.content, tags: idea.tags,
           created_at: idea.created_at, files: [] }),
         deleted: true,
+        owner_id: ownerId,
       });
+      if (!gate.valid(ticket)) return;
       deletedIds.current.add(idea.id);
       setIdeas((list) => list.filter((i) => i.id !== idea.id));
       adjustTagCounts(idea.tags, []);
       track(idea.id, null);
       setError("");
     } catch {
+      if (!gate.valid(ticket)) return;
       setError("Could not save the deletion on this device. Please try again.");
     } finally {
       syncing.current = false;
@@ -638,27 +787,29 @@ export default function Capture({
   }
 
   async function deleteFile(idea: Idea, file: FileItem) {
+    if (!gate.allowed()) return;
+    const ticket = gate.ticket();
     if (!idea.content && idea.files.length === 1) {
       setError("This is all that's in this idea. Delete the whole idea instead.");
       return;
     }
     if (!confirm(`Remove "${file.name}"?`)) return;
-    setIdeas((list) =>
-      list.map((i) =>
-        i.id === idea.id ? { ...i, files: i.files.filter((f) => f.id !== file.id) } : i,
-      ),
-    );
-    setError("");
-
-    const supabase = createClient();
-    const removed = await supabase.storage.from(BUCKET).remove([file.path]);
-    const error = removed.error ?? (await supabase.from("idea_files").delete().eq("id", file.id)).error;
-    if (error) {
-      setIdeas((list) =>
-        list.map((i) => (i.id === idea.id ? { ...i, files: [...i.files, file] } : i)),
-      );
-      setError(error.message);
-      return;
+    try {
+      await remote(ticket);
+      if (!gate.valid(ticket)) return;
+      const supabase = createClient();
+      const removed = await supabase.storage.from(BUCKET).remove([file.path]);
+      if (!gate.valid(ticket)) return;
+      if (removed.error) { setError(removed.error.message); return; }
+      await remote(ticket);
+      if (!gate.valid(ticket)) return;
+      const result = await supabase.from("idea_files").delete().eq("id", file.id);
+      if (!gate.valid(ticket)) return;
+      if (result.error) { setError(result.error.message); return; }
+      setIdeas((list) => list.map((i) => i.id === idea.id ? { ...i, files: i.files.filter((f) => f.id !== file.id) } : i));
+      setError("");
+    } catch {
+      if (gate.valid(ticket)) setError("Unable to remove the file. Please try again.");
     }
   }
 
@@ -686,7 +837,13 @@ export default function Capture({
     "w-full resize-none rounded-xl border border-line bg-field p-3 text-base text-ink outline-none transition focus:border-accent focus:ring-4 focus:ring-accent/15";
 
   return (
-    <div className="flex flex-col gap-6 lg:grid lg:grid-cols-[15rem_minmax(0,1fr)] lg:gap-x-8">
+    <>
+      {locked && <section role="alert" className="rounded-2xl border border-line bg-card p-6">
+        <h2 className="text-lg font-semibold">Vault locked</h2>
+        <p className="mt-2">Verify the original account to continue. Your local work is retained. Keep this page open to preserve unsaved files and edits.</p>
+        <button onClick={retrySession} className="mt-4 underline">Verify account again</button>
+      </section>}
+    <div ref={workspace} hidden={locked} inert={locked} style={locked ? { display: "none" } : undefined} className="flex flex-col gap-6 lg:grid lg:grid-cols-[15rem_minmax(0,1fr)] lg:gap-x-8">
       {cheer && (
         <p
           key={cheer.key}
@@ -699,6 +856,15 @@ export default function Capture({
       )}
 
       <section className="flex flex-col gap-4 lg:col-start-2 lg:row-start-1">
+        <p className="text-sm text-muted">
+          Drafts are saved for your account on this device. Any older shared draft remains preserved for ownership review.
+        </p>
+        {preservedWork && (
+          <p role="status" className="rounded-xl border border-line bg-card p-3 text-sm text-muted">
+            Some local work is preserved on this device and paused pending ownership review.
+          </p>
+        )}
+        {interruptedUpload && <p role="status" className="text-sm text-muted">An upload was interrupted. Its files are retained in the composer; some may already be saved. Check the idea before saving again.</p>}
         {!online && (
           <p
             role="status"
@@ -741,6 +907,7 @@ export default function Capture({
         >
           <textarea
             ref={composer}
+            aria-label="New idea"
             autoFocus
             rows={4}
             value={text}
@@ -847,7 +1014,7 @@ export default function Capture({
           </div>
         </form>
         {error && (
-          <p className="rounded-xl bg-danger/10 px-3 py-2 text-sm text-danger">{error}</p>
+          <p role="alert" className="rounded-xl bg-danger/10 px-3 py-2 text-sm text-danger">{error}</p>
         )}
       </section>
 
@@ -944,6 +1111,7 @@ export default function Capture({
             <input
               ref={searchInput}
               type="search"
+              aria-label="Search ideas"
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               placeholder="Search ideas"
@@ -1092,6 +1260,7 @@ export default function Capture({
               {editingId === idea.id ? (
                 <div className="flex flex-col gap-2">
                   <textarea
+                    aria-label="Edit idea"
                     autoFocus
                     rows={4}
                     value={editText}
@@ -1179,6 +1348,11 @@ export default function Capture({
                         src={f.url}
                         className="w-full"
                       />
+                    ) : !f.url ? (
+                      <span key={f.id} className="flex max-w-full items-center gap-2 rounded-xl border border-line bg-background px-3 py-2 text-sm text-muted">
+                        <FileIcon className="h-4 w-4 shrink-0" />
+                        <span className="truncate">{f.name} {formatSize(f.size)} — Link unavailable</span>
+                      </span>
                     ) : (
                       <a
                         key={f.id}
@@ -1194,6 +1368,19 @@ export default function Capture({
                       </a>
                     ),
                   )}
+                </div>
+              )}
+              {idea.files.some((file) => !file.url) && editingId !== idea.id && (
+                <div className="mt-2 text-sm text-muted">
+                  <p role="status">Some attachment links are unavailable. File records are still shown.</p>
+                  <button
+                    type="button"
+                    disabled={signingId !== null}
+                    onClick={() => retryFileLinks(idea)}
+                    className="mt-1 underline disabled:opacity-40"
+                  >
+                    {signingId === idea.id ? "Retrying links…" : "Retry attachment links"}
+                  </button>
                 </div>
               )}
               {idea.uploading ? (
@@ -1311,5 +1498,6 @@ export default function Capture({
         )}
       </section>
     </div>
+    </>
   );
 }
