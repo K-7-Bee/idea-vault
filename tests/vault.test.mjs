@@ -14,6 +14,70 @@ function load(file, mocks = {}, extra = '', globals = {}) {
   return exports;
 }
 
+function vaultReader(initial, pages) {
+  let page = 0;
+  let signingCalls = 0;
+  const client = { from() {
+    const query = {
+      select() { return query; }, order() { return query; },
+      limit: async () => initial,
+      range: async () => {
+        const result = pages[page++];
+        if (result instanceof Error) throw result;
+        return result;
+      },
+    };
+    return query;
+  } };
+  const jsx = (type, props) => ({ type, props });
+  function Capture() {}
+  const { VaultContent } = load('src/app/vault/page.tsx', {
+    'react/jsx-runtime': { jsx, jsxs: jsx },
+    '@/lib/supabase/server': { createClient: async () => client },
+    '@/lib/ideas': { IDEA_COLUMNS: 'ideas', PAGE_SIZE: 100,
+      withFileUrls: async (_, rows) => { signingCalls++; return rows; } },
+    './capture': { default: Capture },
+  }, '\nexport { VaultContent };');
+  return { render: VaultContent, Capture, signingCalls: () => signingCalls };
+}
+
+test('initial read failures show recovery without exposing backend errors or mounting capture', async () => {
+  for (const initial of [{ data: null, error: { message: 'private backend detail' } },
+    { data: [], error: { message: 'private backend detail' } }, { data: null, error: null }]) {
+    const reader = vaultReader(initial, [{ data: [], error: null }]);
+    const tree = await reader.render();
+    assert.equal(tree.type, 'section');
+    assert.equal(tree.props.children[0].props.role, 'alert');
+    assert.equal(tree.props.children[1].props.href, '/vault');
+    assert.ok(!JSON.stringify(tree).includes('private backend detail'));
+    assert.equal(reader.signingCalls(), 0);
+  }
+});
+
+test('failed or rejected index pages never render partial counts', async () => {
+  const fullPage = Array.from({ length: 1000 }, (_, id) => ({ id, tags: [], status: 'raw', created_at: 'date' }));
+  for (const pages of [
+    [{ data: null, error: { message: 'failed' } }],
+    [{ data: fullPage, error: null }, { data: null, error: { message: 'later page failed' } }],
+    [new Error('network rejection')],
+  ]) {
+    const reader = vaultReader({ data: [], error: null }, pages);
+    assert.equal((await reader.render()).type, 'section');
+    assert.equal(reader.signingCalls(), 0);
+  }
+});
+
+test('successful empty and populated reads retain capture data and complete metadata', async () => {
+  for (const rows of [[], [{ id: 'idea', tags: ['tag'], status: 'raw', created_at: 'date' }]]) {
+    const reader = vaultReader({ data: rows, error: null }, [{ data: rows, error: null }]);
+    const tree = await reader.render();
+    assert.equal(tree.type, reader.Capture);
+    assert.equal(tree.props.initial, rows);
+    assert.equal(tree.props.initialMeta.length, rows.length);
+    assert.equal(reader.signingCalls(), 1);
+  }
+});
+
 function deletionClient(storageError = null, databaseError = null) {
   const calls = [];
   return { calls, client: {

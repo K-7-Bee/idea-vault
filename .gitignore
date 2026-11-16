@@ -47,3 +47,6 @@ next-env.d.ts
 # Private preservation artifacts (still keep backups outside the repository).
 *.vaultbackup
 /vault-backups/
+
+# Supabase CLI local metadata
+/supabase/.temp/

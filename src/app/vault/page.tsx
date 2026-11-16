@@ -41,13 +41,13 @@ async function ideaIndex(supabase: Awaited<ReturnType<typeof createClient>>) {
   const STEP = 1000;
   const rows: { id: string; tags: string[]; status: string; created_at: string }[] = [];
   for (let from = 0; ; from += STEP) {
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from("ideas")
       .select("id, tags, status, created_at")
       .order("created_at", { ascending: false })
       .order("id", { ascending: false })
       .range(from, from + STEP - 1);
-    if (!data) break;
+    if (error || !data) return null;
     rows.push(...data);
     if (data.length < STEP) break;
   }
@@ -56,7 +56,7 @@ async function ideaIndex(supabase: Awaited<ReturnType<typeof createClient>>) {
 
 async function VaultContent() {
   const supabase = await createClient();
-  const [ideas, index] = await Promise.all([
+  const result = await Promise.all([
     supabase
       .from("ideas")
       .select(IDEA_COLUMNS)
@@ -64,11 +64,28 @@ async function VaultContent() {
       .order("id", { ascending: false })
       .limit(PAGE_SIZE),
     ideaIndex(supabase),
-  ]);
+  ]).catch(() => null);
+
+  if (!result || result[0].error || !result[0].data || !result[1]) {
+    return (
+      <section className="rounded-2xl border border-line bg-card p-6">
+        <div role="alert">
+          <h2 className="text-lg font-semibold">Unable to load your ideas</h2>
+          <p className="mt-2 text-sm text-muted">
+            The saved ideas or their counts could not be loaded. Your saved data
+            and pending captures on this device have not been changed.
+          </p>
+        </div>
+        <a className="mt-4 inline-block underline" href="/vault">Try loading again</a>
+      </section>
+    );
+  }
+
+  const [ideas, index] = result;
 
   return (
     <Capture
-      initial={await withFileUrls(supabase, (ideas.data ?? []) as unknown as RawIdea[])}
+      initial={await withFileUrls(supabase, ideas.data as unknown as RawIdea[])}
       initialTags={index.map((r) => r.tags)}
       initialMeta={index.map(({ id, status, created_at }) => ({ id, status, created_at }))}
     />
