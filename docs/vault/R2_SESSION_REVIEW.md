@@ -34,6 +34,10 @@ No SQL, dependencies, legacy reconciliation, storage purge, worker changes, depl
 
 Hidden DOM/memory is not encryption. Browser history/router caches, old clients and previously issued signed URLs require separate real-browser assessment. Reload/closing can still lose memory-only work; this gate must not trigger either automatically. Client verification cannot make account switching atomic.
 
+## Current follow-up
+
+2026-11-16: owner-authorized repairs extend the existing boundary to the dashboard and recovery panel, and coordinate explicit logout without navigation. See [repair evidence and limits](RELIABILITY_REPAIRS_2026-11-16.md). Earlier exclusions/approval questions below are historical; real-browser acceptance remains outstanding.
+
 ## Rollback and decision
 
 Stop rollout if the gate fails; keep affected sessions locked with their memory intact while fixing the guard. Do not auto-reload, discard recordings or restore unconditional replay. Revert only this slice in development while retaining earlier ownership/cache fixes and all device records.

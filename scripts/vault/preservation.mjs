@@ -64,7 +64,17 @@ export function verifySnapshot(snapshot) {
   requireValue(snapshot.kind === 'device', 'Unknown snapshot kind');
   requireValue(Array.isArray(snapshot.outbox) && snapshot.local_storage && typeof snapshot.local_storage === 'object', 'Missing device inventory');
   unique(snapshot.outbox, 'id', 'queued idea');
-  for (const item of snapshot.outbox) {
+  const recovery = snapshot.recovery ?? [];
+  requireValue(Array.isArray(recovery), 'Invalid recovery inventory');
+  unique(recovery, 'id', 'recovery record');
+  for (const record of recovery) {
+    requireValue(typeof record.owner_id === 'string' && ['idea', 'file'].includes(record.kind)
+      && record.idea && Array.isArray(record.idea.files), 'Invalid recovery record');
+    requireValue(record.idea.files.every((file) => typeof file.path === 'string'
+      && file.path.startsWith(`${record.owner_id}/${record.idea.id}/`)), 'Foreign recovery attachment');
+    requireValue(!record.queued || (record.queued.owner_id === record.owner_id && record.queued.id === record.idea.id), 'Foreign recovery queue');
+  }
+  for (const item of [...snapshot.outbox, ...recovery.flatMap((record) => record.queued ? [record.queued] : [])]) {
     requireValue(typeof item.content === 'string' && Array.isArray(item.tags) && Array.isArray(item.files)
       && Number.isFinite(Date.parse(item.created_at)) && (item.deleted === undefined || typeof item.deleted === 'boolean'), 'Invalid queued idea');
     unique(item.files, 'id', 'queued file');
@@ -73,7 +83,7 @@ export function verifySnapshot(snapshot) {
       verifyBlob(file);
     }
   }
-  return { kind: snapshot.kind, queuedIdeas: snapshot.outbox.length,
+  return { kind: snapshot.kind, queuedIdeas: snapshot.outbox.length, recoveryRecords: recovery.length,
     queuedFiles: snapshot.outbox.reduce((count, item) => count + item.files.length, 0),
     deletionMarkers: snapshot.outbox.filter((item) => item.deleted).length, liveCompletenessVerified: false };
 }
@@ -157,6 +167,7 @@ export function compareSnapshots(before, after) {
     requireValue(before.schema_sql === after.schema_sql, 'Schema exports differ');
   } else {
     requireValue(canonical(before.outbox) === canonical(after.outbox)
+      && canonical(before.recovery ?? []) === canonical(after.recovery ?? [])
       && canonical(before.local_storage) === canonical(after.local_storage), 'Device data differ');
   }
   return true;

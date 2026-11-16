@@ -1,6 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { BUCKET, IDEA_COLUMNS, safeFileName, withFileUrls, type Idea, type RawIdea } from "./ideas";
 import type { QueuedIdea } from "./outbox";
+import { retainDeletedIdea } from "./recovery-operations";
 
 // Thrown when there's simply no connection, so the idea should stay queued and retry later.
 export class NetworkError extends Error {}
@@ -34,30 +35,14 @@ function check(error: Failure, allowDuplicate = false) {
   throw new Error(error.message);
 }
 
-// Keep the queue's deletion marker until both storage and the database are clean.
+// Keep the deletion marker until recovery metadata is durable and the row is removed.
+// Stored file bytes are retained; there is deliberately no automatic purge.
 export async function deleteSavedIdea(supabase: SupabaseClient, item: QueuedIdea, active = () => true) {
   await verifyOwner(supabase, item, active);
-  assertActive(active);
-  const records = await supabase.from("idea_files").select("path").eq("idea_id", item.id);
-  assertActive(active);
-  check(records.error);
-  const paths = new Set((records.data ?? []).map((file) => file.path));
-  if (item.files.length) {
-    for (const { id, file } of item.files) {
-      paths.add(`${item.owner_id}/${item.id}/${id}-${safeFileName(file.name)}`);
-    }
-  }
-  if ([...paths].some((path) => !path.startsWith(`${item.owner_id}/${item.id}/`))) {
-    throw new QueueOwnerError("Deletion paused: file ownership could not be verified.");
-  }
-  if (paths.size) {
+  await retainDeletedIdea(supabase, item, async () => {
     await verifyOwner(supabase, item, active);
     assertActive(active);
-    check((await supabase.storage.from(BUCKET).remove([...paths])).error);
-  }
-  await verifyOwner(supabase, item, active);
-  assertActive(active);
-  check((await supabase.from("ideas").delete().eq("id", item.id).eq("user_id", item.owner_id)).error);
+  });
   await verifyOwner(supabase, item, active);
   assertActive(active);
 }

@@ -1,5 +1,7 @@
 # R2 explicit logout preservation: owner review
 
+Update 2026-11-16: the owner explicitly authorized this repair. It is now implemented together with the dashboard privacy boundary; see [repair evidence and limits](RELIABILITY_REPAIRS_2026-11-16.md). The proposal below is retained as historical scope, not a new approval request.
+
 2026-11-16. Concrete proposal only. Earlier session-lock authorization did not cover changing the existing explicit logout navigation. Root AGENTS.md and the repair plan require review before this new application behavior.
 
 ## Evidence and proposed behavior

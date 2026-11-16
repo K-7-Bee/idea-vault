@@ -82,17 +82,14 @@ async function VaultContent() {
   const initial = await withFileUrls(supabase, ideas.data as unknown as RawIdea[]);
 
   return (
-    <>
+    <Capture
+      key={user.id}
+      ownerId={user.id}
+      initial={initial}
+      initialTags={index.map((r) => r.tags)}
+      initialMeta={index.map(({ id, status, created_at }) => ({ id, status, created_at }))}
+    >
       <Dashboard stats={vaultStats(index, new Date())} />
-      <section id="ideas" aria-label="Ideas" className="scroll-mt-6">
-        <Capture
-          key={user.id}
-          ownerId={user.id}
-          initial={initial}
-          initialTags={index.map((r) => r.tags)}
-          initialMeta={index.map(({ id, status, created_at }) => ({ id, status, created_at }))}
-        />
-      </section>
-    </>
+    </Capture>
   );
 }

@@ -9,6 +9,8 @@ import { useSessionGate } from "./use-session-gate";
 import { useOnline } from "./use-online";
 import { addQueued, listQueued, ownedQueue, removeQueued, type QueuedIdea } from "@/lib/outbox";
 import { NetworkError, QueueOwnerError, looksOffline, pushIdea, deleteSavedIdea } from "@/lib/sync";
+import { listRecovery, saveRecovery, type RecoveryRecord } from "@/lib/recovery";
+import { retainDeletedFile, restoreRecovery, tagsFilter } from "@/lib/recovery-operations";
 import {
   BoardIcon,
   ChipIcon,
@@ -100,9 +102,9 @@ async function searchIdeas(
 type Meta = { id: string; status: string; created_at: string };
 
 // Days in a row (ending today, or yesterday if nothing yet today) with at least one idea.
-function dayStreak(dates: string[]) {
+function dayStreak(dates: string[], now: number) {
   const days = new Set(dates.map((d) => new Date(d).toDateString()));
-  const day = new Date();
+  const day = new Date(now);
   if (!days.has(day.toDateString())) day.setDate(day.getDate() - 1);
   let streak = 0;
   while (days.has(day.toDateString())) {
@@ -134,11 +136,13 @@ export default function Capture({
   initial,
   initialTags,
   initialMeta,
+  children,
 }: {
   ownerId: string;
   initial: Idea[];
   initialTags: string[][];
   initialMeta: Meta[];
+  children?: React.ReactNode;
 }) {
   const [ideas, setIdeas] = useState<ViewIdea[]>(initial);
   const [tagCounts, setTagCounts] = useState(() => countTags(initialTags));
@@ -165,6 +169,15 @@ export default function Capture({
   const [activeStatus, setActiveStatus] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editText, setEditText] = useState("");
+  const editBase = useRef<Idea | null>(null);
+  const [recovery, setRecovery] = useState<RecoveryRecord[]>([]);
+  const [recovering, setRecovering] = useState(false);
+  const [recoveryMessage, setRecoveryMessage] = useState("");
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const timer = setInterval(() => setNow(Date.now()), 60_000);
+    return () => clearInterval(timer);
+  }, []);
   const requestId = useRef(0);
   const firstRun = useRef(true);
   const fileInput = useRef<HTMLInputElement>(null);
@@ -209,6 +222,93 @@ export default function Capture({
     } catch {
       if (gate.valid(ticket)) gate.lock();
       throw new QueueOwnerError("Session verification required. Your work is preserved.");
+    }
+  }
+
+  async function refreshRecovery() {
+    if (!gate.allowed()) return;
+    const ticket = gate.ticket();
+    try {
+      const records = await listRecovery(ownerId);
+      if (gate.valid(ticket)) setRecovery(records);
+    } catch {
+      if (gate.valid(ticket)) setRecoveryMessage("Recovery records could not be read on this device. Removal will stop if a recovery record cannot be saved.");
+    }
+  }
+
+  useEffect(() => {
+    if (!gate.allowed()) return;
+    const ticket = gate.ticket();
+    let cancelled = false;
+    listRecovery(ownerId).then((records) => {
+      if (!cancelled && gate.valid(ticket)) setRecovery(records);
+    }).catch(() => {
+      if (!cancelled && gate.valid(ticket)) setRecoveryMessage("Recovery records could not be read on this device.");
+    });
+    return () => { cancelled = true; };
+  }, [ownerId, gate, locked]);
+
+  // Keep the folder index in step with what happens on screen. `null` removes the idea.
+  function track(id: string, entry: Omit<Meta, "id"> | null) {
+    setMeta((m) => {
+      const next = new Map(m);
+      if (entry) next.set(id, { id, ...entry });
+      else next.delete(id);
+      return next;
+    });
+  }
+
+  function adjustTagCounts(removed: string[], added: string[]) {
+    setTagCounts((c) => {
+      const next = { ...c };
+      for (const t of removed) next[t] = (next[t] ?? 1) - 1;
+      for (const t of added) next[t] = (next[t] ?? 0) + 1;
+      return next;
+    });
+  }
+
+  async function restore(record: RecoveryRecord) {
+    if (!gate.allowed() || syncing.current) return;
+    const ticket = gate.ticket();
+    syncing.current = true;
+    setRecovering(true);
+    setRecoveryMessage("");
+    try {
+      await remote(ticket);
+      const queued = (await listQueued()).find((entry) => entry.id === record.idea.id);
+      if (!gate.valid(ticket)) return;
+      if (queued && (queued.owner_id !== ownerId || !queued.deleted)) throw new Error("Resolve this idea's pending capture before restoring it.");
+      // Stop a pending deletion before restoring. Its recovery record remains durable.
+      if (queued) await removeQueued(queued.id);
+      const client = createClient();
+      await restoreRecovery(client, record, ownerId, () => remote(ticket));
+      if (record.kind === "idea" && record.queued?.files.length) {
+        const { id, content, tags, created_at } = record.idea;
+        const pendingRestore: QueuedIdea = { id, content, tags, created_at, owner_id: ownerId, files: record.queued.files };
+        if (!gate.valid(ticket)) return;
+        await addQueued(pendingRestore);
+        const result = await pushIdea(client, pendingRestore, () => gate.valid(ticket));
+        if (result.failures.length) throw new Error("Idea restored; some files are queued for retry. The recovery record is retained.");
+        if (!gate.valid(ticket)) return;
+        await removeQueued(pendingRestore.id);
+      }
+      await remote(ticket);
+      const result = await client.from("ideas").select(IDEA_COLUMNS).eq("id", record.idea.id).single();
+      if (result.error || !result.data) throw new Error("Restoration needs verification. Your recovery record is retained; try again.");
+      const [restored] = await withFileUrls(client, [result.data as unknown as RawIdea]);
+      if (!gate.valid(ticket)) return;
+      const previous = ideasRef.current.find((idea) => idea.id === restored.id);
+      deletedIds.current.delete(restored.id);
+      setIdeas((list) => [restored, ...list.filter((idea) => idea.id !== restored.id)]);
+      if (!meta.has(restored.id)) adjustTagCounts([], restored.tags);
+      else if (previous) adjustTagCounts(previous.tags, restored.tags);
+      track(restored.id, { status: restored.status, created_at: restored.created_at });
+      setRecoveryMessage("Restored. The recovery record is retained on this device.");
+    } catch (error) {
+      if (gate.valid(ticket)) setRecoveryMessage(error instanceof Error ? error.message : "Unable to restore. Your recovery record is retained.");
+    } finally {
+      syncing.current = false;
+      setRecovering(false);
     }
   }
 
@@ -408,6 +508,7 @@ export default function Capture({
       // the device queue isn't available; nothing to send
     } finally {
       syncing.current = false;
+      void refreshRecovery();
       if (syncAgain.current) {
         syncAgain.current = false;
         void syncRef.current();
@@ -488,16 +589,6 @@ export default function Capture({
 
   useEffect(() => () => clearTimeout(cheerTimer.current), []);
 
-  // Keep the folder index in step with what happens on screen. `null` removes the idea.
-  function track(id: string, entry: Omit<Meta, "id"> | null) {
-    setMeta((m) => {
-      const next = new Map(m);
-      if (entry) next.set(id, { id, ...entry });
-      else next.delete(id);
-      return next;
-    });
-  }
-
   function takeSpark() {
     if (!gate.allowed()) return;
     const prompt = PROMPTS[promptIndex];
@@ -532,9 +623,11 @@ export default function Capture({
     try {
       await remote(ticket);
       if (!gate.valid(ticket)) return;
-      const { error } = await createClient().from("ideas").update({ status }).eq("id", id);
+      const { error, data } = await createClient().from("ideas").update({ status }).eq("id", id).eq("user_id", ownerId)
+        .eq("content", current.content).eq("status", current.status).filter("tags", "eq", tagsFilter(current.tags)).select("id");
       if (!gate.valid(ticket)) return;
       if (error) { setError(error.message); return; }
+      if (data?.length !== 1) { setError("This idea changed or was deleted on another device. Its status was not changed. Reload after preserving any unsaved work."); return; }
       setIdeas((list) => list.map((i) => (i.id === id ? { ...i, status } : i)));
       track(id, { status, created_at: current.created_at });
       setError("");
@@ -592,6 +685,7 @@ export default function Capture({
         .upload(path, file, { contentType: file.type || undefined });
       if (!gate.valid(ticket)) return;
       if (up.error) {
+        setPending((pending) => [...new Set([...pending, file])]);
         failures.push(`${file.name}: ${up.error.message}`);
         continue;
       }
@@ -611,9 +705,9 @@ export default function Capture({
         .single();
       if (!gate.valid(ticket)) return;
       if (rec.error || !rec.data) {
-        await remote(ticket);
-        if (!gate.valid(ticket)) return;
-        await supabase.storage.from(BUCKET).remove([path]);
+        // The server may have committed despite a lost response. Never purge bytes on ambiguity.
+        setPending((pending) => [...new Set([...pending, file])]);
+        setInterruptedUpload(true);
         failures.push(`${file.name}: ${rec.error?.message ?? "could not save"}`);
       } else {
         rows.push(rec.data as FileRow);
@@ -650,6 +744,8 @@ export default function Capture({
       if (!gate.valid(ticket)) return;
     } catch (e) {
       if (!gate.valid(ticket)) return;
+      setPending((pending) => [...new Set([...pending, ...ok])]);
+      setInterruptedUpload(true);
       setIdeas((all) => all.map((i) => (i.id === ideaId ? { ...i, uploading: undefined } : i)));
       setError(
         e instanceof Error && looksOffline(e.message)
@@ -707,20 +803,12 @@ export default function Capture({
     await syncQueue();
   }
 
-  function adjustTagCounts(removed: string[], added: string[]) {
-    setTagCounts((c) => {
-      const next = { ...c };
-      for (const t of removed) next[t] = (next[t] ?? 1) - 1;
-      for (const t of added) next[t] = (next[t] ?? 0) + 1;
-      return next;
-    });
-  }
-
   function startEdit(idea: Idea) {
     if (!gate.allowed()) return;
     setEditingId(idea.id);
     setExpandedId(idea.id);
     setEditText(idea.content);
+    editBase.current = { ...idea, tags: [...idea.tags] };
     setError("");
   }
 
@@ -733,12 +821,16 @@ export default function Capture({
       return;
     }
     const tags = extractTags(content);
+    const base = editBase.current;
+    if (!base || base.id !== idea.id) return;
     try {
       await remote(ticket);
       if (!gate.valid(ticket)) return;
-      const { error } = await createClient().from("ideas").update({ content, tags }).eq("id", idea.id);
+      const { error, data } = await createClient().from("ideas").update({ content, tags }).eq("id", idea.id).eq("user_id", ownerId)
+        .eq("content", base.content).eq("status", base.status).filter("tags", "eq", tagsFilter(base.tags)).select("id");
       if (!gate.valid(ticket)) return;
       if (error) { setError(error.message); return; }
+      if (data?.length !== 1) { setError("This idea changed or was deleted on another device. Your edit is still here. Copy it before reloading to compare with the saved version."); return; }
       setIdeas((list) => list.map((i) => i.id === idea.id ? { ...i, content, tags } : i));
       adjustTagCounts(idea.tags, tags);
       setEditingId(null);
@@ -751,7 +843,7 @@ export default function Capture({
   async function deleteIdea(idea: Idea) {
     if (!gate.allowed()) return;
     const ticket = gate.ticket();
-    if (!confirm("Delete this idea and its files? This can't be undone.")) return;
+    if (!confirm("Remove this idea? Stored files will be retained. Recovery is available on this device; keep its browser data.")) return;
     if (syncing.current) {
       setError("Sync is in progress. Please try deleting again when it finishes.");
       return;
@@ -765,12 +857,21 @@ export default function Capture({
         setError("Local work for this idea is preserved and needs ownership review before deletion.");
         return;
       }
-      await addQueued({
+      const removal: QueuedIdea = {
         ...(queued ?? { id: idea.id, content: idea.content, tags: idea.tags,
           created_at: idea.created_at, files: [] }),
         deleted: true,
+        recovery_id: crypto.randomUUID(),
         owner_id: ownerId,
-      });
+      };
+      // Preserve an undoable local intent even while offline, before hiding the idea.
+      // Replay enriches it with authoritative metadata before any database deletion.
+      await saveRecovery({ id: removal.recovery_id!, kind: "idea", owner_id: ownerId,
+        saved_at: new Date().toISOString(), prepared: false, queued: removal,
+        idea: { id: idea.id, content: idea.content, tags: idea.tags, status: idea.status, created_at: idea.created_at,
+          files: idea.files.map(({ id, path, name, mime_type, size }) => ({ id, path, name, mime_type, size })) } });
+      if (!gate.valid(ticket)) return;
+      await addQueued(removal);
       if (!gate.valid(ticket)) return;
       deletedIds.current.add(idea.id);
       setIdeas((list) => list.filter((i) => i.id !== idea.id));
@@ -783,6 +884,7 @@ export default function Capture({
     } finally {
       syncing.current = false;
     }
+    void refreshRecovery();
     await syncQueue();
   }
 
@@ -798,18 +900,14 @@ export default function Capture({
       await remote(ticket);
       if (!gate.valid(ticket)) return;
       const supabase = createClient();
-      const removed = await supabase.storage.from(BUCKET).remove([file.path]);
+      await retainDeletedFile(supabase, ownerId, idea.id, file, () => remote(ticket));
       if (!gate.valid(ticket)) return;
-      if (removed.error) { setError(removed.error.message); return; }
-      await remote(ticket);
-      if (!gate.valid(ticket)) return;
-      const result = await supabase.from("idea_files").delete().eq("id", file.id);
-      if (!gate.valid(ticket)) return;
-      if (result.error) { setError(result.error.message); return; }
       setIdeas((list) => list.map((i) => i.id === idea.id ? { ...i, files: i.files.filter((f) => f.id !== file.id) } : i));
       setError("");
     } catch {
       if (gate.valid(ticket)) setError("Unable to remove the file. Please try again.");
+    } finally {
+      void refreshRecovery();
     }
   }
 
@@ -820,9 +918,9 @@ export default function Capture({
   const metaList = [...meta.values()];
   const statusCounts: Record<string, number> = {};
   for (const m of metaList) statusCounts[m.status] = (statusCounts[m.status] ?? 0) + 1;
-  const weekAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
+  const weekAgo = now - 7 * 24 * 60 * 60 * 1000;
   const thisWeek = metaList.filter((m) => new Date(m.created_at).getTime() > weekAgo).length;
-  const streak = dayStreak(metaList.map((m) => m.created_at));
+  const streak = dayStreak(metaList.map((m) => m.created_at), now);
   const folder = activeStatus ? STATUS_INFO[activeStatus] : null;
 
   const folderButton = (active: boolean) =>
@@ -843,7 +941,20 @@ export default function Capture({
         <p className="mt-2">Verify the original account to continue. Your local work is retained. Keep this page open to preserve unsaved files and edits.</p>
         <button onClick={retrySession} className="mt-4 underline">Verify account again</button>
       </section>}
-    <div ref={workspace} hidden={locked} inert={locked} style={locked ? { display: "none" } : undefined} className="flex flex-col gap-6 lg:grid lg:grid-cols-[15rem_minmax(0,1fr)] lg:gap-x-8">
+    <div ref={workspace} hidden={locked} inert={locked} style={locked ? { display: "none" } : undefined}>
+      {children}
+      <details className="mb-6 rounded-2xl border border-line bg-card p-4">
+        <summary className="cursor-pointer font-semibold">Recovery on this device ({recovery.length})</summary>
+        <p className="mt-2 text-sm text-muted">Removed files remain in private storage. Recovery records are kept in this browser; clearing browser data can lose them. Restoring never overwrites a different saved idea.</p>
+        {recoveryMessage && <p role="status" className="mt-2 text-sm">{recoveryMessage}</p>}
+        <ul className="mt-3 space-y-3">
+          {recovery.map((record) => <li key={record.id} className="flex flex-wrap items-center justify-between gap-2">
+            <span className="min-w-0 break-words text-sm">{record.kind === "file" ? record.idea.files[0]?.name : record.idea.content.slice(0, 100) || "Attachment-only idea"}</span>
+            <button type="button" disabled={recovering} onClick={() => restore(record)} className="rounded-lg border border-line px-3 py-2 text-sm disabled:opacity-40">Restore</button>
+          </li>)}
+        </ul>
+      </details>
+    <section id="ideas" aria-label="Ideas" className="scroll-mt-6 flex flex-col gap-6 lg:grid lg:grid-cols-[15rem_minmax(0,1fr)] lg:gap-x-8">
       {cheer && (
         <p
           key={cheer.key}
@@ -1497,6 +1608,7 @@ export default function Capture({
           </button>
         )}
       </section>
+    </section>
     </div>
     </>
   );

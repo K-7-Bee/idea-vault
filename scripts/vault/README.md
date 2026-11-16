@@ -43,6 +43,8 @@ Missing/corrupt referenced files, wrong owner links and duplicate identities fai
 
 ## Commands (PowerShell)
 
+2026-11-16 device-export update: `export-device.js` also reads the separate `idea-vault-recovery` records, preserves queued recovery file bytes with hashes, and includes `vault-draft:<owner>` text drafts. It aborts creation of a missing recovery database and treats that absence as an empty inventory. Export is still offline/read-only and must never replay removals. Recovery records are device-local; retain/export them before clearing browser data. The verifier/comparison checks the new inventory while accepting older archives without it. There is no automatic device import; restoration of an archive into browser storage needs a reviewed isolated procedure.
+
 Choose existing private parent folders. Read the passphrase without echo or command-line arguments, then clear the process environment when finished:
 
 ```powershell

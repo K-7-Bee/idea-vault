@@ -2,9 +2,13 @@
 
 ## Current reconciliation: 2026-11-16
 
+Owner-authorized source repairs now cover dashboard locking, non-navigating logout preservation, device-local attachment/idea recovery and conditional edits. See [repair evidence and limitations](RELIABILITY_REPAIRS_2026-11-16.md). Current verification: 74 tests, full ESLint, TypeScript and production build pass. These repairs do not complete Phase 0, browser/backend acceptance, the proposed product modules or deployment. Historical completion/approval statements below must be read with this update.
+
 The owner asked to finish the full work. The active recovery continuation has initialized all 44 captured database tables locally using pinned official Auth, Storage and Realtime migrations, restored archived business/Auth/Storage metadata, and recovered supplemental policies/indexes. See [current service recovery](SERVICE_RECOVERY_STATUS.md). Earlier no-backup/no-restore statements below describe the 2026-11-15 review.
 
 42 tables match original PostgreSQL row text exactly. The other two are managed migration histories: their source migration identities match, while genuine local execution timestamps are retained. Column attributes for all 44 tables, 13 policies, 150 constraints, 151 indexes, 12 triggers and all table RLS flags match the archived definitions. This is a database recovery drill, not a completed product or complete platform recovery.
+
+**Phase 0 update (2026-11-16, later): closed by owner-accepted live reset — see PROGRESS.md. The live Vault was emptied after the snapshot was proven identical; attachment bytes and device exports were never preserved. Text below is historical.**
 
 **Phase 0 remains incomplete.** The owner explicitly kept attachment downloads blocked. Two object metadata records are recovered, but their 1,715,415 declared bytes have not been downloaded, hashed or played back. Per-device browser exports, a portable independent/off-disk recovery copy, external service configuration/secrets, Auth/API login and application end-to-end checks remain unverified. The archive is tied to the current Windows user's DPAPI material. Production has not been migrated or reset.
 

@@ -34,7 +34,7 @@ function Brand() {
 
 export function VaultTopBar() {
   return (
-    <header className="flex items-center justify-between gap-4 border-b border-line px-4 py-4 sm:px-6 xl:hidden">
+    <header className="flex flex-wrap items-center justify-between gap-x-4 gap-y-3 border-b border-line px-4 py-4 sm:px-6 xl:hidden">
       <Brand />
       <nav aria-label="Workspace" className="flex items-center gap-1 text-sm font-medium">
         {LIVE.map((l) => (

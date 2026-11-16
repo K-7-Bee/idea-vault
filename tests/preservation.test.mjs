@@ -79,18 +79,20 @@ test('browser exporter uses a read-only transaction and produces a Node-decrypta
   const script = await readFile(new URL('../scripts/vault/export-device.js', import.meta.url), 'utf8');
   const queued = { id: 'queued', content: '', tags: [], created_at: '2026-11-14T00:00:00Z', deleted: true,
     files: [{ id: 'voice', file: new File([bytes], 'voice.webm', { type: 'audio/webm', lastModified: 123 }) }] };
+  const recovery = { id: 'recovery', owner_id: 'owner', kind: 'idea',
+    idea: { id: 'queued', files: [{ path: 'owner/queued/voice' }] }, queued: { ...queued, owner_id: 'owner' } };
   let blob, closed = false;
   const errors = [];
   const db = { objectStoreNames: { contains: () => true }, close: () => { closed = true; },
     transaction: (store, mode) => {
-      assert.equal(store, 'outbox'); assert.equal(mode, 'readonly');
-      const tx = { objectStore: () => ({ getAll: () => ({ result: [queued] }) }) };
+      assert.ok(['outbox', 'records'].includes(store)); assert.equal(mode, 'readonly');
+      const tx = { objectStore: () => ({ getAll: () => ({ result: store === 'records' ? [recovery] : [queued] }) }) };
       queueMicrotask(() => tx.oncomplete()); return tx;
     } };
   const context = { navigator: { onLine: false }, prompt: () => password,
     indexedDB: { open: () => { const request = { result: db }; queueMicrotask(() => request.onsuccess()); return request; } },
     location: { origin: 'https://fixture.invalid' }, crypto: webcrypto, TextEncoder, Blob, Uint8Array, Date,
-    localStorage: { getItem: (key) => key === 'vault-draft' ? 'unsent text' : null },
+    localStorage: { length: 1, key: () => 'vault-draft:owner', getItem: (key) => key.startsWith('vault-draft') ? 'unsent text' : null },
     btoa: (value) => Buffer.from(value, 'binary').toString('base64'),
     URL: { createObjectURL: (value) => { blob = value; return 'blob:fixture'; }, revokeObjectURL: () => {} },
     document: { createElement: () => ({ click: () => {} }) }, setTimeout: () => {},
@@ -101,5 +103,22 @@ test('browser exporter uses a read-only transaction and produces a Node-decrypta
   assert.equal(restored.outbox[0].deleted, true);
   assert.equal(restored.outbox[0].files[0].data_base64, bytes.toString('base64'));
   assert.equal(restored.local_storage['vault-draft'], 'unsent text');
+  assert.equal(restored.local_storage['vault-draft:owner'], 'unsent text');
+  assert.equal(restored.recovery[0].queued.files[0].data_base64, bytes.toString('base64'));
+  assert.equal(verifySnapshot(restored).recoveryRecords, 1);
   assert.equal(verifySnapshot(restored).deletionMarkers, 1);
+  context.indexedDB.open = (name) => {
+    if (name === 'idea-vault') {
+      const request = { result: db }; queueMicrotask(() => request.onsuccess()); return request;
+    }
+    const request = { transaction: { abort() { queueMicrotask(() => request.onerror()); } } };
+    queueMicrotask(() => request.onupgradeneeded());
+    return request;
+  };
+  await vm.runInNewContext(script, context);
+  assert.deepEqual(errors, []);
+  const legacyDevice = decryptSnapshot(JSON.parse(await blob.text()), password);
+  assert.deepEqual(legacyDevice.recovery, []);
+  assert.equal(legacyDevice.outbox.length, 1);
+  assert.throws(() => compareSnapshots(restored, legacyDevice), /Device data differ/);
 });

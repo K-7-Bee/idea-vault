@@ -1,6 +1,8 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
+  // Browser acceptance builds must never replace the deployable production output.
+  distDir: process.env.VAULT_E2E === "1" ? ".next-e2e" : ".next",
   cacheComponents: true,
   partialPrefetching: true,
   async headers() {

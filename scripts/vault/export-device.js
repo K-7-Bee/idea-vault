@@ -6,29 +6,32 @@
   const password = prompt('Backup passphrase (at least 16 characters). Store it securely; it cannot be recovered.');
   if (!password || password.length < 16) throw new Error('Export cancelled: a passphrase of at least 16 characters is required.');
   if (prompt('Repeat the backup passphrase') !== password) throw new Error('Passphrases do not match.');
-  const outbox = await new Promise((resolve, reject) => {
-    const request = indexedDB.open('idea-vault');
+  const readStore = (name, store, optional = false) => new Promise((resolve, reject) => {
+    let absent = false;
+    const request = indexedDB.open(name);
     request.onupgradeneeded = () => {
+      absent = true;
       request.transaction.abort(); // Never create/upgrade a missing device database.
     };
-    request.onerror = () => reject(new Error('Existing outbox unavailable; no database was created.'));
+    request.onerror = () => optional && absent ? resolve([]) : reject(new Error('Existing device database unavailable; no database was created.'));
     request.onsuccess = () => {
       const db = request.result;
-      if (!db.objectStoreNames.contains('outbox')) { db.close(); reject(new Error('Existing outbox store missing')); return; }
-      const tx = db.transaction('outbox', 'readonly');
-      const all = tx.objectStore('outbox').getAll();
+      if (!db.objectStoreNames.contains(store)) { db.close(); reject(new Error('Existing device store missing')); return; }
+      const tx = db.transaction(store, 'readonly');
+      const all = tx.objectStore(store).getAll();
       tx.oncomplete = () => { db.close(); resolve(all.result); };
       tx.onerror = tx.onabort = () => { db.close(); reject(new Error('Outbox read failed')); };
     };
   });
+  const outbox = await readStore('idea-vault', 'outbox');
+  const recovery = await readStore('idea-vault-recovery', 'records', true);
   const base64 = (bytes) => {
     let binary = '';
     for (let index = 0; index < bytes.length; index += 32768) binary += String.fromCharCode(...bytes.subarray(index, index + 32768));
     return btoa(binary);
   };
   let total = 0;
-  const rows = [];
-  for (const item of outbox) {
+  const encodeItem = async (item) => {
     const files = [];
     for (const entry of item.files) {
       total += entry.file.size;
@@ -39,11 +42,21 @@
         lastModified: entry.file.lastModified, data_base64: base64(bytes),
         sha256: [...hash].map((byte) => byte.toString(16).padStart(2, '0')).join('') });
     }
-    rows.push({ ...item, files }); // Includes deletion markers without applying them.
+    return { ...item, files }; // Includes deletion markers without applying them.
+  };
+  const rows = [];
+  for (const item of outbox) rows.push(await encodeItem(item));
+  const recoveryRows = [];
+  for (const record of recovery) recoveryRows.push({ ...record,
+    ...(record.queued ? { queued: await encodeItem(record.queued) } : {}) });
+  const local = { 'vault-draft': localStorage.getItem('vault-draft'), 'vault-view': localStorage.getItem('vault-view') };
+  for (let index = 0; index < localStorage.length; index++) {
+    const key = localStorage.key(index);
+    if (key?.startsWith('vault-draft:')) local[key] = localStorage.getItem(key);
   }
   const snapshot = { format: 'idea-vault-preservation-v1', kind: 'device', source: location.origin,
-    captured_at: new Date().toISOString(), outbox: rows,
-    local_storage: { 'vault-draft': localStorage.getItem('vault-draft'), 'vault-view': localStorage.getItem('vault-view') } };
+    captured_at: new Date().toISOString(), outbox: rows, recovery: recoveryRows,
+    local_storage: local };
   const salt = crypto.getRandomValues(new Uint8Array(16)), iv = crypto.getRandomValues(new Uint8Array(12));
   const material = await crypto.subtle.importKey('raw', new TextEncoder().encode(password), 'PBKDF2', false, ['deriveKey']);
   const key = await crypto.subtle.deriveKey({ name: 'PBKDF2', hash: 'SHA-256', salt, iterations: 600000 },

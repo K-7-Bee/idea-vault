@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
+import { logoutPending, subscribeLogout } from "./logout-coordination";
 
 // Generations also invalidate work if the same owner unlocks before it finishes.
 export function createSessionGate(changed: (locked: boolean) => void) {
@@ -36,15 +37,16 @@ export function useSessionGate(ownerId: string, onChange: (locked: boolean) => v
     async function verify() {
       const id = ++verification;
       gate.lock();
-      if (navigator.onLine === false) return;
+      if (navigator.onLine === false || logoutPending()) return;
       try {
         const { data, error } = await client.auth.getUser();
-        if (!disposed && id === verification && !error && data.user?.id === ownerId) gate.unlock();
+        if (!disposed && !logoutPending() && id === verification && !error && data.user?.id === ownerId) gate.unlock();
       } catch { /* Keep all work locked and retained for explicit retry. */ }
     }
     const schedule = () => {
       verification++;
       clearTimeout(timer);
+      if (logoutPending()) return;
       timer = setTimeout(() => { if (!disposed) void verify(); }, 0);
     };
     const resume = () => {
@@ -64,6 +66,11 @@ export function useSessionGate(ownerId: string, onChange: (locked: boolean) => v
       }
     });
     retry.current = () => { gate.lock(); schedule(); };
+    const unsubscribeLogout = subscribeLogout(() => {
+      verification++;
+      clearTimeout(timer);
+      gate.lock();
+    });
     window.addEventListener("online", resume);
     window.addEventListener("pageshow", pageShow);
     document.addEventListener("visibilitychange", visible);
@@ -73,6 +80,7 @@ export function useSessionGate(ownerId: string, onChange: (locked: boolean) => v
       verification++;
       clearTimeout(timer);
       subscription.unsubscribe();
+      unsubscribeLogout();
       window.removeEventListener("online", resume);
       window.removeEventListener("pageshow", pageShow);
       document.removeEventListener("visibilitychange", visible);

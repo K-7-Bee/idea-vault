@@ -122,13 +122,16 @@ test('worker preserves public navigation and static caching without intercepting
   assert.equal(offline.calls.length, 0);
 });
 
-function logoutHarness(signOut, globals = {}) {
+function logoutHarness(signOut, globals = {}, coordination = load('src/app/vault/logout-coordination.ts')) {
   const hooks = [];
   let cursor = 0;
   const routes = [];
+  let authCallback;
+  const effects = [];
   const jsx = (type, props) => ({ type, props });
   const { default: LogoutButton } = load('src/app/vault/logout-button.tsx', {
     react: {
+      useEffect(effect) { if (!authCallback) effects.push(effect); },
       useState(initial) {
         const index = cursor++;
         if (!(index in hooks)) hooks[index] = initial;
@@ -141,13 +144,17 @@ function logoutHarness(signOut, globals = {}) {
     },
     'react/jsx-runtime': { jsx, jsxs: jsx },
     'next/navigation': { useRouter: () => ({ replace: (route) => routes.push(route) }) },
-    '@/lib/supabase/client': { createClient: () => ({ auth: { signOut } }) },
+    './logout-coordination': coordination,
+    '@/lib/supabase/client': { createClient: () => ({ auth: { signOut,
+      onAuthStateChange(fn) { authCallback = fn; return { data: { subscription: { unsubscribe() {} } } }; },
+    } }) },
   }, '', {
     localStorage: new Proxy({}, { get() { assert.fail('logout must preserve drafts'); } }),
     indexedDB: new Proxy({}, { get() { assert.fail('logout must preserve outbox'); } }),
     ...globals,
   });
-  return { routes, render() { cursor = 0; return LogoutButton(); } };
+  return { routes, coordination, emit(session) { authCallback('SIGNED_IN', session); },
+    render() { cursor = 0; const tree = LogoutButton(); for (const effect of effects.splice(0)) effect(); return tree; } };
 }
 
 test('logout errors announce generic recovery, preserve local work and allow successful retry', async () => {
@@ -165,12 +172,15 @@ test('logout errors announce generic recovery, preserve local work and allow suc
     assert.ok(!JSON.stringify(failed).includes('private backend detail'));
     assert.equal(harness.routes.length, 0);
     await failed.props.children[0].props.onClick();
-    assert.deepEqual(harness.routes, ['/login']);
+    assert.deepEqual(harness.routes, []);
     assert.equal(harness.render().props.children[1], null);
+    assert.match(JSON.stringify(harness.render()), /Signed out/);
+    harness.emit({ user: { id: 'owner' } });
+    assert.equal(harness.render().props.children[2], false);
   }
 });
 
-test('pending logout prevents duplicate requests and navigates once after cache cleanup', async () => {
+test('pending logout prevents duplicate requests and retains the mounted route after cache cleanup', async () => {
   let finish;
   let started;
   const signOutStarted = new Promise((resolve) => { started = resolve; });
@@ -191,9 +201,12 @@ test('pending logout prevents duplicate requests and navigates once after cache 
   assert.equal(harness.routes.length, 0);
   finish({ error: null });
   await pending;
-  await click();
   assert.equal(calls, 1);
-  assert.deepEqual(harness.routes, ['/login']);
+  assert.deepEqual(harness.routes, []);
+  const link = treeNodes(harness.render()).find((node) => node.type === 'a');
+  assert.equal(link.props.target, '_blank');
+  assert.equal(link.props.rel, 'noopener noreferrer');
+  assert.equal(harness.render().props.children[0].props.disabled, false);
 });
 
 test('cache cleanup rejection does not prevent successful logout', async () => {
@@ -201,7 +214,7 @@ test('cache cleanup rejection does not prevent successful logout', async () => {
     caches: { keys: async () => { throw new Error('cache unavailable'); } },
   });
   await harness.render().props.children[0].props.onClick();
-  assert.deepEqual(harness.routes, ['/login']);
+  assert.deepEqual(harness.routes, []);
 });
 
 function load(file, mocks = {}, extra = '', globals = {}) {
@@ -316,10 +329,10 @@ test('failed or rejected index pages never render partial counts', async () => {
 test('successful empty and populated reads retain capture data and complete metadata', async () => {
   for (const rows of [[], [{ id: 'idea', tags: ['tag'], status: 'raw', created_at: 'date' }]]) {
     const reader = vaultReader({ data: rows, error: null }, [{ data: rows, error: null }]);
-    const [overview, ideasSection] = (await reader.render()).props.children;
+    const tree = await reader.render();
+    const overview = tree.props.children;
     assert.equal(overview.type, reader.Dashboard);
     assert.equal(overview.props.stats.total, rows.length);
-    const tree = ideasSection.props.children;
     assert.equal(tree.type, reader.Capture);
     assert.equal(tree.props.initial, rows);
     assert.equal(tree.props.ownerId, 'owner');
@@ -328,20 +341,31 @@ test('successful empty and populated reads retain capture data and complete meta
   }
 });
 
-function deletionClient(storageError = null, databaseError = null) {
+function deletionClient(recoveryError = null, databaseError = null) {
   const calls = [];
-  return { calls, client: {
+  const records = new Map();
+  const idea = { id: 'idea', content: 'saved', tags: [], status: 'building', created_at: '2026-11-15T00:00:00Z',
+    files: [{ id: 'file', path: 'owner/idea/saved', name: 'note.webm', mime_type: 'audio/webm', size: 2 }] };
+  const operations = load('src/lib/recovery-operations.ts', { './recovery': {
+    getRecovery: async (id) => records.get(id),
+    saveRecovery: async (record) => { if (recoveryError) throw new Error(recoveryError.message); calls.push('recovery'); records.set(record.id, structuredClone(record)); },
+  } });
+  const client = {
     from(table) {
-      return {
-        select() { return { eq: async () => ({ data: [{ path: 'owner/idea/saved' }], error: null }) }; },
-        delete() { return { eq() { return { eq: async () => { calls.push(table); return { error: databaseError }; } }; } }; },
+      let deleting = false;
+      const query = {
+        eq() { return query; }, filter() { return query; },
+        select() { if (deleting) { calls.push(table); return Promise.resolve({ data: [{ id: 'idea' }], error: databaseError }); } return query; },
+        maybeSingle: async () => ({ data: idea, error: null }),
+        delete() { deleting = true; return query; },
       };
+      return query;
     },
     auth: { getUser: async () => ({ data: { user: { id: 'owner' } }, error: null }) },
-    storage: { from() { return { remove: async (paths) => {
-      calls.push(['storage', ...paths]); return { error: storageError };
-    } }; } },
-  } };
+    storage: { from() { assert.fail('deletion must retain all stored bytes'); } },
+  };
+  const sync = load('src/lib/sync.ts', { './recovery-operations': operations });
+  return { client, calls, records, idea, operations, sync };
 }
 const item = { id: 'idea', owner_id: 'owner', files: [{ id: 'file', file: { name: 'note.webm' } }] };
 const sync = load('src/lib/sync.ts', { './ideas': { BUCKET: 'attachments', safeFileName: (s) => s } });
@@ -420,6 +444,7 @@ test('offline capture binds new records while legacy captures and tombstones sta
       pushIdea: async () => { throw new Error('offline'); } },
     '@/lib/tags': { extractTags: () => [], splitTags: (text) => [{ text }] },
     './use-local-value': localValues,
+    '@/lib/recovery': { listRecovery: async () => [] },
     './use-online': { useOnline: () => false },
     './use-recorder': { useRecorder: () => ({ suspend() {}, resume() {} }) },
     './use-session-gate': { useSessionGate: () => ({ locked: false, gate: { allowed: () => true, ticket: () => 0, valid: () => true } }) },
@@ -544,34 +569,35 @@ test('matching captures use bound owner for rows and paths; account changes stop
 });
 
 test('account change during deletion retains database metadata and refuses the next mutation', async () => {
-  const { client, calls } = deletionClient();
+  const { client, calls, sync } = deletionClient();
   let checks = 0;
   client.auth.getUser = async () => ({ data: { user: { id: ++checks >= 3 ? 'other' : 'owner' } }, error: null });
   await assert.rejects(sync.deleteSavedIdea(client, item), (error) => error instanceof sync.QueueOwnerError);
-  assert.equal(calls.length, 1);
-  assert.equal(calls[0][0], 'storage');
+  assert.equal(calls.length, 0);
 });
 
-test('storage failure preserves database metadata for a deletion retry', async () => {
-  const { client, calls } = deletionClient({ message: 'Storage unavailable' });
-  await assert.rejects(sync.deleteSavedIdea(client, item), /Storage unavailable/);
-  assert.equal(calls.length, 1);
+test('recovery storage failure prevents database deletion and preserves stored bytes', async () => {
+  const { client, calls, sync } = deletionClient({ message: 'Recovery unavailable' });
+  await assert.rejects(sync.deleteSavedIdea(client, item), /Recovery unavailable/);
+  assert.equal(calls.length, 0);
 });
 
-test('deletion cleans recorded files and partially uploaded queued files before deleting the idea', async () => {
-  const { client, calls } = deletionClient();
+test('deletion preserves metadata and queued files before removing the idea, without purging bytes', async () => {
+  const { client, calls, records, sync } = deletionClient();
   await sync.deleteSavedIdea(client, item);
-  assert.equal(calls[0][0], 'storage');
-  assert.ok(calls[0].includes('owner/idea/saved'));
-  assert.ok(calls[0].includes('owner/idea/file-note.webm'));
-  assert.equal(calls[1], 'ideas');
+  assert.deepEqual(calls, ['recovery', 'ideas']);
+  const record = records.get('owner:idea:idea');
+  assert.equal(record.idea.files[0].path, 'owner/idea/saved');
+  assert.equal(record.queued.files[0].file.name, 'note.webm');
+  assert.equal(record.idea.status, 'building');
 });
 
-test('database deletion failure can be retried after storage has been removed', async () => {
+test('database deletion failure retains recovery metadata and all stored bytes', async () => {
   const failed = deletionClient(null, { message: 'Database unavailable' });
-  await assert.rejects(sync.deleteSavedIdea(failed.client, item), /Database unavailable/);
+  await assert.rejects(failed.sync.deleteSavedIdea(failed.client, item), /Recovery could not finish/);
+  assert.equal(failed.records.size, 1);
   const retry = deletionClient();
-  await sync.deleteSavedIdea(retry.client, item);
+  await retry.sync.deleteSavedIdea(retry.client, item);
   assert.equal(retry.calls[1], 'ideas');
 });
 
@@ -647,7 +673,7 @@ test('repeated starts share one pending microphone request and release the strea
   assert.equal(stopped, 1);
 });
 
-function sessionHarness() {
+function sessionHarness(coordination = load('src/app/vault/logout-coordination.ts')) {
   const hooks = [];
   const effects = [];
   let cursor = 0;
@@ -667,6 +693,7 @@ function sessionHarness() {
   const document = { ...events, visibilityState: 'visible' };
   const changes = [];
   const sessionModule = load('src/app/vault/use-session-gate.ts', {
+    './logout-coordination': coordination,
     react: {
       useState(initial) {
         const index = cursor++;
@@ -696,7 +723,7 @@ function sessionHarness() {
     for (const effect of effects.splice(0)) { const cleanup = effect(); if (cleanup) cleanups.push(cleanup); }
     return result;
   };
-  return { ...sessionModule, changes, navigator, document, listeners, render,
+  return { ...sessionModule, coordination, changes, navigator, document, listeners, render,
     reads: () => reads, unsubscribed: () => unsubscribed,
     identity(fn) { getUser = fn; },
     emit(event, owner = 'owner') {
@@ -731,6 +758,39 @@ test('session signals lock synchronously, verify outside callbacks and invalidat
   assert.equal(gate.valid(currentTicket), false);
   assert.equal(h.unsubscribed(), true);
   assert.equal(h.listeners.size, 0);
+});
+
+test('logout locks before cache work, blocks stale verification and stays locked after success or failure', async () => {
+  for (const fail of [false, true]) {
+    const session = sessionHarness();
+    const { gate } = session.render();
+    let stale;
+    session.identity(() => new Promise((resolve) => { stale = resolve; }));
+    session.emit('TOKEN_REFRESHED');
+    await session.flush();
+    let finish;
+    const button = logoutHarness(() => new Promise((resolve) => { finish = resolve; }), {
+      caches: { async keys() { assert.equal(gate.allowed(), false); return []; } },
+    }, session.coordination);
+    const operation = button.render().props.children[0].props.onClick();
+    assert.equal(gate.allowed(), false);
+    assert.equal(session.coordination.beginLogout(), null);
+    stale({ data: { user: { id: 'owner' } }, error: null });
+    session.emit('SIGNED_IN');
+    session.render().retry();
+    await session.flush();
+    assert.equal(gate.allowed(), false);
+    assert.equal(session.reads(), 1);
+    finish({ error: fail ? { message: 'failure' } : null });
+    await operation;
+    assert.equal(gate.allowed(), false);
+    session.identity(async () => ({ data: { user: { id: 'owner' } } }));
+    session.render().retry();
+    await session.flush();
+    assert.equal(gate.allowed(), true);
+    assert.equal(button.routes.length, 0);
+    session.cleanup();
+  }
 });
 
 test('stale verification, rejected identity and foreign identity cannot unlock retained workspace', async () => {
@@ -841,8 +901,8 @@ test('locking a recording retains bytes and invalidates late microphone permissi
   }
 });
 
-test('session lock stops replay between upload and metadata and between file and idea deletion', async () => {
-  const { pushIdea, deleteSavedIdea, QueueOwnerError } = load('src/lib/sync.ts', { './ideas': {
+test('session lock stops replay between upload and metadata and before idea deletion', async () => {
+  const { pushIdea, QueueOwnerError } = load('src/lib/sync.ts', { './ideas': {
     BUCKET: 'attachments', safeFileName: (value) => value, withFileUrls: async (_, rows) => rows,
   } });
   let active = true;
@@ -852,9 +912,10 @@ test('session lock stops replay between upload and metadata and between file and
   assert.deepEqual(pushed.writes.map(([table]) => table), ['ideas']);
   active = true;
   const deleted = deletionClient();
-  deleted.client.storage.from = () => ({ remove: async () => { active = false; return { error: null }; } });
-  await assert.rejects(deleteSavedIdea(deleted.client, item, () => active), (error) => error instanceof QueueOwnerError);
-  assert.equal(deleted.calls.length, 0);
+  let checks = 0;
+  deleted.client.auth.getUser = async () => { if (++checks === 4) active = false; return { data: { user: { id: 'owner' } } }; };
+  await assert.rejects(deleted.sync.deleteSavedIdea(deleted.client, item, () => active), (error) => error instanceof deleted.sync.QueueOwnerError);
+  assert.deepEqual(deleted.calls, ['recovery']);
 });
 
 const treeNodes = (tree) => !tree || typeof tree !== 'object' ? []
@@ -894,6 +955,8 @@ function mountedCapture(client, overrides = {}) {
     react, 'react/jsx-runtime': { jsx, jsxs: jsx },
     '@/lib/supabase/client': { createClient: () => client },
     '@/lib/sync': defaultSync,
+    '@/lib/recovery': { listRecovery: async () => [] },
+    '@/lib/recovery-operations': load('src/lib/recovery-operations.ts'),
     '@/lib/outbox': { ...outbox, listQueued: async () => [], addQueued() { assert.fail('unexpected queue write'); }, removeQueued() { assert.fail('unexpected queue removal'); } },
     '@/lib/tags': { extractTags: () => [], splitTags: (text) => [{ text }] },
     './use-session-gate': { useSessionGate(_, callback) { gate.listen(callback); return { gate, locked: !gate.allowed(), retry() {} }; } },
@@ -915,7 +978,8 @@ function mountedCapture(client, overrides = {}) {
   const dom = { hidden: false, inert: false, style: {}, querySelectorAll: () => [{ pause() { mediaPaused++; } }] };
   const render = () => {
     cursor = 0;
-    const tree = Capture({ ownerId: 'owner', initial: [idea], initialTags: [[]], initialMeta: [idea] });
+    const tree = Capture({ ownerId: 'owner', initial: [idea], initialTags: [[]], initialMeta: [idea],
+      children: jsx('section', { 'data-test': 'private-dashboard', children: 'private statistics' }) });
     treeNodes(tree).find((node) => node.props?.inert !== undefined).props.ref.current = dom;
     for (const effect of effects.splice(0)) effect();
     return tree;
@@ -946,6 +1010,7 @@ test('mounted lock hides media and retains draft, pending files and edit text th
   assert.equal(boundary.props.hidden, true);
   assert.equal(boundary.props.inert, true);
   assert.equal(boundary.props.style.display, 'none');
+  assert.ok(treeNodes(boundary).some((node) => node.props?.['data-test'] === 'private-dashboard'));
   // Even saved event handlers are blocked, independently of the hidden DOM.
   await h.find((node) => node.type === 'form').props.onSubmit({ preventDefault() {} });
   h.gate.unlock();
@@ -981,7 +1046,8 @@ test('lock during a direct edit preserves the editor and ignores its delayed com
   let started;
   const begin = new Promise((resolve) => { started = resolve; });
   const h = mountedCapture({ auth: { getUser: async () => ({ data: { user: { id: 'owner' } } }) },
-    from: () => ({ update: () => ({ eq: () => { started(); return new Promise((resolve) => { finish = resolve; }); } }) }) });
+    from: () => { const q = { update: () => q, eq: () => q, filter: () => q,
+      select: () => { started(); return new Promise((resolve) => { finish = resolve; }); } }; return q; } });
   h.render();
   h.label('Edit').props.onClick();
   h.label('Edit idea').props.onChange({ target: { value: 'buffer waiting for server' } });
@@ -993,6 +1059,36 @@ test('lock during a direct edit preserves the editor and ignores its delayed com
   await saving;
   assert.equal(h.label('Edit idea').props.value, 'buffer waiting for server');
   assert.equal(h.button('Save').type, 'button');
+});
+
+test('conditional edits and status changes reject stale or missing rows without losing the edit buffer', async () => {
+  for (const changed of [false, true]) {
+    const filters = [];
+    const client = { auth: { getUser: async () => ({ data: { user: { id: 'owner' } } }) },
+      from() { const q = { update: () => q, eq(key, value) { filters.push([key, value]); return q; },
+        filter(key, operator, value) { filters.push([key, operator, value]); return q; },
+        select: async () => ({ data: changed ? [] : [{ id: 'idea' }], error: null }) }; return q; } };
+    const h = mountedCapture(client);
+    h.render();
+    h.label('Edit').props.onClick();
+    h.label('Edit idea').props.onChange({ target: { value: 'my unsaved change' } });
+    // A refreshed row must not silently replace the version the editor was opened against.
+    h.idea.content = 'refreshed text';
+    await h.button('Save').props.onClick();
+    assert.ok(filters.some(([key, value]) => key === 'user_id' && value === 'owner'));
+    assert.ok(filters.some(([key, value]) => key === 'content' && value === 'original private text'));
+    assert.ok(filters.some(([key]) => key === 'status'));
+    assert.ok(filters.some(([key]) => key === 'tags'));
+    if (changed) {
+      assert.equal(h.label('Edit idea').props.value, 'my unsaved change');
+      assert.match(JSON.stringify(h.render()), /changed or was deleted/);
+    } else {
+      assert.equal(h.label('Edit idea'), undefined);
+      assert.match(JSON.stringify(h.render()), /my unsaved change/);
+    }
+    await h.label('Status').props.onChange({ target: { value: 'done' } });
+    if (changed) assert.equal(h.label('Status').props.value, 'raw');
+  }
 });
 
 test('already-open offline workspace can queue a capture without verification or replay', async () => {
@@ -1032,6 +1128,70 @@ test('lock during attachment upload retains input bytes and prevents metadata in
   await uploading;
   assert.ok(JSON.stringify(h.render()).includes('interrupted.txt'));
   assert.equal(await file.text(), 'original upload bytes');
+});
+
+test('ambiguous attachment metadata failure retains file bytes without deleting the uploaded object', async () => {
+  const h = mountedCapture({ auth: { getUser: async () => ({ data: { user: { id: 'owner' } } }) },
+    from: () => ({ insert: () => ({ select: () => ({ single: async () => ({ data: null, error: { message: 'response lost' } }) }) }) }),
+    storage: { from: () => ({ upload: async () => ({ error: null }), remove() { assert.fail('ambiguous uploads must never purge bytes'); } }) },
+  });
+  h.render(); h.label('Edit').props.onClick();
+  const input = h.find((node) => node.type === 'input' && node.props.onChange?.toString().includes('addToIdea'));
+  const file = new File(['retain these bytes'], 'ambiguous.txt');
+  await input.props.onChange({ target: { files: [file] } });
+  assert.ok(JSON.stringify(h.render()).includes('ambiguous.txt'));
+  assert.match(JSON.stringify(h.render()), /some may already be saved/);
+});
+
+test('recovery UI cancels its owned deletion marker, restores in place and stays inside the lock boundary', async () => {
+  const calls = [];
+  let pending = [];
+  const record = { id: 'recovery', kind: 'file', owner_id: 'owner', idea: { id: 'idea', files: [{ name: 'removed.txt' }] } };
+  let restored;
+  const h = mountedCapture({ auth: { getUser: async () => ({ data: { user: { id: 'owner' } } }) },
+    from: () => ({ select: () => ({ eq: () => ({ single: async () => ({ data: restored, error: null }) }) }) }),
+  }, {
+    '@/lib/recovery': { listRecovery: async () => [record] },
+    '@/lib/recovery-operations': { restoreRecovery: async (_client, value, owner, verify) => {
+      assert.equal(value, record); assert.equal(owner, 'owner'); await verify(); calls.push('restore');
+    } },
+    '@/lib/outbox': { ...load('src/lib/outbox.ts'), listQueued: async () => pending,
+      removeQueued: async () => { calls.push('remove'); pending = []; } },
+  });
+  restored = { ...h.idea, files: [...h.idea.files, { id: 'restored-file', name: 'removed.txt', path: 'owner/idea/restored', size: 2 }] };
+  h.render(); await new Promise((resolve) => setImmediate(resolve));
+  pending = [{ id: 'idea', owner_id: 'owner', deleted: true }];
+  await h.button('Restore').props.onClick();
+  assert.deepEqual(calls, ['remove', 'restore']);
+  assert.match(JSON.stringify(h.render()), /Restored. The recovery record/);
+  const boundary = h.find((node) => node.props?.inert !== undefined);
+  assert.ok(treeNodes(boundary).some((node) => node.type === 'details'));
+  h.gate.lock();
+  await h.button('Restore').props.onClick();
+  assert.deepEqual(calls, ['remove', 'restore']);
+});
+
+test('offline removal preserves recovery intent before its tombstone and refuses to hide an idea if storage fails', async () => {
+  for (const fail of [false, true]) {
+    const calls = [], records = [];
+    const h = mountedCapture({}, {
+      '@/lib/recovery': { listRecovery: async () => records,
+        saveRecovery: async (record) => { calls.push('recovery'); if (fail) throw new Error('quota'); records.push(record); } },
+      '@/lib/outbox': { ...load('src/lib/outbox.ts'), listQueued: async () => [],
+        addQueued: async (record) => { calls.push('tombstone'); assert.equal(record.recovery_id, records[0].id); },
+      },
+    });
+    h.render(); h.navigator.onLine = false;
+    await h.label('Delete').props.onClick();
+    assert.deepEqual(calls, fail ? ['recovery'] : ['recovery', 'tombstone']);
+    if (fail) assert.ok(h.label('Delete'), 'failed recovery writes must keep the idea visible');
+    else {
+      assert.equal(h.label('Delete'), undefined);
+      assert.equal(records[0].prepared, false);
+      assert.equal(records[0].idea.content, 'original private text');
+      assert.equal(records[0].idea.files[0].url, undefined, 'never persist signed URLs in recovery');
+    }
+  }
 });
 
 test('lock discards delayed pagination/signing results and never starts signing the stale page', async () => {

@@ -10,6 +10,7 @@ export type QueuedIdea = {
   created_at: string;
   files: QueuedFile[];
   deleted?: boolean;
+  recovery_id?: string;
 };
 
 // Legacy/foreign records are retained byte-for-byte, never assigned to this login.
