@@ -273,9 +273,11 @@ test('partial signing maps links by path, retains failures and skips empty reque
 function vaultReader(initial, pages, identity = { data: { user: { id: 'owner', email: 'owner@example.test' } }, error: null }) {
   let page = 0;
   let signingCalls = 0;
+  const filters = [];
   const client = { auth: { getUser: async () => { if (identity instanceof Error) throw identity; return identity; } }, from() {
     const query = {
       select() { return query; }, order() { return query; },
+      is(column, value) { filters.push([column, value]); return query; },
       limit: async () => initial,
       range: async () => {
         const result = pages[page++];
@@ -297,7 +299,7 @@ function vaultReader(initial, pages, identity = { data: { user: { id: 'owner', e
     './dashboard': { default: Dashboard },
     '@/lib/vault-stats': { vaultStats: (rows) => ({ total: rows.length }) },
   },'\nexport { VaultContent };', { process: { env: { ALLOWED_EMAIL: 'owner@example.test' } } });
-  return { render: VaultContent, Capture, Dashboard, signingCalls: () => signingCalls };
+  return { render: VaultContent, Capture, Dashboard, signingCalls: () => signingCalls, filters };
 }
 
 test('initial read failures show recovery without exposing backend errors or mounting capture', async () => {
@@ -338,6 +340,8 @@ test('successful empty and populated reads retain capture data and complete meta
     assert.equal(tree.props.ownerId, 'owner');
     assert.equal(tree.props.initialMeta.length, rows.length);
     assert.equal(reader.signingCalls(), 1);
+    // Both the visible page and the counting index exclude archived ideas.
+    assert.deepEqual(reader.filters, [['archived_at', null], ['archived_at', null]]);
   }
 });
 

@@ -12,7 +12,8 @@ let ideas, files, objects, rules, events;
 function reset() {
   sessions.clear(); signed.clear(); rules = []; events = [];
   const created_at = '2026-11-15T00:00:00.000Z';
-  ideas = [{ id: IDEA, user_id: OWNER, content: 'Fixture original #test', tags: ['test'], status: 'raw', created_at }];
+  ideas = [{ id: IDEA, user_id: OWNER, title: null, content: 'Fixture original #test', original_content: 'Fixture original #test',
+    tags: ['test'], status: 'raw', created_at, updated_at: null, archived_at: null }];
   const path = `${OWNER}/${IDEA}/${FILE}-fixture.txt`;
   files = [{ id: FILE, user_id: OWNER, idea_id: IDEA, path, name: 'fixture.txt', mime_type: 'text/plain', size: 16, created_at }];
   objects = new Map([[path, Buffer.from('synthetic bytes!')]]);
@@ -41,6 +42,10 @@ function matches(row, params) {
       if (!array(value.slice(3)).every((tag) => row[key].includes(tag))) return false;
     } else if (value.startsWith('ilike.')) {
       if (!String(row[key]).toLowerCase().includes(value.slice(7, -1).toLowerCase())) return false;
+    } else if (value === 'is.null') {
+      if (row[key] != null) return false;
+    } else if (value === 'not.is.null') {
+      if (row[key] == null) return false;
     } else throw new Error(`Unsupported fixture filter: ${key}`);
   }
   return true;
@@ -119,12 +124,23 @@ const server = http.createServer(async (req, res) => {
           if (row.user_id !== owner || (table === 'idea_files' && !ideas.some((idea) => idea.id === row.idea_id && idea.user_id === owner))) return reply(403, { message: 'Fixture ownership denied' });
           if (rows.some((entry) => entry.id === row.id)) return reply(409, { code: '23505', message: 'duplicate key' });
         }
-        found = additions.map((row) => ({ id: randomUUID(), created_at: new Date().toISOString(), ...(table === 'ideas' ? { status: 'raw', tags: [] } : {}), ...row }));
+        found = additions.map((row) => ({ id: randomUUID(), created_at: new Date().toISOString(),
+          ...(table === 'ideas' ? { status: 'raw', tags: [], title: null } : {}), ...row,
+          // Mirrors migration 004's trigger: the server owns these values.
+          ...(table === 'ideas' ? { original_content: row.content, updated_at: null, archived_at: null } : {}) }));
         rows.push(...found);
       } else if (req.method === 'PATCH') {
         const update = json();
         if (update.user_id && update.user_id !== owner) return reply(403, {});
-        for (const row of found) Object.assign(row, update);
+        for (const row of found) {
+          if (table !== 'ideas') { Object.assign(row, update); continue; }
+          const before = JSON.stringify([row.title, row.content, row.status, row.tags]);
+          const wasArchived = row.archived_at != null;
+          const allowed = { ...update }; delete allowed.original_content; delete allowed.updated_at;
+          Object.assign(row, allowed);
+          if (JSON.stringify([row.title, row.content, row.status, row.tags]) !== before) row.updated_at = new Date().toISOString();
+          if ('archived_at' in update && update.archived_at != null && !wasArchived) row.archived_at = new Date().toISOString();
+        }
       } else if (req.method === 'DELETE') {
         for (const row of found) rows.splice(rows.indexOf(row), 1);
         if (table === 'ideas') files = files.filter((file) => !found.some((idea) => idea.id === file.idea_id));

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import { extractTags, splitTags } from "@/lib/tags";
 import { useRecorder } from "./use-recorder";
@@ -81,6 +82,7 @@ async function searchIdeas(
     let q = supabase
       .from("ideas")
       .select(IDEA_COLUMNS)
+      .is("archived_at", null)
       .order("created_at", { ascending: false })
       .order("id", { ascending: false })
       .limit(PAGE_SIZE);
@@ -1331,6 +1333,7 @@ export default function Capture({
                     <img src={cover.url} alt="" className="aspect-square w-full object-cover" />
                   )}
                   <div className="flex flex-1 flex-col p-3">
+                    {idea.title && <p className="mb-1 break-words text-sm font-semibold">{idea.title}</p>}
                     {idea.content && (
                       <p className="line-clamp-4 whitespace-pre-wrap break-words text-sm">
                         {idea.content}
@@ -1368,6 +1371,9 @@ export default function Capture({
                 className="absolute inset-y-0 left-0 w-1"
                 style={{ background: STATUS_COLOR[idea.status] }}
               />
+              {idea.title && editingId !== idea.id && (
+                <h3 className="mb-1 break-words font-semibold">{idea.title}</h3>
+              )}
               {editingId === idea.id ? (
                 <div className="flex flex-col gap-2">
                   <textarea
@@ -1568,6 +1574,12 @@ export default function Capture({
                         Close
                       </button>
                     )}
+                    <Link
+                      href={`/vault/ideas/${idea.id}`}
+                      className="rounded-lg px-2 py-1.5 text-muted transition hover:bg-background hover:text-foreground"
+                    >
+                      Details
+                    </Link>
                     <button
                       onClick={() => startEdit(idea)}
                       aria-label="Edit"

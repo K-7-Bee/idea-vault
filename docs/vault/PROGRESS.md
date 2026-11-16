@@ -389,3 +389,7 @@ Not done / remaining for the owner: the two Storage objects (attachment bytes) r
 Phase 0 status: closed by owner-accepted reset rather than by full preservation. The original preservation acceptance (attachment bytes, per-device exports, independent off-disk restore) was not met and is superseded by this decision, not satisfied.
 
 Follow-up (same day): owner deleted the two Storage objects in the Supabase dashboard. Read-only check: ideas 0, idea_files 0, storage.objects 0, buckets 1, Auth users 1. Live Vault is fully empty and ready for fresh use; whether the owner kept local downloads of the attachments is not verified here.
+
+## 2026-11-16 - Phase 1 started: slices 1A + 1B (navigation, idea detail, archive)
+
+Owner said "Start Phase 1" after the reliability fixes were committed (`5c710b8`). Implemented route-aware Vault navigation, `/vault/ideas/[id]` detail/edit, reversible archive/restore and `/vault/archive`, with additive migration `supabase/004_idea_details.sql`. Details, evidence, deploy order and rollback: [PHASE_1_SLICES_1A_1B.md](PHASE_1_SLICES_1A_1B.md). Verified: migration in a disposable Postgres (idempotent, trigger, RLS owner/other), 81 unit tests, 13 browser tests (synthetic fixture), tsc, ESLint, production build. Not applied to production, not deployed, not committed. 1C (projects/search) not started.

@@ -206,3 +206,119 @@ test("mobile widths and keyboard navigation keep controls reachable and locked d
     expect(await page.evaluate(() => !!document.activeElement?.closest("[inert]"))).toBeFalsy();
   }
 });
+
+test("idea details edit title and text, keep the original capture, and reject stale saves", async ({ page, request }) => {
+  await login(page);
+  await page.getByRole("link", { name: "Details", exact: true }).click();
+  await expect(page).toHaveURL(new RegExp(`/vault/ideas/${IDEA}$`));
+  await expect(page.getByRole("heading", { name: "Untitled idea" })).toBeVisible();
+  await expect(page.getByText("No edits recorded")).toBeVisible();
+  await expect(page.getByRole("link", { name: "fixture.txt" })).toBeVisible();
+
+  await page.getByRole("button", { name: "Edit", exact: true }).click();
+  await page.getByRole("textbox", { name: "Title (optional)" }).fill("  Fixture   title ");
+  await page.getByRole("textbox", { name: "Idea", exact: true }).fill("Rewritten #detail");
+  await page.getByRole("combobox", { name: "Stage" }).selectOption("building");
+  await page.getByRole("button", { name: "Save", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "Fixture title" })).toBeVisible();
+  const original = page.locator("details", { hasText: "Original capture" });
+  await original.getByText("Original capture").click();
+  await expect(original.getByText("Fixture original #test", { exact: true })).toBeVisible();
+  const saved = (await state(request)).ideas[0];
+  expect(saved).toMatchObject({ title: "Fixture title", content: "Rewritten #detail", tags: ["detail"], status: "building",
+    original_content: "Fixture original #test", archived_at: null });
+  expect(saved.updated_at).not.toBeNull();
+  expect((await state(request)).files).toHaveLength(1);
+
+  // Another device changes the idea; this page must not overwrite it or lose the edit buffer.
+  await page.getByRole("button", { name: "Edit", exact: true }).click();
+  await page.getByRole("textbox", { name: "Idea", exact: true }).fill("Stale edit from this tab");
+  await control(request, { edit: { id: IDEA, content: "Changed elsewhere" } });
+  await page.getByRole("button", { name: "Save", exact: true }).click();
+  await expect(appAlert(page)).toContainText("changed in another tab or device");
+  await expect(page.getByRole("textbox", { name: "Idea", exact: true })).toHaveValue("Stale edit from this tab");
+  expect((await state(request)).ideas[0].content).toBe("Changed elsewhere");
+});
+
+test("archiving hides an idea from the list and counts without deleting it, and restore brings it back", async ({ page, request }) => {
+  await login(page);
+  await page.goto(`/vault/ideas/${IDEA}`);
+  await page.getByRole("button", { name: "Archive", exact: true }).click();
+  await expect(page.getByRole("region", { name: "Archived" })).toBeVisible();
+  let current = await state(request);
+  expect(current.ideas).toHaveLength(1);
+  expect(current.ideas[0].archived_at).not.toBeNull();
+  expect(current.files).toHaveLength(1);
+  expect(current.objects).toHaveLength(1);
+
+  await page.goto("/vault");
+  await expect(page.getByRole("heading", { name: "Workspace overview" })).toBeVisible();
+  await expect(page.getByText("Fixture original #test")).toHaveCount(0);
+  await page.getByRole("link", { name: "Archive", exact: true }).first().click();
+  await expect(page).toHaveURL(/\/vault\/archive$/);
+  await page.getByRole("link", { name: /Fixture original #test/ }).click();
+  await page.getByRole("button", { name: "Restore", exact: true }).click();
+  await expect(page.getByRole("region", { name: "Archived" })).toBeHidden();
+  current = await state(request);
+  expect(current.ideas[0].archived_at).toBeNull();
+  expect(current.ideas[0].content).toBe("Fixture original #test");
+
+  await page.goto("/vault/archive");
+  await expect(page.getByText("Nothing archived.")).toBeVisible();
+  await page.goto("/vault");
+  await expect(page.getByText("Fixture original #test")).toBeVisible();
+});
+
+test("idea pages are denied to other accounts, unknown ids are not found, and logout locks the detail view", async ({ page }) => {
+  await page.goto(`/vault/ideas/${IDEA}`); await expect(page).toHaveURL(/\/login$/);
+  await login(page, "other");
+  await page.goto(`/vault/ideas/${IDEA}`); await expect(page).toHaveURL(/denied=1/);
+
+  await login(page);
+  await page.goto("/vault/ideas/99999999-9999-4999-8999-999999999999");
+  await expect(page.getByRole("heading", { name: "Idea not found" })).toBeVisible();
+  await page.goto("/vault/ideas/not-an-id");
+  await expect(page.getByRole("heading", { name: "Idea not found" })).toBeVisible();
+
+  await page.goto(`/vault/ideas/${IDEA}`);
+  await expect(page.getByRole("heading", { name: "Untitled idea" })).toBeVisible();
+  await page.getByRole("button", { name: "Log out", exact: true }).first().click();
+  await expect(page.getByRole("heading", { name: "Vault locked" })).toBeVisible();
+  await expect(page.getByText("Fixture original #test")).toBeHidden();
+});
+
+test("returning to the list by in-app links shows edits and archiving made on the detail page", async ({ page }) => {
+  await login(page);
+  await page.getByRole("link", { name: "Details", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "Untitled idea" })).toBeVisible();
+  await page.getByRole("button", { name: "Edit", exact: true }).click();
+  await page.getByRole("textbox", { name: "Title (optional)" }).fill("Linked title");
+  await page.getByRole("button", { name: "Save", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "Linked title" })).toBeVisible();
+  await page.getByRole("link", { name: "← All ideas" }).click();
+  await expect(page).toHaveURL(/\/vault#ideas$/);
+  await expect(page.getByRole("heading", { name: "Linked title", exact: true }).locator("visible=true")).toHaveCount(1);
+
+  await page.getByRole("link", { name: "Details", exact: true }).locator("visible=true").click();
+  await expect(page.getByRole("heading", { name: "Linked title" })).toBeVisible();
+  await page.getByRole("button", { name: "Archive", exact: true }).click();
+  await expect(page.getByRole("region", { name: "Archived" })).toBeVisible();
+  await page.getByRole("link", { name: "Dashboard", exact: true }).locator("visible=true").first().click();
+  await expect(page.getByRole("heading", { name: "Workspace overview" })).toBeVisible();
+  await expect(page.getByText("Fixture original #test").locator("visible=true")).toHaveCount(0);
+});
+
+test("detail and archive pages fit phone widths without horizontal scrolling", async ({ page, request }) => {
+  await login(page);
+  await control(request, { edit: { id: IDEA, title: "A deliberately long title ".repeat(6).trim() } });
+  for (const path of [`/vault/ideas/${IDEA}`, "/vault/archive"]) {
+    await page.goto(path);
+    await expect(page.locator("main h2").first()).toBeVisible();
+    for (const width of [320, 390]) {
+      await page.setViewportSize({ width, height: 800 });
+      const scrollWidth = await page.evaluate(() => document.documentElement.scrollWidth);
+      expect(scrollWidth, `${path} at ${width}px`).toBeLessThanOrEqual(width);
+    }
+    await page.setViewportSize({ width: 1280, height: 900 });
+  }
+});

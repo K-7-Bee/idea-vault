@@ -1,10 +1,7 @@
 import LogoutButton from "./logout-button";
 import { SparkIcon } from "./icons";
-
-const LIVE = [
-  { label: "Dashboard", href: "#overview" },
-  { label: "Ideas", href: "#ideas" },
-];
+import { Suspense } from "react";
+import NavLinks, { NavList } from "./nav-links";
 
 // From the final master prompt's private navigation. None of these modules exist yet, so they are
 // shown as planned rather than as links that lead nowhere.
@@ -37,9 +34,7 @@ export function VaultTopBar() {
     <header className="flex flex-wrap items-center justify-between gap-x-4 gap-y-3 border-b border-line px-4 py-4 sm:px-6 xl:hidden">
       <Brand />
       <nav aria-label="Workspace" className="flex items-center gap-1 text-sm font-medium">
-        {LIVE.map((l) => (
-          <a key={l.href} href={l.href} className="rounded-lg px-3 py-2 text-muted hover:bg-card hover:text-foreground">{l.label}</a>
-        ))}
+        <Suspense fallback={<NavList variant="bar" pathname="" />}><NavLinks variant="bar" /></Suspense>
       </nav>
       <LogoutButton />
     </header>
@@ -51,20 +46,7 @@ export default function VaultSidebar() {
     <aside className="sticky top-0 hidden h-screen w-64 shrink-0 flex-col border-r border-line bg-card/60 px-4 py-6 backdrop-blur xl:flex">
       <div className="px-2"><Brand /></div>
       <nav aria-label="Workspace" className="mt-8">
-        <ul className="space-y-1 text-sm font-medium">
-          {LIVE.map((l, i) => (
-            <li key={l.href}>
-              <a
-                href={l.href}
-                className={`flex items-center rounded-xl px-3 py-2.5 transition ${
-                  i === 0 ? "bg-accent text-on-accent shadow-sm shadow-accent/30" : "text-foreground hover:bg-accent-soft"
-                }`}
-              >
-                {l.label}
-              </a>
-            </li>
-          ))}
-        </ul>
+        <Suspense fallback={<NavList variant="sidebar" pathname="" />}><NavLinks variant="sidebar" /></Suspense>
         <h2 className="mb-2 mt-6 px-3 text-xs font-semibold uppercase tracking-wider text-muted">Planned modules</h2>
         <ul className="space-y-1 text-sm">
           {PLANNED.map((label) => (

@@ -10,7 +10,11 @@ export const STATUSES = ["raw", "exploring", "building", "done"] as const;
 
 // Asks the database for an idea plus the files attached to it.
 export const IDEA_COLUMNS =
-  "id, content, status, tags, created_at, files:idea_files(id, path, name, mime_type, size)";
+  "id, title, content, status, tags, created_at, files:idea_files(id, path, name, mime_type, size)";
+
+// The detail page also reads the original capture, edit time and archive state (migration 004).
+export const IDEA_DETAIL_COLUMNS =
+  "id, title, content, original_content, status, tags, created_at, updated_at, archived_at, files:idea_files(id, path, name, mime_type, size)";
 
 export type FileRow = {
   id: string;
@@ -23,6 +27,7 @@ export type FileItem = FileRow & { url: string | null };
 
 export type RawIdea = {
   id: string;
+  title?: string | null;
   content: string;
   status: string;
   tags: string[];

@@ -4,28 +4,22 @@ import { IDEA_COLUMNS, PAGE_SIZE, withFileUrls, type RawIdea } from "@/lib/ideas
 import { vaultStats } from "@/lib/vault-stats";
 import Capture from "./capture";
 import Dashboard from "./dashboard";
-import VaultSidebar, { VaultTopBar } from "./sidebar";
+import VaultShell from "./vault-shell";
 
 export default function VaultPage() {
   return (
-    <div className="vault flex min-h-screen text-foreground">
-      <VaultSidebar />
-      <div className="min-w-0 flex-1">
-        <VaultTopBar />
-        <main id="main-content" tabIndex={-1} className="mx-auto max-w-6xl px-4 pb-16 pt-6 sm:px-6 sm:pt-8">
-          {/* Reads your login cookie, so it loads at request time behind a boundary. */}
-          <Suspense
-            fallback={<div className="h-40 animate-pulse rounded-2xl border border-line bg-card" />}
-          >
-            <VaultContent />
-          </Suspense>
-        </main>
-      </div>
-    </div>
+    <VaultShell>
+      {/* Reads your login cookie, so it loads at request time behind a boundary. */}
+      <Suspense
+        fallback={<div className="h-40 animate-pulse rounded-2xl border border-line bg-card" />}
+      >
+        <VaultContent />
+      </Suspense>
+    </VaultShell>
   );
 }
 
-// A light index of every idea, so folder counts, tags and the streak cover all of them.
+// A light index of every active (not archived) idea, so folder counts, tags and the streak cover all of them.
 // Read in pages of 1000 (the most the server returns at once) so no idea is skipped.
 async function ideaIndex(supabase: Awaited<ReturnType<typeof createClient>>) {
   const STEP = 1000;
@@ -34,6 +28,7 @@ async function ideaIndex(supabase: Awaited<ReturnType<typeof createClient>>) {
     const { data, error } = await supabase
       .from("ideas")
       .select("id, tags, status, created_at")
+      .is("archived_at", null)
       .order("created_at", { ascending: false })
       .order("id", { ascending: false })
       .range(from, from + STEP - 1);
@@ -56,6 +51,7 @@ async function VaultContent() {
     supabase
       .from("ideas")
       .select(IDEA_COLUMNS)
+      .is("archived_at", null)
       .order("created_at", { ascending: false })
       .order("id", { ascending: false })
       .limit(PAGE_SIZE),
