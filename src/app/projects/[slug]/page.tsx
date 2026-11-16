@@ -30,14 +30,14 @@ export default async function ProjectPage({ params }: Props) {
       <article className="mt-10">
         <header className="max-w-3xl">
           <p className="font-nav text-xs font-semibold uppercase tracking-[0.2em] text-pf-teal">{project.category}</p>
-          <h1 className="font-script mt-5 text-5xl leading-tight sm:text-7xl">{project.title}</h1>
+          <h1 className="font-nav mt-5 text-4xl font-extrabold leading-tight tracking-tight sm:text-6xl">{project.title}</h1>
           <p className="mt-5 text-lg leading-relaxed text-pf-muted">{project.overview}</p>
           <ul aria-label="Project topics and technologies" className="mt-6 flex flex-wrap gap-2">
             {project.technologies.map((tech) => <li key={tech} className="rounded-full border border-pf-line px-3 py-1.5 text-sm">{tech}</li>)}
           </ul>
           {project.externalLink && <a href={project.externalLink.href} target="_blank" rel="noreferrer" className="mt-7 inline-flex min-h-11 items-center rounded-full border border-pf-blue px-5 py-2 text-sm text-pf-blue">{project.externalLink.label} ↗<span className="sr-only"> (opens in a new tab)</span></a>}
         </header>
-        <section aria-labelledby="flow-heading" className="mt-12 rounded-[28px] border border-pf-line bg-pf-deep p-6 sm:p-8">
+        <section aria-labelledby="flow-heading" className="mt-12 pf-card p-6 sm:p-8">
           <h2 id="flow-heading" className="text-xl font-semibold">{project.slug === "idea-vault" ? "From capture to storage" : "The project at a glance"}</h2>
           <ol className="mt-6 grid gap-4 md:grid-cols-3">
             {project.flow.map((step, index) => (

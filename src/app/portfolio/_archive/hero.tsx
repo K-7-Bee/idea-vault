@@ -3,7 +3,7 @@
 import Image from "next/image";
 import { useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 import { OPEN_TERMINAL } from "./companion";
-import MobileMenu from "./mobile-menu";
+import MobileMenu from "../mobile-menu";
 
 // The portfolio hero: the lightning K floats in the middle and tilts toward the pointer,
 // electronic parts drift around it and dodge the cursor, and screws tumble down behind it.

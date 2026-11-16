@@ -84,23 +84,29 @@
   color: var(--on-accent);
 }
 
-/* Portfolio page palette: slate, soft white, teal and sky blue, whatever the device's
-   light/dark setting. */
+/* Portfolio palette (public): Petal Frost #ECCBD9, Alice Blue #E1EFF6, Sky Blue #97D2FB,
+   Baby Blue Ice #83BCFF, Aquamarine #80FFE8. The pale swatches are fills; text uses deeper,
+   contrast-checked shades of the same hues. Same look whatever the device's light/dark setting. */
 :root:has(.portfolio) {
-  color-scheme: dark;
-  --background: #31363f;
-  --foreground: #eeeeee;
+  color-scheme: light;
+  --background: #e1eff6;
+  --foreground: #0b2340;
 }
 
 :root {
-  --pf-bg: #31363f;
-  --pf-deep: #1e2127;
-  --pf-ink: #eeeeee;
-  --pf-muted: rgba(238, 238, 238, 0.7);
-  --pf-teal: #76abae;
-  --pf-blue: #60b5ff;
-  --pf-line: rgba(238, 238, 238, 0.12);
-  --pf-glass: rgba(238, 238, 238, 0.05);
+  --pf-bg: #e1eff6;
+  --pf-deep: #0a2540;
+  --pf-ink: #0b2340;
+  --pf-muted: #3d5470;
+  --pf-teal: #0b7f86;
+  --pf-blue: #1d5fbf;
+  --pf-line: rgba(11, 35, 64, 0.12);
+  --pf-glass: rgba(255, 255, 255, 0.72);
+  --pf-aqua: #80ffe8;
+  --pf-sky: #97d2fb;
+  --pf-ice: #83bcff;
+  --pf-petal: #eccbd9;
+  --pf-petal-deep: #c2577f;
 }
 
 @theme inline {
@@ -116,6 +122,11 @@
   --color-pf-teal: var(--pf-teal);
   --color-pf-blue: var(--pf-blue);
   --color-pf-glass: var(--pf-glass);
+  --color-pf-aqua: var(--pf-aqua);
+  --color-pf-sky: var(--pf-sky);
+  --color-pf-ice: var(--pf-ice);
+  --color-pf-petal: var(--pf-petal);
+  --color-pf-petal-deep: var(--pf-petal-deep);
   --font-script: var(--font-galada);
   --font-nav: var(--font-manrope);
   --font-body: var(--font-inter);
@@ -268,6 +279,65 @@ html {
     animation: none !important;
     transition: none !important;
   }
+}
+
+/* Hero: a navy wash from the left keeps white text readable over the sky while leaving the
+   right side of the illustration clear. On narrow screens the wash covers more of the image. */
+.pf-scrim {
+  background:
+    linear-gradient(90deg, rgba(6, 26, 64, 0.72) 0%, rgba(8, 38, 92, 0.45) 42%, rgba(8, 38, 92, 0) 70%),
+    linear-gradient(180deg, rgba(6, 26, 64, 0.35) 0%, rgba(6, 26, 64, 0) 22%);
+}
+
+@media (max-width: 767px) {
+  .pf-scrim {
+    background: linear-gradient(180deg, rgba(6, 26, 64, 0.55) 0%, rgba(6, 26, 64, 0.62) 55%, rgba(6, 26, 64, 0.75) 100%);
+  }
+}
+
+.pf-title-gradient {
+  background: linear-gradient(90deg, #80ffe8, #97d2fb 55%, #ffffff);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+/* The corner brackets framing the hero copy, as in the design. */
+.pf-bracket {
+  --c: rgba(255, 255, 255, 0.75);
+  background:
+    linear-gradient(var(--c), var(--c)) top left / 22px 2px,
+    linear-gradient(var(--c), var(--c)) top left / 2px 22px,
+    linear-gradient(var(--c), var(--c)) top right / 22px 2px,
+    linear-gradient(var(--c), var(--c)) top right / 2px 22px,
+    linear-gradient(var(--c), var(--c)) bottom left / 22px 2px,
+    linear-gradient(var(--c), var(--c)) bottom left / 2px 22px,
+    linear-gradient(var(--c), var(--c)) bottom right / 22px 2px,
+    linear-gradient(var(--c), var(--c)) bottom right / 2px 22px;
+  background-repeat: no-repeat;
+}
+
+/* Light sky behind the content, fading from Alice Blue through a hint of Petal Frost. */
+.pf-sky {
+  background:
+    radial-gradient(40rem 22rem at 100% 10%, rgba(236, 203, 217, 0.55), transparent 70%),
+    radial-gradient(36rem 20rem at 0% 55%, rgba(151, 210, 251, 0.45), transparent 70%),
+    linear-gradient(180deg, #d6ebf8 0%, #e1eff6 40%, #eef6fb 100%);
+}
+
+.pf-card {
+  border: 1px solid rgba(255, 255, 255, 0.9);
+  border-radius: 24px;
+  background: var(--pf-glass);
+  box-shadow: 0 10px 30px -18px rgba(11, 35, 64, 0.35);
+  backdrop-filter: blur(10px);
+}
+
+.pf-contact {
+  background:
+    radial-gradient(30rem 16rem at 100% 0%, rgba(128, 255, 232, 0.28), transparent 70%),
+    radial-gradient(26rem 16rem at 0% 100%, rgba(236, 203, 217, 0.3), transparent 70%),
+    linear-gradient(135deg, #0a2540 0%, #12408a 60%, #1d5fbf 100%);
 }
 
 /* A restrained film grain over the whole page. */
