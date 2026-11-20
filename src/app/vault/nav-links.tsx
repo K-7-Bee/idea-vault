@@ -9,6 +9,7 @@ const LINKS = [
   { label: "Projects", href: "/vault/projects", match: (p: string) => p.startsWith("/vault/projects") },
   { label: "Engineering Lab", href: "/vault/lab", match: (p: string) => p.startsWith("/vault/lab") },
   { label: "Story Studio", href: "/vault/story", match: (p: string) => p.startsWith("/vault/story") },
+  { label: "Portfolio", href: "/vault/portfolio", match: (p: string) => p.startsWith("/vault/portfolio") },
   { label: "Archive", href: "/vault/archive", match: (p: string) => p.startsWith("/vault/archive") },
   { label: "Settings", href: "/vault/settings", match: (p: string) => p.startsWith("/vault/settings") },
 ];

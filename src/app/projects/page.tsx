@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
+import { Suspense } from "react";
 import Link from "next/link";
 import { projects } from "@/lib/projects";
+import { listShowcases } from "@/lib/showcase-public";
 
 export const metadata: Metadata = {
   title: "Projects",
@@ -26,7 +28,26 @@ export default function ProjectsPage() {
             </Link>
           </li>
         ))}
+        <Suspense fallback={null}>
+          <PublishedProjects />
+        </Suspense>
       </ul>
     </main>
   );
+}
+
+// Projects published from the Vault (Phase 4A), read at request time so an unpublished project
+// is gone on the next visit. If they can't be read, only the case studies above are shown.
+async function PublishedProjects() {
+  const published = await listShowcases();
+  return (published ?? []).map((project) => (
+    <li key={project.slug}>
+      <Link href={`/projects/${project.slug}`} className="pf-card block h-full p-6 transition hover:-translate-y-1 hover:shadow-xl sm:p-8">
+        {project.category && <p className="text-sm text-pf-teal">{project.category}</p>}
+        <h2 className="mt-4 break-words text-2xl font-semibold">{project.title}</h2>
+        <p className="mt-3 leading-relaxed text-pf-muted">{project.summary}</p>
+        <p className="mt-6 text-sm font-semibold text-pf-blue">Explore project →</p>
+      </Link>
+    </li>
+  ));
 }

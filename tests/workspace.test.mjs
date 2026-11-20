@@ -200,7 +200,7 @@ test('saveProject cannot publish, but keeps a publication value set elsewhere', 
   const base = { id: 'p', version: 1, publication_status: 'private' };
   const edit = { title: 'P', project_type: 'engineering', stage: 'completed', publication_status: 'published', summary: '', goals: '' };
   const refused = await ws.saveProject(fakeClient([]).client, 'owner', base, edit);
-  assert.match(refused.message, /isn't available yet/);
+  assert.match(refused.message, /Showcase tab/);
   const kept = fakeClient([{ data: [{ id: 'p' }], error: null }]);
   assert.equal((await ws.saveProject(kept.client, 'owner', { ...base, publication_status: 'published' }, edit)).ok, true);
   assert.equal((await ws.saveProject(fakeClient([]).client, 'owner', base, { ...edit, publication_status: 'ready', stage: 'done' })).reason, 'invalid');

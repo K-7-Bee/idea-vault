@@ -10,7 +10,8 @@ export const PROJECT_TYPES = [
   { value: "story", label: "Story" },
   { value: "hybrid", label: "Hybrid" },
 ] as const;
-// "published" exists in the database for the later Portfolio Manager; this phase cannot set it.
+// "published" is only set by publishing from the Showcase tab (Phase 4A, publish_showcase); this
+// form can keep it or move away from it, which takes the project off the public site.
 export const PUBLICATION = [
   { value: "private", label: "Private" },
   { value: "ready", label: "Ready to showcase" },
@@ -52,7 +53,7 @@ const FAILED = {
 const invalid = (message: string) => ({ ok: false, reason: "invalid", message }) as const;
 
 // Only a completed AND published, non-archived project may ever appear on the public site.
-// Nothing public reads projects yet; this is the rule the later publishing bridge must use.
+// The database enforces the same rule (migration 013): leaving it drops the public snapshot.
 export function isPubliclyVisible(p: Pick<Project, "stage" | "publication_status" | "archived_at">) {
   return p.stage === "completed" && p.publication_status === "published" && p.archived_at === null;
 }
@@ -512,7 +513,7 @@ export function saveProject(
   // Keeps a value set outside this page (for example "published") unless the owner changes it here.
   const publicationAllowed = (SETTABLE_PUBLICATION as readonly string[]).includes(edit.publication_status)
     || edit.publication_status === base.publication_status;
-  if (!publicationAllowed) return Promise.resolve(invalid("Publishing to the public site isn't available yet."));
+  if (!publicationAllowed) return Promise.resolve(invalid("Publish from the Showcase tab."));
   if (edit.summary.length > 5000 || edit.goals.length > 10000) return Promise.resolve(invalid("The summary or goals are too long."));
   return updateRecord(client, "projects", ownerId, base, {
     title,

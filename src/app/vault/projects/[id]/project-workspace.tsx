@@ -25,6 +25,9 @@ import ProjectFiles from "./project-files";
 import { useFileActions } from "./file-actions";
 import type { ProjectFile } from "@/lib/project-files";
 import type { PickerConfig } from "@/lib/drive/picker";
+import type { LiveShowcase, ShowcaseDraft } from "@/lib/showcase";
+import ShowcaseEditor from "./showcase-editor";
+import { requestImageCleanup } from "../../portfolio/orphan-cleanup";
 
 type Tab = { id: string; label: string; tables: TableName[] };
 
@@ -49,6 +52,7 @@ function tabsFor(type: string): Tab[] {
   }
   tabs.push({ id: "links", label: hasEngineering(type) ? "Code & links" : "References", tables: ["project_links"] });
   tabs.push({ id: "files", label: "Files", tables: [] });
+  tabs.push({ id: "showcase", label: "Showcase", tables: [] });
   return tabs;
 }
 
@@ -66,17 +70,21 @@ function when(value: string) {
   return new Date(value).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
 }
 
-export default function ProjectWorkspace({ ownerId, initialProject, initialRecords, sourceIdea, truncated, initialFiles = [], driveUploads = false, picker = { apiKey: "", appId: "" } }: {
+export default function ProjectWorkspace({ ownerId, initialProject, initialRecords, sourceIdea, truncated, initialFiles = [], driveUploads = false, picker = { apiKey: "", appId: "" }, showcase = { draft: null, live: null } }: {
   ownerId: string; initialProject: Project; initialRecords: Records;
   sourceIdea: { id: string; label: string } | null; truncated: TableName[];
   // Phase 3C: files in Google Drive, the upload switch and the Picker configuration.
   initialFiles?: ProjectFile[]; driveUploads?: boolean; picker?: PickerConfig;
+  // Phase 4A: the private showcase draft and what is live on the public site.
+  showcase?: { draft: ShowcaseDraft | null; live: LiveShowcase | null };
 }) {
   const [project, setProject] = useState(initialProject);
   const [records, setRecords] = useState(initialRecords);
   const [files, setFilesState] = useState(initialFiles);
   const setFiles = (change: (list: ProjectFile[]) => ProjectFile[]) => setFilesState(change);
   const [tab, setTab] = useState("overview");
+  const [showcaseDraft, setShowcaseDraft] = useState(showcase.draft);
+  const [liveShowcase, setLiveShowcase] = useState(showcase.live);
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(() => ({ ...initialProject }));
   const { run, busy, message, setMessage, online, locked, retry, region } = useVaultWriter(ownerId);
@@ -190,6 +198,7 @@ export default function ProjectWorkspace({ ownerId, initialProject, initialRecor
                     onSubmit={(e) => {
                       e.preventDefault();
                       void run((c) => saveProject(c, ownerId, project, draft), "Saved.", (saved) => {
+                        if (project.publication_status === "published" && saved.publication_status !== "published") requestImageCleanup();
                         setProject(saved as unknown as Project);
                         setEditing(false);
                       });
@@ -217,7 +226,7 @@ export default function ProjectWorkspace({ ownerId, initialProject, initialRecor
                         {publicationChoices.map((p) => <option key={p.value} value={p.value}>{p.label}</option>)}
                       </select>
                       <span id="publication-hint" className="text-muted">
-                        Separate from the stage. Nothing is published to your public site from here; only completed and published projects will ever be eligible.
+                        Separate from the stage. Publish from the Showcase tab. A published project leaves your public site as soon as it is no longer Completed, is archived, or is set to Private or Ready here.
                       </span>
                     </div>
                     <label className="flex flex-col gap-1 text-sm font-medium sm:col-span-2">
@@ -258,7 +267,10 @@ export default function ProjectWorkspace({ ownerId, initialProject, initialRecor
                         disabled={disabled}
                         onClick={() => void run((c) => setProjectArchived(c, ownerId, project, !archived),
                           archived ? "Restored." : "Archived. Nothing was deleted; restore it any time.",
-                          (saved) => setProject(saved as unknown as Project))}
+                          (saved) => {
+                            if (project.publication_status === "published" && saved.publication_status !== "published") requestImageCleanup();
+                            setProject(saved as unknown as Project);
+                          })}
                         className="rounded-xl border border-line px-4 py-2 transition hover:bg-background disabled:opacity-40"
                       >
                         {archived ? "Restore project" : "Archive project"}
@@ -304,6 +316,10 @@ export default function ProjectWorkspace({ ownerId, initialProject, initialRecor
                 </dl>
               </aside>
             </section>
+          ) : current.id === "showcase" ? (
+            <ShowcaseEditor ownerId={ownerId} project={project} files={files} writer={writer}
+              onProject={(change) => setProject((p) => ({ ...p, ...change }))}
+              saved={showcaseDraft} setSaved={setShowcaseDraft} liveShowcase={liveShowcase} setLive={setLiveShowcase} />
           ) : current.id === "files" ? (
             <ProjectFiles files={files}
               entries={hasEngineering(project.project_type) ? records.project_entries : []}

@@ -44,3 +44,15 @@ Record each answer with date, conversation/file source, authorized scope and res
 | V-008a | Existing Supabase attachments | Leave them in Supabase, readable as today; no copy, move or deletion. |
 | V-008b | Largest expected file | 1 GB. Uploads are resumable and go from the browser straight to Drive; large videos play through "Open in Drive" rather than streaming through a Vercel function. |
 | V-013 | Drive disconnected or unreachable | Fall back to the existing Supabase upload for files under the bucket's size limit. Larger files stay queued on the device with a "waiting for Drive" status and upload when Drive is reachable. |
+
+## Phase 4A decisions (2026-11-21, in conversation)
+
+Owner replied "approve 4A" to [PHASE_4_PLAN.md](PHASE_4_PLAN.md), accepting every recommendation.
+
+| ID | Question | Answer |
+| --- | --- | --- |
+| V-014 | How public pages read published content | A separate `showcases` snapshot table; `anon` may SELECT only its public columns (no owner or project id). Private tables stay anon-denied. Writes only through `publish_showcase`/`unpublish_showcase`. |
+| V-015 | Public images | Copied from Drive into a public `showcase` Storage bucket at publish (JPEG/PNG/WebP, 5 MB each, up to 8), removed on unpublish. Drive originals are never shared. |
+| V-016 | The three hand-written case studies | Unchanged; published projects are listed alongside them. |
+| V-017 | How fast unpublishing takes effect | Immediately: public project pages read the database on every request, and triggers drop the snapshot when a project leaves Completed + Published + active. |
+| V-018 | Public address | `/projects/<slug>`, chosen in the editor; the three existing slugs are reserved. |

@@ -6,6 +6,7 @@ import { ALL_TABLES, PROJECT_COLUMNS, type Project, type Row, type TableName } f
 import { driveUploadsEnabled } from "@/lib/drive/files";
 import { PROJECT_FILE_COLUMNS } from "@/lib/drive/targets";
 import type { ProjectFile } from "@/lib/project-files";
+import { DRAFT_COLUMNS, type LiveShowcase, type ShowcaseDraft } from "@/lib/showcase";
 import VaultShell from "../../vault-shell";
 import ProjectWorkspace from "./project-workspace";
 
@@ -54,9 +55,12 @@ async function ProjectContent({ id }: { id: string }) {
   if (!project.data) notFound();
   const data = project.data as Project;
 
-  const [projectFiles, sourceIdea, ...lists] = await Promise.all([
+  const [projectFiles, showcaseDraft, liveShowcase, sourceIdea, ...lists] = await Promise.all([
     supabase.from("project_files").select(PROJECT_FILE_COLUMNS).eq("project_id", id).eq("user_id", owner.id)
       .order("created_at", { ascending: false }).limit(RECORD_LIMIT).then((r) => r, () => null),
+    // Phase 4A: the private showcase draft and, if published, what is live.
+    supabase.from("project_showcases").select(DRAFT_COLUMNS).eq("project_id", id).eq("user_id", owner.id).maybeSingle().then((r) => r, () => null),
+    supabase.from("showcases").select("project_id, slug, published_at").eq("project_id", id).maybeSingle().then((r) => r, () => null),
     data.source_idea_id
       ? supabase.from("ideas").select("id, title, content").eq("id", data.source_idea_id).eq("user_id", owner.id).maybeSingle().then((r) => r, () => null)
       : Promise.resolve(null),
@@ -64,7 +68,8 @@ async function ProjectContent({ id }: { id: string }) {
       supabase.from(table).select("*").eq("project_id", id).eq("user_id", owner.id).limit(RECORD_LIMIT).then((r) => r, () => null),
     ),
   ]);
-  if (lists.some((r) => !r || r.error || !r.data) || !projectFiles || projectFiles.error || !projectFiles.data) return <LoadError id={id} />;
+  if (lists.some((r) => !r || r.error || !r.data) || !projectFiles || projectFiles.error || !projectFiles.data
+    || !showcaseDraft || showcaseDraft.error || !liveShowcase || liveShowcase.error) return <LoadError id={id} />;
 
   const records = Object.fromEntries(ALL_TABLES.map((table, i) => [table, lists[i]!.data as Row[]])) as Record<TableName, Row[]>;
   const truncated = ALL_TABLES.filter((table) => records[table].length >= RECORD_LIMIT);
@@ -75,6 +80,7 @@ async function ProjectContent({ id }: { id: string }) {
   return (
     <ProjectWorkspace ownerId={owner.id} initialProject={data} initialRecords={records} sourceIdea={idea} truncated={truncated}
       initialFiles={projectFiles.data as unknown as ProjectFile[]} driveUploads={driveUploadsEnabled()}
+      showcase={{ draft: (showcaseDraft.data as unknown as ShowcaseDraft | null) ?? null, live: (liveShowcase.data as LiveShowcase | null) ?? null }}
       picker={{ apiKey: process.env.NEXT_PUBLIC_GOOGLE_PICKER_API_KEY ?? "", appId: process.env.NEXT_PUBLIC_GOOGLE_APP_ID ?? "" }} />
   );
 }

@@ -8,7 +8,7 @@ const OTHER = '22222222-2222-4222-8222-222222222222';
 const IDEA = '33333333-3333-4333-8333-333333333333';
 const FILE = '44444444-4444-4444-8444-444444444444';
 const sessions = new Map(), signed = new Map();
-let ideas, files, objects, rules, events, work, drive, google, simple;
+let ideas, files, objects, rules, events, work, drive, google, simple, showcase;
 // Phase 3A: a synthetic Google (OAuth + the few Drive calls the app makes). Not Google.
 const DRIVE_SCOPE = 'https://www.googleapis.com/auth/drive.file';
 const FOLDER_MIME = 'application/vnd.google-apps.folder';
@@ -51,6 +51,7 @@ function reset() {
       ['fixture-img-000001', { name: 'castle.png', mimeType: 'image/png', granted: true, bytes: PNG }],
       ['fixture-img-000002', { name: 'forest.png', mimeType: 'image/png', granted: true, bytes: PNG }]]) };
   simple = { project_files: [], drive_folders: [] };
+  showcase = { drafts: [], live: [], objects: new Map() };
   work = Object.fromEntries(WORK_TABLES.map((t) => [t, []]));
   const created_at = '2026-11-15T00:00:00.000Z';
   ideas = [{ id: IDEA, user_id: OWNER, title: null, content: 'Fixture original #test', original_content: 'Fixture original #test',
@@ -123,11 +124,14 @@ const server = http.createServer(async (req, res) => {
         if (body.googleDelete) google.files.delete(body.googleDelete);
         if (body.googleFile) Object.assign(google.files.get(body.googleFile.id), body.googleFile.changes);
         if (body.edit) Object.assign(ideas.find((idea) => idea.id === body.edit.id), body.edit);
+        if (body.googleBytes) google.files.get(body.googleBytes.id).bytes = Buffer.from(body.googleBytes.text);
+        if (body.showcaseObjectAge) for (const o of showcase.objects.values()) o.created_at = new Date(Date.now() - body.showcaseObjectAge).toISOString();
         if (body.editRow) { const row = work[body.editRow.table].find((r) => r.id === body.editRow.id); Object.assign(row, body.editRow.changes); touch(row); }
         return reply(200, {});
       }
       if (url.pathname === '/_test/state') return reply(200, { ideas, files, work, drive: [...drive.values()],
-        simple, google: { revoked: google.revoked, calls: google.calls, files: [...google.files].map(([id, { bytes, ...f }]) => ({ id, ...f, stored: bytes ? bytes.length : 0 })) },
+        simple, showcase: { drafts: showcase.drafts, live: showcase.live, objects: [...showcase.objects].map(([path, o]) => ({ path, size: o.bytes.length, type: o.type })) },
+        google: { revoked: google.revoked, calls: google.calls, files: [...google.files].map(([id, { bytes, ...f }]) => ({ id, ...f, stored: bytes ? bytes.length : 0 })) },
         objects: [...objects].map(([path, data]) => ({ path, size: data.length })), events });
       return reply(404, {});
     }
@@ -160,7 +164,18 @@ const server = http.createServer(async (req, res) => {
       if (signed.get(url.searchParams.get('token')) !== path || !objects.has(path)) return reply(403, {});
       event.status = 200; res.writeHead(200, { 'Content-Type': 'text/plain' }); return res.end(objects.get(path));
     }
+    // Phase 4A: the public snapshot and public image copies are readable without a session.
+    if (url.pathname === '/rest/v1/showcases') return showcaseRows(url, req, identity, reply);
+    if (url.pathname.startsWith('/storage/v1/object/public/showcase/') && req.method === 'GET') {
+      const object = showcase.objects.get(decodeURIComponent(url.pathname.slice('/storage/v1/object/public/showcase/'.length)));
+      if (!object) return reply(400, { statusCode: '404', error: 'not_found', message: 'Object not found' });
+      event.status = 200; res.writeHead(200, { 'Content-Type': object.type, 'Cache-Control': 'max-age=60' }); return res.end(object.bytes);
+    }
     if (!identity) return reply(401, { message: 'Fixture authentication required' });
+    if (url.pathname === '/rest/v1/project_showcases') return draftRows(url, req, json, identity.id, reply);
+    if (url.pathname === '/rest/v1/rpc/publish_showcase' && req.method === 'POST') return publishShowcase(json(), identity.id, reply);
+    if (url.pathname === '/rest/v1/rpc/unpublish_showcase' && req.method === 'POST') return unpublishShowcase(json(), identity.id, reply);
+    if (url.pathname.startsWith('/storage/v1/object/') && url.pathname.includes('showcase')) return showcaseStorage(url, req, bytes, json, identity.id, reply);
     const owner = identity.id;
     if (url.pathname === '/rest/v1/drive_connections') return driveRows(url, req, json, owner, reply);
     if (url.pathname === '/rest/v1/rpc/project_file_make_main' && req.method === 'POST') {
@@ -185,6 +200,7 @@ const server = http.createServer(async (req, res) => {
           if (input.user_id !== owner) return reply(403, { code: '42501', message: 'new row violates row-level security policy' });
           if (rows.some((r) => r.id === input.id)) return reply(409, { code: '23505', message: 'duplicate key' });
           const row = { position: 0, ...input, created_at: now, updated_at: now, version: 1 };
+          if (table === 'projects' && input.publication_status === 'published') return reply(400, { code: '23514', message: 'Publish a project from its Showcase tab.' });
           if (table === 'projects') {
             Object.assign(row, { stage: 'exploring', publication_status: 'private', summary: '', goals: '', source_idea_id: null, ...input,
               created_at: now, updated_at: now, version: 1, archived_at: null });
@@ -207,13 +223,19 @@ const server = http.createServer(async (req, res) => {
           const next = { ...row, ...update };
           if (table === 'story_units') { const problem = levelProblem(next); if (problem) return reply(problem.status, problem.body); }
           if (table === 'projects' && 'archived_at' in update) next.archived_at = update.archived_at == null ? null : (row.archived_at ?? new Date().toISOString());
+          if (table === 'projects') { const problem = publicationRules(row, next); if (problem) return reply(problem.status, problem.body); }
           Object.assign(row, next); touch(row);
+          if (table === 'projects' && row.publication_status !== 'published') showcase.live = showcase.live.filter((l) => l.project_id !== row.id);
         }
       } else if (isWork && req.method === 'DELETE') {
         if (table === 'story_units' && found.some((u) => work.story_units.some((c) => c.parent_id === u.id))) {
           return reply(409, { code: '23503', message: 'update or delete on table "story_units" violates foreign key constraint' });
         }
         for (const row of found) { rows.splice(rows.indexOf(row), 1); clearLinks(table, row.id); }
+        if (table === 'projects') for (const row of found) {
+          showcase.live = showcase.live.filter((l) => l.project_id !== row.id);
+          showcase.drafts = showcase.drafts.filter((d) => d.project_id !== row.id);
+        }
       } else if (req.method === 'POST') {
         const body = json(); const additions = Array.isArray(body) ? body : [body];
         for (const row of additions) {
@@ -491,6 +513,130 @@ function uploadBytes(url, req, bytes, reply, res, event) {
   // A dropped response after the bytes were stored: the browser must ask and resume.
   if (google.dropAfterChunk && google.chunkCount === google.dropAfterChunk) { req.socket.destroy(); return; }
   return session.fileId ? complete() : incomplete();
+}
+
+// ---------- Phase 4A: imitates migration 013 (not PostgreSQL) ----------
+const RESERVED = ['waste-to-energy-lighting', 'cha-restaurant', 'idea-vault'];
+const SECTION_KEYS = ['problem', 'objective', 'approach', 'implementation', 'results', 'limitations', 'lessons'];
+const ANON_COLUMNS = ['slug', 'title', 'category', 'summary', 'technologies', 'sections', 'links', 'images', 'published_at'];
+const slugOk = (slug) => /^[a-z0-9]+(-[a-z0-9]+)*$/.test(slug) && slug.length >= 3 && slug.length <= 60 && !RESERVED.includes(slug);
+const pgError = (status, code, message) => ({ status, body: { code, message } });
+
+// projects_publication_rules: only publish_showcase can publish; leaving "completed" or archiving demotes.
+function publicationRules(row, next) {
+  if (next.publication_status !== 'published') return null;
+  if (row.publication_status !== 'published' && !showcase.live.some((l) => l.project_id === row.id)) {
+    return pgError(400, '23514', 'Publish a project from its Showcase tab.');
+  }
+  if (next.stage !== 'completed' || next.archived_at != null) next.publication_status = 'ready';
+  return null;
+}
+
+function respondRows(req, reply, rows) {
+  if (req.headers.accept?.includes('application/vnd.pgrst.object+json')) {
+    return rows.length === 1 ? reply(200, rows[0]) : reply(406, { code: 'PGRST116', message: 'Expected one row' });
+  }
+  return reply(200, rows);
+}
+
+// Column grants: anon gets the public columns only; signed-in accounts also get project_id.
+function showcaseRows(url, req, identity, reply) {
+  if (req.method !== 'GET') return reply(401, { code: '42501', message: 'permission denied for table showcases' });
+  const select = (url.searchParams.get('select') ?? '*').split(',').map((c) => c.trim());
+  const allowed = identity ? [...ANON_COLUMNS, 'project_id'] : ANON_COLUMNS;
+  if (select.some((c) => !allowed.includes(c))) return reply(401, { code: '42501', message: 'permission denied for table showcases' });
+  let rows = showcase.live.filter((row) => matches(row, url.searchParams));
+  rows = [...rows].sort((a, b) => b.published_at.localeCompare(a.published_at));
+  rows = rows.slice(0, Number(url.searchParams.get('limit') ?? 1000)).map((row) => Object.fromEntries(select.map((c) => [c, row[c]])));
+  return respondRows(req, reply, rows);
+}
+
+function draftRows(url, req, json, owner, reply) {
+  const now = new Date().toISOString();
+  const found = () => showcase.drafts.filter((d) => d.user_id === owner && matches(d, url.searchParams));
+  const check = (row) => {
+    if (row.slug && !slugOk(row.slug)) return pgError(400, '23514', 'new row violates check constraint "project_showcases_slug_check"');
+    if (row.slug && showcase.drafts.some((d) => d.id !== row.id && d.slug === row.slug)) return pgError(409, '23505', 'duplicate key value violates unique constraint "project_showcases_slug_key"');
+    return null;
+  };
+  if (req.method === 'GET') return respondRows(req, reply, found());
+  if (req.method === 'POST') {
+    const body = json();
+    if (body.user_id !== owner) return reply(403, { code: '42501', message: 'row-level security' });
+    if (!work.projects.some((p) => p.id === body.project_id && p.user_id === owner)) return reply(409, { code: '23503', message: 'project fk' });
+    if (showcase.drafts.some((d) => d.project_id === body.project_id)) return reply(409, { code: '23505', message: 'project_showcases_project_id_key' });
+    const row = { slug: '', title: '', category: '', summary: '', technologies: [], sections: {}, links: [], images: [], ...body, created_at: now, updated_at: now, version: 1 };
+    const problem = check(row); if (problem) return reply(problem.status, problem.body);
+    showcase.drafts.push(row);
+    return respondRows(req, reply, [row]);
+  }
+  if (req.method === 'PATCH') {
+    const body = json();
+    for (const key of ['id', 'user_id', 'project_id', 'created_at', 'updated_at', 'version']) delete body[key];
+    const targets = found();
+    for (const row of targets) { const problem = check({ ...row, ...body }); if (problem) return reply(problem.status, problem.body); }
+    for (const row of targets) { Object.assign(row, body, { updated_at: now }); row.version += 1; }
+    return respondRows(req, reply, targets);
+  }
+  if (req.method === 'DELETE') { const gone = found(); showcase.drafts = showcase.drafts.filter((d) => !gone.includes(d)); return respondRows(req, reply, gone); }
+  return reply(405, {});
+}
+
+function publishShowcase({ p_project, p_draft_version, p_image_paths }, owner, reply) {
+  const project = work.projects.find((p) => p.id === p_project && p.user_id === owner);
+  if (!project) return reply(400, { code: 'P0002', message: 'Project not found.' });
+  if (project.stage !== 'completed' || project.archived_at) return reply(400, { code: '23514', message: 'Only a completed, active project can be published.' });
+  const d = showcase.drafts.find((x) => x.project_id === project.id && x.user_id === owner);
+  if (!d || d.version !== p_draft_version) return reply(400, { code: '40001', message: 'The showcase changed since you checked it. Review it again before publishing.' });
+  if (!d.slug || !d.title.trim() || !d.summary.trim()) return reply(400, { code: '23514', message: 'A showcase needs an address, a title and a summary.' });
+  const paths = p_image_paths ?? [];
+  if (paths.length !== d.images.length) return reply(400, { code: '40001', message: 'The images changed. Review the showcase again.' });
+  if (paths.some((p) => !new RegExp('^' + owner + '/[0-9a-f-]{36}\\.(webp|jpg|png)$').test(p))) return reply(400, { code: '23514', message: 'An image path is not allowed.' });
+  if (d.images.some((i) => !i.alt?.trim())) return reply(400, { code: '23514', message: 'Each image needs a short description.' });
+  if (showcase.live.some((l) => l.slug === d.slug && l.project_id !== project.id)) return reply(409, { code: '23505', message: 'duplicate key value violates unique constraint "showcases_slug_key"' });
+  const row = { project_id: project.id, user_id: owner, slug: d.slug, title: d.title.trim(), category: d.category.trim(), summary: d.summary.trim(),
+    technologies: d.technologies, links: d.links, published_at: new Date().toISOString(),
+    sections: SECTION_KEYS.filter((k) => (d.sections[k] ?? '').trim()).map((k) => ({ key: k, body: d.sections[k].trim() })),
+    images: d.images.map((img, i) => ({ path: paths[i], alt: img.alt.trim() })) };
+  showcase.live = [...showcase.live.filter((l) => l.project_id !== project.id), row];
+  if (project.publication_status !== 'published') { project.publication_status = 'published'; touch(project); }
+  return reply(200, project.version);
+}
+
+function unpublishShowcase({ p_project }, owner, reply) {
+  const project = work.projects.find((p) => p.id === p_project && p.user_id === owner);
+  if (!project) return reply(400, { code: 'P0002', message: 'Project not found.' });
+  showcase.live = showcase.live.filter((l) => l.project_id !== project.id);
+  if (project.publication_status === 'published') { project.publication_status = 'ready'; touch(project); }
+  return reply(200, project.version);
+}
+
+// The "showcase" bucket: public, 5 MB, JPEG/PNG/WebP; owners list, add and remove in their own folder.
+function showcaseStorage(url, req, bytes, json, owner, reply) {
+  if (url.pathname === '/storage/v1/object/list/showcase' && req.method === 'POST') {
+    const prefix = (json().prefix ?? '').replace(/\/$/, '');
+    if (prefix !== owner) return reply(200, []);
+    return reply(200, [...showcase.objects].filter(([path]) => path.startsWith(owner + '/'))
+      .map(([path, o]) => ({ name: path.slice(owner.length + 1), id: o.id, created_at: o.created_at, updated_at: o.created_at, metadata: { size: o.bytes.length, mimetype: o.type } })));
+  }
+  if (url.pathname === '/storage/v1/object/showcase' && req.method === 'DELETE') {
+    const removed = [];
+    for (const path of json().prefixes ?? []) {
+      if (path.startsWith(owner + '/') && showcase.objects.has(path)) { showcase.objects.delete(path); removed.push({ name: path }); }
+    }
+    return reply(200, removed);
+  }
+  if (url.pathname.startsWith('/storage/v1/object/showcase/') && req.method === 'POST') {
+    const path = decodeURIComponent(url.pathname.slice('/storage/v1/object/showcase/'.length));
+    const type = (req.headers['content-type'] ?? '').split(';')[0];
+    if (!path.startsWith(owner + '/')) return reply(403, { statusCode: '403', message: 'new row violates row-level security policy' });
+    if (!['image/jpeg', 'image/png', 'image/webp'].includes(type)) return reply(415, { statusCode: '415', message: 'mime type not supported' });
+    if (bytes.length > 5 * 1024 * 1024) return reply(413, { statusCode: '413', message: 'The object exceeded the maximum allowed size' });
+    if (showcase.objects.has(path)) return reply(409, { statusCode: '409', message: 'The resource already exists' });
+    showcase.objects.set(path, { id: randomUUID(), bytes: Buffer.from(bytes), type, created_at: new Date().toISOString() });
+    return reply(200, { Key: 'showcase/' + path, Id: randomUUID() });
+  }
+  return reply(404, { message: 'Unsupported fixture request' });
 }
 
 server.listen(4317, '127.0.0.1', () => console.log('Synthetic API fixture on 127.0.0.1:4317'));

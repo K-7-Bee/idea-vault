@@ -533,3 +533,29 @@ The owner found the Vault slow. Cause found: Vercel functions ran in the default
 ## 2026-11-21 - Measured remaining slowness; fewer Google trips per image
 
 Measured from Seoul (no owner session; unauthenticated round trips only): Supabase 0.05–0.08 s, Vault server 0.08–0.14 s, Google Drive API 0.27–0.31 s, Google image host 0.19–0.47 s. The project page already loads its lists in one parallel batch, so Google dominated: two trips per image. Owner approved both changes. `9facd98` (`dpl_7ctoUJEZD72jGMFQwYpnK6nwYfbm`): a warm server remembers each Drive thumbnail link for 30 minutes in memory (keyed by owner and Vault file, at most 500, dropped and re-asked when it stops working), and previews are cached in the owner's browser for 1 hour (`private, max-age=3600`; errors stay `no-store`). Trade-offs accepted by the owner: a picture trashed in Drive can still show for up to an hour until Check files, and the browser keeps recent previews for up to an hour after logout. Verified: 146 unit tests, 47 browser tests (new: a repeat view makes no metadata call; a link that stops working falls back and reports 404; disabling the memory makes the test fail), build; live READY in `icn1`, smoke check passed. Not measured: real logged-in image timings.
+
+## 2026-11-21 - Phase 4 plan drafted
+
+Owner asked to plan the next phase. Phases 1–3 are live; what remains from the final master prompt is the publishing bridge, Portfolio Manager, Gemini and release hardening. Read `006_projects.sql` (`publication_status` exists but nothing sets `published`), `src/lib/workspace.ts` (project edits go browser → Supabase, so the server can't see stage changes), the public `/projects` routes (hard-coded, static) and this Next version's `revalidateTag` docs (`"max"` serves stale once; `{ expire: 0 }` is immediate). Drafted [PHASE_4_PLAN.md](PHASE_4_PLAN.md): 4A publish projects (owner-only drafts, an anon-readable whitelisted `showcases` table, images copied into a public `showcase` bucket at publish, trigger removal on stage/publication/archive/delete changes, request-time public reads), then 4B profile Portfolio Manager and 4C Journal/résumé/media. Five owner decisions pending (V-014 to V-018). No code written.
+
+## 2026-11-21 - Phase 4A built locally (publishing projects)
+
+Owner said "approve 4A". Built: migration `013_showcases.sql` (private `project_showcases` drafts; public `showcases` snapshot with an anon column grant excluding owner and project ids; security-definer `publish_showcase`/`unpublish_showcase`; project triggers that refuse direct publishing and drop the snapshot when a project leaves Completed, is archived, is set to Private/Ready or is deleted; public `showcase` bucket, 5 MB, JPEG/PNG/WebP, owner-folder write/list/delete policies). App: Showcase tab (draft, image choice with descriptions, preview, a confirmation listing exactly what becomes public, publish, unpublish), Portfolio page (published / ready / waiting / completed-private), owner-only preview using the public components, publish route copying Drive images after checking their real bytes, public `/projects` and `/projects/<slug>` reading the snapshot anonymously at request time. The three hand-written case studies stay fully prebuilt. Details and differences from the plan: [PHASE_4_PLAN.md](PHASE_4_PLAN.md#4a-as-built-2026-11-21-local-only).
+
+Verified locally:
+- **Unit tests:** 158 (12 new in `tests/showcase.test.mjs`).
+- **Browser tests:** 52 (5 new in `tests/browser/showcase.spec.ts`):
+  - Draft → preview → confirm → publish; visitors see only the chosen fields; private summary, title, project id, Drive id and Vault routes are absent from the HTML.
+  - Unpublish, stage change, archive and Ready each remove the page on the next request; completing or restoring again doesn't republish.
+  - Leftover copies are removed when the Portfolio page opens.
+  - Refused: stale draft, reserved or taken address, mislabelled image bytes (nothing left behind), direct PATCH to `published`, a non-completed project.
+  - Anonymous, other-account and cross-origin requests are denied; anonymous reads of private tables, of `showcases.user_id`/`project_id` and of the bucket listing are refused.
+  - Case studies unchanged; layouts checked at 320–1280 px.
+  - A deliberate break of the image-content check was caught.
+- **Migrations:** 013 applied twice after 002–012 in a disposable offline Postgres 17, with a test-only Storage table stand-in.
+  - 61 checks in `tests/sql/phase4a-behaviour.sql` pass.
+  - The 3A (17), 3B (15), 3C (26), 3D (25) and grant (11) suites still pass after 013.
+  - The Phase 2 suite stops on a missing seed idea, before and after 013 alike. With two seed ideas added by hand it passes 28/28, both with and without 013 (pre-existing suite gap, not fixed).
+- **Static checks:** tsc, ESLint, production build (35 pages), `git diff --check`. The disposable containers were removed.
+
+Not verified: real Supabase Storage (bucket MIME/size enforcement, public URL caching, the `list` call), real Drive image bytes, and the Vercel response headers for request-time pages. Unpublished addresses are soft 404s (status 200 with the not-found page and `noindex`). Not committed, not applied, not deployed.

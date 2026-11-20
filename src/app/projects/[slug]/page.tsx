@@ -1,28 +1,54 @@
 import type { Metadata } from "next";
+import { Suspense } from "react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getProject, projects } from "@/lib/projects";
+import { publishedContent } from "@/lib/showcase";
+import { getShowcase, publicSupabaseUrl } from "@/lib/showcase-public";
+import ShowcaseView from "../showcase-view";
 
 type Props = { params: Promise<{ slug: string }> };
 
+// The hand-written case studies are built ahead of time. Any other address is a project published
+// from the Vault (Phase 4A), read from the public snapshot on every request and never cached, so it
+// disappears as soon as it is unpublished. With Cache Components a request-time page starts with a
+// 200 status, so an unpublished address shows the not-found page with a noindex tag (a "soft 404").
 export function generateStaticParams() {
   return projects.map(({ slug }) => ({ slug }));
 }
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
-  const project = getProject((await params).slug);
-  if (!project) notFound();
+  const slug = (await params).slug;
+  const project = getProject(slug);
+  if (project) {
+    return {
+      title: project.title,
+      description: project.summary,
+      openGraph: { title: `${project.title} · MD Kaushik Kamal`, description: project.summary, type: "article" },
+      twitter: { card: "summary", title: project.title, description: project.summary },
+    };
+  }
+  const showcase = await getShowcase(slug);
+  if (!showcase) return { title: "Project not found", robots: { index: false, follow: false } };
   return {
-    title: project.title,
-    description: project.summary,
-    openGraph: { title: `${project.title} · MD Kaushik Kamal`, description: project.summary, type: "article" },
-    twitter: { card: "summary", title: project.title, description: project.summary },
+    title: showcase.title,
+    description: showcase.summary,
+    openGraph: { title: `${showcase.title} · MD Kaushik Kamal`, description: showcase.summary, type: "article" },
+    twitter: { card: "summary", title: showcase.title, description: showcase.summary },
   };
 }
 
-export default async function ProjectPage({ params }: Props) {
-  const project = getProject((await params).slug);
-  if (!project) notFound();
+export default function ProjectPage({ params }: Props) {
+  return (
+    <Suspense fallback={<main id="main-content" tabIndex={-1} className="mx-auto min-h-[60vh] max-w-6xl px-6 py-12 sm:py-20" />}>
+      {params.then(({ slug }) => <ProjectBody slug={slug} />)}
+    </Suspense>
+  );
+}
+
+function ProjectBody({ slug }: { slug: string }) {
+  const project = getProject(slug);
+  if (!project) return <PublishedProject slug={slug} />;
 
   return (
     <main id="main-content" tabIndex={-1} className="mx-auto max-w-6xl px-6 py-12 sm:py-20">
@@ -66,4 +92,19 @@ export default async function ProjectPage({ params }: Props) {
       </aside>
     </main>
   );
+}
+
+async function PublishedProject({ slug }: { slug: string }) {
+  const showcase = await getShowcase(slug);
+  if (showcase === null) notFound();
+  if (showcase === undefined) {
+    return (
+      <main id="main-content" tabIndex={-1} className="mx-auto max-w-6xl px-6 py-12 sm:py-20">
+        <Link href="/projects" className="text-sm text-pf-blue">← All projects</Link>
+        <h1 className="font-nav mt-10 text-3xl font-extrabold">This project couldn&apos;t be loaded</h1>
+        <p className="mt-4 text-pf-muted">Please try again in a moment.</p>
+      </main>
+    );
+  }
+  return <ShowcaseView content={publishedContent(showcase, publicSupabaseUrl())} />;
 }
