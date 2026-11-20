@@ -54,7 +54,15 @@ select pg_temp.expect_error($q$insert into public.idea_files (idea_id, user_id, 
 commit;
 select pg_temp.check((select count(*) = 2 from public.idea_files), 'other user deleted nothing');
 begin; set local role anon;
-select pg_temp.check((select count(*) = 0 from public.idea_files), 'anon reads zero rows');
+-- Before migration 010 anon reads zero rows (RLS); after 010 it has no privilege at all. The query
+-- sits in PL/pgSQL so it is only planned (and permission-checked) when anon may run it.
+do $$ begin
+  if has_table_privilege('anon', 'public.idea_files', 'SELECT') then
+    perform pg_temp.check((select count(*) = 0 from public.idea_files), 'anon reads no rows');
+  else
+    raise notice 'OK anon has no privilege on idea_files';
+  end if;
+end $$;
 commit;
 
 -- unlinking (deleting the record) works for the owner; nothing touches Drive from the database
