@@ -63,7 +63,7 @@ export default function ProjectFiles({ files, entries, components, characters, u
           <h3 id="files-heading" className="text-lg font-semibold">Files</h3>
           <p className="mt-1 text-sm text-muted">
             Kept in your Google Drive. Uploads go to <span className="font-medium">Projects/</span> inside your Vault folder; files linked from
-            Drive stay where they are. Unlinking never deletes anything from Drive.
+            Drive stay where they are. Removing a file from the project never deletes it from Drive.
           </p>
         </div>
         {story && (
@@ -124,6 +124,8 @@ export default function ProjectFiles({ files, entries, components, characters, u
                     </a>
                     <p className="break-words text-xs font-medium">{file.name}</p>
                     <p className="text-xs text-muted">{record ?? "Not attached"}{file.is_main ? " · Main image" : ""}</p>
+                    <button type="button" className={`${small} justify-self-start text-danger`} disabled={disabled} onClick={() => actions.unlink(file)}
+                      aria-label={`Remove ${file.name} from this project`}>Remove</button>
                   </li>
                 );
               })}
@@ -154,7 +156,7 @@ export default function ProjectFiles({ files, entries, components, characters, u
                 </div>
                 {file.state === "unavailable" && (
                   <p role="status" className="mt-1 text-sm text-danger">
-                    Unavailable in Drive: {UNAVAILABLE_TEXT[file.state_reason ?? "missing"]}. The link is kept; unlink it if it&apos;s no longer needed.
+                    Unavailable in Drive: {UNAVAILABLE_TEXT[file.state_reason ?? "missing"]}. The link is kept; remove it if it&apos;s no longer needed.
                   </p>
                 )}
                 {record && <p className="mt-1 text-xs text-muted">Attached to {record}{file.is_main ? " · Main image" : ""}</p>}
@@ -164,7 +166,8 @@ export default function ProjectFiles({ files, entries, components, characters, u
                     {picker(choiceValue(file), (v) => actions.attach(file, parseChoice(v)),
                       { label: `Attach ${file.name} to`, disabled, className: "max-w-[14rem] rounded-lg border border-line bg-background px-2 py-1" })}
                   </label>
-                  <button type="button" className={`${small} text-danger`} disabled={disabled} onClick={() => actions.unlink(file)}>Unlink</button>
+                  <button type="button" className={`${small} text-danger`} disabled={disabled} onClick={() => actions.unlink(file)}
+                    aria-label={`Remove ${file.name} from this project`}>Remove</button>
                 </div>
               </li>
             );

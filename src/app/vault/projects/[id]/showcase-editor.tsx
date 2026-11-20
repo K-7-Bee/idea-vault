@@ -47,6 +47,13 @@ export default function ShowcaseEditor({ ownerId, project, onProject, files, wri
   const problems = publishProblems(saved ? editOf(saved) : null, project, files);
   const images = files.filter(isImage);
   const chosen = new Set(form.images.map((i) => i.file_id));
+  // Image positions (0-based) whose description is still empty; each must be described to publish.
+  const undescribed = form.images.flatMap((img, i) => img.alt.trim() ? [] : [i]);
+  const focusDescription = (i: number) => {
+    const input = document.getElementById(`showcase-alt-${i}`);
+    input?.scrollIntoView({ block: "center", behavior: "smooth" });
+    input?.focus({ preventScroll: true });
+  };
   const fileById = (id: string) => files.find((f) => f.id === id);
 
   const set = (change: Partial<Form>) => { setForm((f) => ({ ...f, ...change })); setConfirming(false); };
@@ -179,20 +186,28 @@ export default function ShowcaseEditor({ ownerId, project, onProject, files, wri
 
         <fieldset className="grid gap-3">
           <legend className="text-sm font-semibold">Images <span className="font-normal text-muted">(the first is the cover; up to {LIMITS.images})</span></legend>
-          <p className="text-sm text-muted">Chosen images are copied to your public site when you publish. The originals in Drive are never shared.</p>
+          <p className="text-sm text-muted">Chosen images are copied to your public site when you publish. The originals in Drive are never shared. Each image needs a short description before it can be published.</p>
+          {undescribed.length > 0 && (
+            <p className="rounded-xl border border-danger/40 bg-danger/10 px-3 py-2 text-sm text-danger">
+              {undescribed.length === 1 ? "1 image still needs a description." : `${undescribed.length} images still need a description.`} You can save the draft now, but you can&apos;t publish until every image is described.
+            </p>
+          )}
           {form.images.length > 0 && (
             <ol className="grid gap-2">
               {form.images.map((img, i) => {
                 const file = fileById(img.file_id);
                 const problem = publicImageProblem(file);
+                const missing = !img.alt.trim();
                 return (
-                  <li key={img.file_id} className="grid gap-2 rounded-xl border border-line p-2 sm:grid-cols-[6rem_1fr_auto] sm:items-center">
+                  <li key={img.file_id} className={`grid gap-2 rounded-xl border p-2 sm:grid-cols-[6rem_1fr_auto] sm:items-center ${missing ? "border-danger/60" : "border-line"}`}>
                     {file ? <Thumb file={file} alt="" className="h-20 w-24 rounded-lg" /> : <span className="text-xs text-muted">Removed</span>}
                     <div className="grid gap-1">
                       <span className="break-all text-xs text-muted">{i === 0 ? "Cover · " : ""}{file?.name ?? "This file is no longer on the project"}</span>
-                      <input aria-label={`Description of image ${i + 1}`} placeholder="Describe the image for people who can't see it" maxLength={LIMITS.alt}
-                        value={img.alt} className={field}
+                      <input id={`showcase-alt-${i}`} aria-label={`Description of image ${i + 1}`} placeholder="For example: The finished rover on the test track" maxLength={LIMITS.alt}
+                        value={img.alt} className={missing ? `${field} border-danger` : field} aria-required="true" aria-invalid={missing}
+                        aria-describedby={missing ? `showcase-alt-${i}-missing` : undefined}
                         onChange={(e) => set({ images: form.images.map((x, k) => k === i ? { ...x, alt: e.target.value } : x) })} />
+                      {missing && <span id={`showcase-alt-${i}-missing`} className="text-xs font-medium text-danger">Description needed to publish: say what the picture shows, for people who can&apos;t see it.</span>}
                       {problem && <span className="text-xs text-danger">{problem}</span>}
                     </div>
                     <div className="flex gap-1">
@@ -239,9 +254,17 @@ export default function ShowcaseEditor({ ownerId, project, onProject, files, wri
         {dirty ? (
           <p className="mt-2 text-sm text-muted">Save the draft first. Publishing uses the saved draft, exactly as the preview shows it.</p>
         ) : problems.length > 0 ? (
-          <ul className="mt-2 list-disc pl-5 text-sm" aria-label="Before you can publish">
-            {problems.map((p) => <li key={p}>{p}</li>)}
-          </ul>
+          <div className="mt-3 grid gap-2 rounded-xl border border-danger/40 bg-danger/10 p-3">
+            <p className="text-sm font-semibold text-danger">Not ready to publish yet. Fix {problems.length === 1 ? "this" : `these ${problems.length} things`} first:</p>
+            <ul className="list-disc pl-5 text-sm" aria-label="Before you can publish">
+              {problems.map((p) => <li key={p}>{p}</li>)}
+            </ul>
+            {undescribed.length > 0 && (
+              <button type="button" className={`${button} justify-self-start`} onClick={() => focusDescription(undescribed[0])}>
+                Go to image {undescribed[0] + 1}&apos;s description
+              </button>
+            )}
+          </div>
         ) : !confirming ? (
           <button type="button" className={`${primary} mt-3`} disabled={disabled || archived} onClick={() => setConfirming(true)}>
             {live ? "Review and publish changes" : "Review and publish"}

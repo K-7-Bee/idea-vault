@@ -191,7 +191,7 @@ test("attaching to a component and unlinking keep the Drive file", async ({ page
 
   await page.goto(`/vault/projects/${projectId}`);
   await filesTab(page);
-  await page.getByRole("button", { name: "Unlink" }).click();
+  await page.getByRole("button", { name: /^Remove .+ from this project$/ }).click();
   await expect(status(page, "It is still in your Google Drive")).toBeVisible();
   const s = await state(request);
   expect(s.simple.project_files).toEqual([]);

@@ -122,11 +122,11 @@ export function useFileActions({ ownerId, projectId, writer, picker, setFiles }:
   }
 
   function unlink(file: ProjectFile) {
-    if (!window.confirm(`Unlink "${file.name}" from this project? It stays in your Google Drive.`)) return;
+    if (!window.confirm(`Remove "${file.name}" from this project? The file itself stays in your Google Drive.`)) return;
     void writer.run(async () => {
       const result = await api(`/api/drive/project-files/${file.id}`, "DELETE");
-      return result.ok ? { ok: true, value: file.id } : failed("The file couldn't be unlinked. Try again.");
-    }, `Unlinked "${file.name}". It is still in your Google Drive.`, (id) => setFiles((current) => current.filter((f) => f.id !== id)));
+      return result.ok ? { ok: true, value: file.id } : failed("The file couldn't be removed. Try again.");
+    }, `Removed "${file.name}" from this project. It is still in your Google Drive.`, (id) => setFiles((current) => current.filter((f) => f.id !== id)));
   }
 
   return { progress, upload, linkFromDrive, checkFiles, attach, makeMain, unlink };

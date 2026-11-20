@@ -30,7 +30,8 @@ export function Thumb({ file, className, alt }: { file: ProjectFile; className: 
 }
 
 // Images on one character (portrait) or structure item (16:9 frame): the main image large, others
-// in a strip with "Make main", and Add image (upload or link from Drive) attached in one step.
+// in a strip with "Make main" and "Remove" (the Drive file is kept), and Add image (upload or link
+// from Drive) attached in one step.
 export default function StoryImages({ owner, label, files, actions, canAdd, disabled, shape }: {
   owner: ImageOwner; label: string; files: ProjectFile[]; actions: FileActions; canAdd: boolean; disabled: boolean;
   shape: "portrait" | "frame";
@@ -44,9 +45,13 @@ export default function StoryImages({ owner, label, files, actions, canAdd, disa
   return (
     <div className="mb-2 grid gap-2">
       {main ? (
-        <a href={projectFileView(main).href} target="_blank" rel="noreferrer" className={box} aria-label={`Open ${main.name}`}>
-          <Thumb file={main} alt={`${label}: ${main.name}`} className="h-full w-full rounded-lg" />
-        </a>
+        <>
+          <a href={projectFileView(main).href} target="_blank" rel="noreferrer" className={box} aria-label={`Open ${main.name}`}>
+            <Thumb file={main} alt={`${label}: ${main.name}`} className="h-full w-full rounded-lg" />
+          </a>
+          <button type="button" className={`${small} justify-self-start text-danger`} disabled={disabled} onClick={() => actions.unlink(main)}
+            aria-label={`Remove ${main.name} from ${label}`}>Remove</button>
+        </>
       ) : (
         <div aria-hidden className={`${box} rounded-lg border border-dashed border-line bg-background`} />
       )}
@@ -61,6 +66,8 @@ export default function StoryImages({ owner, label, files, actions, canAdd, disa
                 <button type="button" className={small} disabled={disabled} onClick={() => actions.makeMain(f)}
                   aria-label={`Make ${f.name} the main image of ${label}`}>Make main</button>
               )}
+              <button type="button" className={`${small} text-danger`} disabled={disabled} onClick={() => actions.unlink(f)}
+                aria-label={`Remove ${f.name} from ${label}`}>Remove</button>
             </li>
           ))}
         </ul>

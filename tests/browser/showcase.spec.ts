@@ -130,6 +130,33 @@ test.beforeEach(async ({ request, context, page }) => {
   page.on("dialog", (dialog) => dialog.accept());
 });
 
+test("an image without a description is marked, can be saved, and blocks publishing until described", async ({ page, request }) => {
+  await login(page);
+  await connectDrive(page);
+  await completedProject(page, "Rover internal codename");
+  await fillShowcase(page, "line-rover", "Line-following rover");
+  await page.getByRole("list", { name: "Project images you can add" }).getByRole("button").first().click();
+  const description = page.getByRole("textbox", { name: "Description of image 1" });
+  await expect(description).toHaveAttribute("aria-invalid", "true");
+  await expect(description).toHaveAccessibleDescription(/Description needed to publish/);
+  await expect(page.getByText("1 image still needs a description.")).toBeVisible();
+
+  // An incomplete draft still saves; publishing stays blocked and says why.
+  await saveDraft(page);
+  await expect(page.getByText(/Not ready to publish yet/)).toBeVisible();
+  await expect(page.getByRole("list", { name: "Before you can publish" })).toContainText("Describe image 1");
+  await expect(page.getByRole("button", { name: /^Review and publish/ })).toHaveCount(0);
+  await page.getByRole("button", { name: "Go to image 1's description" }).click();
+  await expect(description).toBeFocused();
+
+  await description.fill("The rover on its test track");
+  await expect(description).toHaveAttribute("aria-invalid", "false");
+  await expect(page.getByText("1 image still needs a description.")).toHaveCount(0);
+  await saveDraft(page);
+  await publish(page);
+  expect((await state(request)).showcase.live[0].images[0].alt).toBe("The rover on its test track");
+});
+
 test("draft, preview, confirm and publish: visitors see only the chosen fields; unpublish takes it down", async ({ page, request, browser }) => {
   await login(page);
   await connectDrive(page);

@@ -127,6 +127,18 @@ test("a character gets a portrait by upload and by link; the first image is main
   s = await state(request);
   expect(s.simple.project_files.filter((f) => f.is_main).map((f) => f.name)).toEqual(["castle.png"]);
 
+  // Remove takes the main image off the character (and the project); the Drive file is kept, and
+  // the remaining image becomes the main one.
+  const castleDrive = s.simple.project_files.find((f) => f.name === "castle.png")!.drive_file_id;
+  await card.getByRole("button", { name: "Remove castle.png from Mira" }).click();
+  await expect(status(page, 'Removed "castle.png" from this project. It is still in your Google Drive.')).toBeVisible();
+  await expect(card.getByRole("img", { name: "Mira: mira.png" })).toBeVisible();
+  await expect(card.getByRole("img", { name: "Mira: castle.png" })).toHaveCount(0);
+  await expect(card.getByRole("list", { name: "More images of Mira" })).toHaveCount(0);
+  s = await state(request);
+  expect(s.simple.project_files.map((f) => f.name)).toEqual(["mira.png"]);
+  expect(s.google.files.some((g) => g.id === castleDrive)).toBe(true);
+
   // A remembered link that stops working is dropped; Drive is asked again and the loss is reported.
   await control(request, { googleFile: { id: uploaded.drive_file_id, changes: { granted: false } } });
   const lost = await page.request.get(`/api/drive/file/${uploaded.id}?size=thumb`);
@@ -171,6 +183,12 @@ test("a shot shows its frame inside its scene; the Gallery filters by character 
   await gallery.getByRole("combobox", { name: "Gallery filter" }).selectOption({ label: "Shot: Close on Oren" });
   await expect(gallery.getByRole("img", { name: "forest.png" })).toBeVisible();
   await expect(gallery.getByText("Shot: Close on Oren · Main image")).toHaveCount(0); // main is implicit until chosen
+
+  // Pictures can be removed from the Gallery too.
+  await gallery.getByRole("button", { name: "Remove forest.png from this project" }).click();
+  await expect(status(page, 'Removed "forest.png" from this project. It is still in your Google Drive.')).toBeVisible();
+  await expect(gallery.getByRole("img", { name: "forest.png" })).toHaveCount(0);
+  expect((await state(request)).simple.project_files.some((f) => f.name === "forest.png")).toBe(false);
 });
 
 test("a trashed image shows a placeholder and the card text stays; deleting the character keeps the file", async ({ page, request }) => {
