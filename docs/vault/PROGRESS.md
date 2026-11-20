@@ -449,3 +449,9 @@ Fast-forwarded `main` f1cc3ee → 82ce3f1 (no force). Vercel production deployme
 Not verified yet: logged-in connect, Picker folder choice and disconnect on the live site (needs the owner).
 
 Next.js: `npm audit` listed seven moderate advisories for next >=16.0.0 <=16.4.4. In worktree `../idea-vault-next-16.4.6`, branch `next-security-16.4.6`, commit `1471396` upgrades next and eslint-config-next to 16.4.6 (exact). Verified there: npm audit 0 vulnerabilities, 116 unit tests, 28 browser tests, tsc, ESLint, build (no SecurityFatalError stop). Not merged or deployed.
+
+## 2026-11-20 - Phase 3A live acceptance passed
+
+First live connect attempt failed at Google with `invalid_client` ("OAuth client was not found"): the Production `GOOGLE_CLIENT_ID` value in Vercel did not match the client. Owner re-entered it and redeployed (`dpl_AtpcZH8jLMSsV3d3sfnB6RPNjXaX`, same commit 82ce3f1). Owner then connected Drive and chose the folder on the live site.
+
+Read-only production check afterwards: exactly 1 `drive_connections` row, belonging to the Vault owner; refresh and access tokens both sealed (`v1.` format); scope exactly `drive.file`; folder chosen; connected 2026-11-20 00:50 UTC. A read-only search of the owner's Drive (Google Drive connector) found no "Idea Vault write check" file, live or trashed, so the probe was created and removed as designed. No Vercel runtime errors in the past hour. This verifies real Google consent, `about.get` under `drive.file`, Picker folder grant and write access to a Picker-granted folder. Disconnect/reconnect on the live site was not exercised. Testing mode means Google will expire the grant after about 7 days; the Settings page then shows "Reconnect Google Drive".
