@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { BUCKET, IDEA_COLUMNS, safeFileName, withFileUrls, type Idea, type RawIdea } from "./ideas";
+import { BUCKET, IDEA_COLUMNS, MAX_FILE_BYTES, safeFileName, withFileUrls, type Idea, type RawIdea } from "./ideas";
+import { DriveOffline, DriveUnavailable, uploadToDrive } from "./drive/upload";
 import type { QueuedIdea } from "./outbox";
 import { retainDeletedIdea } from "./recovery-operations";
 
@@ -47,13 +48,19 @@ export async function deleteSavedIdea(supabase: SupabaseClient, item: QueuedIdea
   assertActive(active);
 }
 
+// Phase 3B: when Drive uploads are on, each file goes to the owner's Drive folder first. If Drive
+// can't take it, a file within the Vault storage limit is stored there instead (decision V-013);
+// a larger one stays queued on this device, waiting for Drive.
+export type DriveSync = { enabled: boolean; upload?: typeof uploadToDrive; onProgress?: (name: string, sent: number, total: number) => void };
+
 // Sends one queued idea (and its files) to Supabase. Safe to run again after a failure:
 // the idea and every file have fixed ids, so anything already sent is skipped, not duplicated.
 export async function pushIdea(
   supabase: SupabaseClient,
   item: QueuedIdea,
   active = () => true,
-): Promise<{ idea: Idea; failures: string[] }> {
+  drive: DriveSync = { enabled: false },
+): Promise<{ idea: Idea; failures: string[]; waiting: string[]; fellBack: string[] }> {
   await verifyOwner(supabase, item, active);
   assertActive(active);
   const added = await supabase.from("ideas").insert({
@@ -66,8 +73,33 @@ export async function pushIdea(
   check(added.error, true);
 
   const failures: string[] = [];
+  const waiting: string[] = [];
+  const fellBack: string[] = [];
   if (item.files.length) {
     for (const { id, file } of item.files) {
+      if (drive.enabled) {
+        await verifyOwner(supabase, item, active);
+        assertActive(active);
+        try {
+          await (drive.upload ?? uploadToDrive)({ ownerId: item.owner_id!, ideaId: item.id, fileId: id, file }, {
+            active, onProgress: (sent, total) => drive.onProgress?.(file.name, sent, total) });
+          continue;
+        } catch (e) {
+          if (e instanceof DriveOffline) {
+            if (!active()) throw new QueueOwnerError("Sync paused. Your local work is preserved.");
+            throw new NetworkError(e.message);
+          }
+          if (!(e instanceof DriveUnavailable)) {
+            failures.push(`${file.name}: ${e instanceof Error ? e.message : "could not save"}`);
+            continue;
+          }
+          if (file.size > MAX_FILE_BYTES) {
+            waiting.push(file.name);
+            continue;
+          }
+          fellBack.push(file.name);
+        }
+      }
       const path = `${item.owner_id}/${item.id}/${id}-${safeFileName(file.name)}`;
       try {
         await verifyOwner(supabase, item, active);
@@ -104,5 +136,5 @@ export async function pushIdea(
   const [idea] = await withFileUrls(supabase, [saved.data as unknown as RawIdea]);
   await verifyOwner(supabase, item, active);
   assertActive(active);
-  return { idea, failures };
+  return { idea, failures, waiting, fellBack };
 }

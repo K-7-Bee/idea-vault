@@ -9,7 +9,8 @@ import { useLocalValue } from "./use-local-value";
 import { useSessionGate } from "./use-session-gate";
 import { useOnline } from "./use-online";
 import { addQueued, listQueued, ownedQueue, removeQueued, type QueuedIdea } from "@/lib/outbox";
-import { NetworkError, QueueOwnerError, looksOffline, pushIdea, deleteSavedIdea } from "@/lib/sync";
+import { NetworkError, QueueOwnerError, looksOffline, pushIdea, deleteSavedIdea, type DriveSync } from "@/lib/sync";
+import { DriveOffline, DriveUnavailable, uploadToDrive } from "@/lib/drive/upload";
 import { listRecovery, saveRecovery, type RecoveryRecord } from "@/lib/recovery";
 import { retainDeletedFile, restoreRecovery, tagsFilter } from "@/lib/recovery-operations";
 import {
@@ -34,8 +35,12 @@ import { serif } from "./fonts";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import {
   BUCKET,
+  DRIVE_MAX_BYTES,
+  DRIVE_PREVIEW_MAX_BYTES,
   IDEA_COLUMNS,
   MAX_FILE_BYTES,
+  canPreview,
+  isDriveFile,
   PAGE_SIZE,
   STATUSES,
   formatSize,
@@ -138,12 +143,15 @@ export default function Capture({
   initial,
   initialTags,
   initialMeta,
+  driveUploads = false,
   children,
 }: {
   ownerId: string;
   initial: Idea[];
   initialTags: string[][];
   initialMeta: Meta[];
+  // Phase 3B switch (DRIVE_UPLOADS_ENABLED): new files go to the owner's Google Drive.
+  driveUploads?: boolean;
   children?: React.ReactNode;
 }) {
   const [ideas, setIdeas] = useState<ViewIdea[]>(initial);
@@ -162,6 +170,9 @@ export default function Capture({
   const [pending, setPending] = useState<File[]>([]);
   const [interruptedUpload, setInterruptedUpload] = useState(false);
   const activeUploads = useRef(new Set<{ files: File[] }>());
+  const fileLimit = driveUploads ? DRIVE_MAX_BYTES : MAX_FILE_BYTES;
+  const [driveNote, setDriveNote] = useState("");
+  const [driveProgress, setDriveProgress] = useState<{ name: string; percent: number } | null>(null);
   const [error, setError] = useState("");
   const [preservedWork, setPreservedWork] = useState(false);
   const [signingId, setSigningId] = useState<string | null>(null);
@@ -269,6 +280,23 @@ export default function Capture({
     });
   }
 
+  // How queued captures reach Drive, with progress shown while a file is uploading.
+  function driveSync(ticket: number): DriveSync {
+    return {
+      enabled: driveUploads,
+      onProgress: (name, sent, total) => {
+        if (gate.valid(ticket)) setDriveProgress(sent >= total ? null : { name, percent: Math.floor((sent / total) * 100) });
+      },
+    };
+  }
+
+  function reportDrive(waiting: string[], fellBack: string[]) {
+    const notes: string[] = [];
+    if (waiting.length) notes.push(`Waiting for Google Drive: ${waiting.join(", ")}. Connect or reconnect Drive in Settings; they'll upload automatically from this device.`);
+    if (fellBack.length) notes.push(`Google Drive wasn't available, so ${fellBack.join(", ")} ${fellBack.length === 1 ? "was" : "were"} saved in Vault storage instead.`);
+    if (notes.length) setDriveNote(notes.join(" "));
+  }
+
   async function restore(record: RecoveryRecord) {
     if (!gate.allowed() || syncing.current) return;
     const ticket = gate.ticket();
@@ -289,8 +317,9 @@ export default function Capture({
         const pendingRestore: QueuedIdea = { id, content, tags, created_at, owner_id: ownerId, files: record.queued.files };
         if (!gate.valid(ticket)) return;
         await addQueued(pendingRestore);
-        const result = await pushIdea(client, pendingRestore, () => gate.valid(ticket));
-        if (result.failures.length) throw new Error("Idea restored; some files are queued for retry. The recovery record is retained.");
+        const result = await pushIdea(client, pendingRestore, () => gate.valid(ticket), driveSync(ticket));
+        reportDrive(result.waiting, result.fellBack);
+        if (result.failures.length || result.waiting.length) throw new Error("Idea restored; some files are queued for retry. The recovery record is retained.");
         if (!gate.valid(ticket)) return;
         await removeQueued(pendingRestore.id);
       }
@@ -483,15 +512,19 @@ export default function Capture({
             await removeQueued(item.id);
             continue;
           }
-          const { idea, failures } = await pushIdea(supabase, item, () => gate.valid(ticket));
+          const { idea, failures, waiting, fellBack } = await pushIdea(supabase, item, () => gate.valid(ticket), driveSync(ticket));
           if (!gate.valid(ticket)) return;
-          // Keep the item queued if a file failed, so the file isn't lost; the next sync retries it.
-          if (!failures.length) await removeQueued(item.id);
+          setDriveProgress(null);
+          // Keep the item queued if a file failed or is waiting for Drive, so the file isn't lost;
+          // the next sync retries it (files already saved are recognised and skipped).
+          const held = [...failures, ...waiting.map((name) => `${name}: waiting for Google Drive`)];
+          if (!held.length) await removeQueued(item.id);
           if (!gate.valid(ticket)) return;
           setIdeas((list) => list.map((i) => (i.id === item.id
-            ? failures.length ? { ...idea, waiting: true, queuedFiles: queuedToView(item).queuedFiles, syncError: failures.join("; ") } : idea
+            ? held.length ? { ...idea, waiting: true, queuedFiles: queuedToView(item).queuedFiles, syncError: held.join("; ") } : idea
             : i)));
           if (failures.length) setError(`Some files failed: ${failures.join("; ")}`);
+          reportDrive(waiting, fellBack);
         } catch (e) {
           if (!gate.valid(ticket)) return;
           if (e instanceof QueueOwnerError) {
@@ -654,13 +687,13 @@ export default function Capture({
     const ok: File[] = [];
     const tooBig: string[] = [];
     for (const f of list) {
-      if (f.size > MAX_FILE_BYTES) tooBig.push(f.name);
+      if (f.size > fileLimit) tooBig.push(f.name);
       else ok.push(f);
     }
     setPending((p) => [...p, ...ok]);
     setError(
       tooBig.length
-        ? `Too big (max ${formatSize(MAX_FILE_BYTES)}): ${tooBig.join(", ")}`
+        ? `Too big (max ${formatSize(fileLimit)}): ${tooBig.join(", ")}`
         : "",
     );
     if (fileInput.current) fileInput.current.value = "";
@@ -673,6 +706,7 @@ export default function Capture({
     const userId = ownerId;
     const rows: FileRow[] = [];
     const failures: string[] = [];
+    const fellBack: string[] = [];
 
     for (const file of files) {
       await remote(ticket);
@@ -680,6 +714,32 @@ export default function Capture({
       if (!userId) {
         failures.push(`${file.name}: not logged in`);
         continue;
+      }
+      if (driveUploads) {
+        // Phase 3B: Drive first; a file within the Vault storage limit falls back (V-013).
+        try {
+          const row = await uploadToDrive({ ownerId: userId, ideaId, fileId: crypto.randomUUID(), file }, {
+            active: () => gate.valid(ticket),
+            onProgress: (sent, total) => {
+              if (gate.valid(ticket)) setDriveProgress(sent >= total ? null : { name: file.name, percent: Math.floor((sent / total) * 100) });
+            },
+          });
+          if (!gate.valid(ticket)) return;
+          rows.push(row);
+          continue;
+        } catch (e) {
+          if (!gate.valid(ticket)) return;
+          setDriveProgress(null);
+          if (e instanceof DriveOffline || !(e instanceof DriveUnavailable) || file.size > MAX_FILE_BYTES) {
+            // Never lose the file: it goes back to the composer to retry.
+            setPending((pending) => [...new Set([...pending, file])]);
+            failures.push(e instanceof DriveUnavailable
+              ? `${file.name}: waiting for Google Drive. Connect or reconnect Drive in Settings, then add it again`
+              : `${file.name}: ${e instanceof Error ? e.message : "could not save"}`);
+            continue;
+          }
+          fellBack.push(file.name);
+        }
       }
       const path = `${userId}/${ideaId}/${crypto.randomUUID()}-${safeFileName(file.name)}`;
       const up = await supabase.storage
@@ -724,6 +784,7 @@ export default function Capture({
         i.id === ideaId ? { ...i, files: [...i.files, ...signed], uploading: undefined } : i,
       ),
     );
+    reportDrive([], fellBack);
     if (failures.length) setError(`Some files failed: ${failures.join("; ")}`);
   }
 
@@ -732,10 +793,10 @@ export default function Capture({
     const ticket = gate.ticket();
     const files = list ? [...list] : [];
     if (editFileInput.current) editFileInput.current.value = "";
-    const ok = files.filter((f) => f.size <= MAX_FILE_BYTES);
-    const tooBig = files.filter((f) => f.size > MAX_FILE_BYTES).map((f) => f.name);
+    const ok = files.filter((f) => f.size <= fileLimit);
+    const tooBig = files.filter((f) => f.size > fileLimit).map((f) => f.name);
     setError(
-      tooBig.length ? `Too big (max ${formatSize(MAX_FILE_BYTES)}): ${tooBig.join(", ")}` : "",
+      tooBig.length ? `Too big (max ${formatSize(fileLimit)}): ${tooBig.join(", ")}` : "",
     );
     if (ok.length === 0) return;
     const upload = { files: ok };
@@ -978,6 +1039,15 @@ export default function Capture({
           </p>
         )}
         {interruptedUpload && <p role="status" className="text-sm text-muted">An upload was interrupted. Its files are retained in the composer; some may already be saved. Check the idea before saving again.</p>}
+        {driveProgress && (
+          <p role="status" className="text-sm text-muted">Uploading {driveProgress.name} to Google Drive… {driveProgress.percent}%</p>
+        )}
+        {driveNote && (
+          <p role="status" className="flex items-start justify-between gap-3 rounded-xl border border-line bg-card p-3 text-sm text-muted">
+            <span>{driveNote}</span>
+            <button type="button" onClick={() => setDriveNote("")} className="shrink-0 underline">Dismiss</button>
+          </p>
+        )}
         {!online && (
           <p
             role="status"
@@ -1311,7 +1381,7 @@ export default function Capture({
               expandedId !== idea.id &&
               editingId !== idea.id;
             if (compact) {
-              const cover = idea.files.find((f) => f.url && f.mime_type?.startsWith("image/"));
+              const cover = idea.files.find((f) => canPreview(f) && f.mime_type?.startsWith("image/"));
               const open = () => setExpandedId(idea.id);
               return (
                 <li
@@ -1448,7 +1518,7 @@ export default function Capture({
               {idea.files.length > 0 && editingId !== idea.id && (
                 <div className="mt-3 flex flex-wrap gap-2">
                   {idea.files.map((f) =>
-                    f.url && f.mime_type?.startsWith("image/") ? (
+                    canPreview(f) && f.mime_type?.startsWith("image/") ? (
                       <a key={f.id} href={f.url} target="_blank" rel="noreferrer">
                         {/* eslint-disable-next-line @next/next/no-img-element */}
                         <img
@@ -1457,7 +1527,7 @@ export default function Capture({
                           className="h-24 w-24 rounded-xl border border-line object-cover transition hover:opacity-90"
                         />
                       </a>
-                    ) : f.url && f.mime_type?.startsWith("audio/") ? (
+                    ) : canPreview(f) && f.mime_type?.startsWith("audio/") ? (
                       <audio
                         key={f.id}
                         controls
@@ -1481,6 +1551,7 @@ export default function Capture({
                         <FileIcon className="h-4 w-4 shrink-0" />
                         <span className="truncate">
                           {f.name} <span className="text-muted">{formatSize(f.size)}</span>
+                          {isDriveFile(f) && f.size > DRIVE_PREVIEW_MAX_BYTES && <span className="text-muted"> · Open in Google Drive</span>}
                         </span>
                       </a>
                     ),

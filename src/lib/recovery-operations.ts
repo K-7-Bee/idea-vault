@@ -3,12 +3,22 @@ import { saveRecovery, getRecovery, type RecoveryRecord, type RecoveryFile } fro
 import { type RawIdea, type FileRow } from "./ideas";
 import type { QueuedIdea } from "./outbox";
 
-const COLUMNS = "id, content, status, tags, created_at, files:idea_files(id, path, name, mime_type, size, created_at)";
+// Drive attachments (migration 009) carry provider and drive_file_id so a restore re-links the same Drive file.
+const COLUMNS = "id, content, status, tags, created_at, files:idea_files(id, path, name, mime_type, size, created_at, provider, drive_file_id, md5)";
 type Verify = () => Promise<void>;
 function check(error: unknown) { if (error) throw new Error("Recovery could not finish. Your recovery record and stored files are retained. Try again."); }
+// Supabase paths encode owner and idea. A Drive record (migration 009) has no owner in its path, so it
+// must be exactly drive/<its own Drive ID>; ownership comes from the owner-filtered reads and writes.
+function ownedPath(file: RecoveryFile, ownerId: string, ideaId: string) {
+  if (file.provider === "drive") {
+    return typeof file.drive_file_id === "string" && /^[A-Za-z0-9_-]{10,200}$/.test(file.drive_file_id) && file.path === `drive/${file.drive_file_id}`;
+  }
+  return file.path.startsWith(`${ownerId}/${ideaId}/`);
+}
+
 function validate(record: RecoveryRecord, ownerId: string) {
   if (record.owner_id !== ownerId || (record.queued && (record.queued.owner_id !== ownerId || record.queued.id !== record.idea.id)) ||
-      record.idea.files.some((file) => !file.path.startsWith(`${ownerId}/${record.idea.id}/`))) {
+      record.idea.files.some((file) => !ownedPath(file, ownerId, record.idea.id))) {
     throw new Error("Recovery ownership could not be verified.");
   }
 }
@@ -99,9 +109,11 @@ export async function restoreRecovery(client: SupabaseClient, record: RecoveryRe
       continue;
     }
     await verify();
-    const { id, path, name, mime_type, size, created_at } = file;
+    const { id, path, name, mime_type, size, created_at, provider, drive_file_id, md5 } = file;
+    // Older records have no provider: they are Supabase files, inserted exactly as before.
+    const drive = provider === "drive" ? { provider, drive_file_id, ...(md5 ? { md5 } : {}) } : {};
     check((await client.from("idea_files").insert({ id, path, name, mime_type, size,
-      ...(created_at ? { created_at } : {}), idea_id: record.idea.id, user_id: ownerId })).error);
+      ...(created_at ? { created_at } : {}), ...drive, idea_id: record.idea.id, user_id: ownerId })).error);
   }
   await verify();
   // Records remain available after success for interrupted/partial restores. Never purge bytes here.

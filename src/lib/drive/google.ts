@@ -8,13 +8,14 @@ const REAL = {
   token: "https://oauth2.googleapis.com/token",
   revoke: "https://oauth2.googleapis.com/revoke",
   drive: "https://www.googleapis.com/drive/v3",
+  upload: "https://www.googleapis.com/upload/drive/v3",
 };
 
 // The browser acceptance build points at a local synthetic Google; ignored everywhere else.
 function endpoints() {
   const test = process.env.VAULT_E2E === "1" ? process.env.DRIVE_GOOGLE_TEST_BASE : undefined;
   if (!test) return REAL;
-  return { auth: `${test}/auth`, token: `${test}/token`, revoke: `${test}/revoke`, drive: `${test}/drive/v3` };
+  return { auth: `${test}/auth`, token: `${test}/token`, revoke: `${test}/revoke`, drive: `${test}/drive/v3`, upload: `${test}/upload/drive/v3` };
 }
 
 export class GoogleError extends Error {
@@ -124,6 +125,73 @@ export function createEmptyFile(accessToken: string, folderId: string, name: str
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ name, parents: [folderId], mimeType: "text/plain" }),
+  });
+}
+
+// --- Phase 3B: attachments ---
+
+// Private tags on every file the Vault uploads, so a file can be matched to its record even if
+// the upload's final response was lost.
+export type VaultTags = { vaultFileId: string; vaultIdeaId: string };
+
+// Starts a resumable upload into the chosen folder and returns the session URL. The browser then
+// sends the bytes itself; Google accepts that only from the Origin the session was created with.
+export async function createUploadSession(accessToken: string, input: {
+  folderId: string; name: string; mimeType: string; size: number; tags: VaultTags; origin: string;
+}): Promise<string> {
+  const response = await call(`${endpoints().upload}/files?uploadType=resumable&supportsAllDrives=true`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      "Content-Type": "application/json; charset=UTF-8",
+      "X-Upload-Content-Type": input.mimeType,
+      "X-Upload-Content-Length": String(input.size),
+      Origin: input.origin,
+    },
+    body: JSON.stringify({ name: input.name, parents: [input.folderId], mimeType: input.mimeType, appProperties: input.tags }),
+  });
+  if (!response.ok) throw await failure(response);
+  const location = response.headers.get("location");
+  if (!location || !location.startsWith(`${endpoints().upload}/files?`)) throw new GoogleError("bad_session", 502);
+  return location;
+}
+
+// An empty file needs no upload session.
+export function createTaggedEmptyFile(accessToken: string, input: { folderId: string; name: string; mimeType: string; tags: VaultTags }) {
+  return drive<{ id: string }>(accessToken, "/files?fields=id&supportsAllDrives=true", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ name: input.name, parents: [input.folderId], mimeType: input.mimeType, appProperties: input.tags }),
+  });
+}
+
+export type DriveFileMeta = {
+  id: string; name: string; mimeType: string; size?: string; md5Checksum?: string; parents?: string[];
+  trashed?: boolean; appProperties?: Record<string, string>; webViewLink?: string;
+};
+
+export function getFileMeta(accessToken: string, id: string) {
+  return drive<DriveFileMeta>(accessToken,
+    `/files/${encodeURIComponent(id)}?fields=id,name,mimeType,size,md5Checksum,parents,trashed,appProperties,webViewLink&supportsAllDrives=true`);
+}
+
+// Finds the file an interrupted upload created, by its private Vault tag. Only files this app
+// created are visible under drive.file.
+export async function findByVaultFileId(accessToken: string, vaultFileId: string): Promise<string[]> {
+  const q = `appProperties has { key='vaultFileId' and value='${vaultFileId.replace(/[^A-Za-z0-9-]/g, "")}' } and trashed = false`;
+  const result = await drive<{ files?: { id: string }[] }>(accessToken,
+    `/files?q=${encodeURIComponent(q)}&fields=files(id)&pageSize=5&supportsAllDrives=true&includeItemsFromAllDrives=true`);
+  return (result.files ?? []).map((f) => f.id);
+}
+
+// The file's bytes, passing a Range through so audio and video can seek. Returns Google's raw
+// response; the caller decides what to forward.
+export function fileMedia(accessToken: string, id: string, range: string | null): Promise<Response> {
+  return fetch(`${endpoints().drive}/files/${encodeURIComponent(id)}?alt=media&supportsAllDrives=true`, {
+    headers: { Authorization: `Bearer ${accessToken}`, ...(range ? { Range: range } : {}) },
+    cache: "no-store",
+    redirect: "follow",
+    signal: AbortSignal.timeout(250_000),
   });
 }
 

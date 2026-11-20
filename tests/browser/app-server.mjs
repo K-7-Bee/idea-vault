@@ -9,7 +9,7 @@ const env = { ...process.env, VAULT_E2E: '1', NEXT_TELEMETRY_DISABLED: '1',
   // Phase 3A: synthetic Google on the fixture; the key is random for every run.
   GOOGLE_CLIENT_ID: 'fixture-client-id', GOOGLE_CLIENT_SECRET: 'fixture-client-secret',
   DRIVE_TOKEN_KEY: randomBytes(32).toString('base64'), DRIVE_GOOGLE_TEST_BASE: 'http://127.0.0.1:4317/google',
-  DRIVE_GOOGLE_ACCOUNT: '', NEXT_PUBLIC_GOOGLE_PICKER_API_KEY: 'fixture-picker-key', NEXT_PUBLIC_GOOGLE_APP_ID: '1' };
+  DRIVE_GOOGLE_ACCOUNT: '', NEXT_PUBLIC_GOOGLE_PICKER_API_KEY: 'fixture-picker-key', NEXT_PUBLIC_GOOGLE_APP_ID: '1', DRIVE_UPLOADS_ENABLED: '1' };
 let child;
 const run = (args) => new Promise((resolve, reject) => {
   child = spawn(process.execPath, ['node_modules/next/dist/bin/next', ...args], { env, stdio: 'inherit', windowsHide: true });

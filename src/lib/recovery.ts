@@ -1,7 +1,7 @@
 import type { FileRow, RawIdea } from "./ideas";
 import type { QueuedIdea } from "./outbox";
 
-export type RecoveryFile = FileRow & { created_at?: string };
+export type RecoveryFile = FileRow & { created_at?: string; md5?: string | null };
 export type RecoveryRecord = {
   id: string;
   owner_id: string;

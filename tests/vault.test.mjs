@@ -217,12 +217,21 @@ test('cache cleanup rejection does not prevent successful logout', async () => {
   assert.deepEqual(harness.routes, []);
 });
 
+// Phase 3B exports, defaulted to the pre-Drive behaviour: uploads off, previews only with a link.
+const DRIVE_DEFAULTS = {
+  '@/lib/drive/files': { driveUploadsEnabled: () => false },
+  '@/lib/drive/upload': { DriveOffline: class extends Error {}, DriveUnavailable: class extends Error {},
+    uploadToDrive: async () => { throw new Error('Drive uploads are off in these tests'); } },
+};
+const IDEAS_DEFAULTS = { canPreview: (file) => !!file.url, isDriveFile: (file) => file.provider === 'drive',
+  DRIVE_MAX_BYTES: 1024 ** 3, DRIVE_PREVIEW_MAX_BYTES: 50 * 1024 ** 2 };
+
 function load(file, mocks = {}, extra = '', globals = {}) {
   const source = ts.transpileModule(fs.readFileSync(path.join(import.meta.dirname, '..', file), 'utf8') + extra,
     { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020, jsx: ts.JsxEmit.ReactJSX } }).outputText;
   const exports = {};
-  vm.runInNewContext(source, { exports, require: (id) => mocks[id] ?? {},
-    navigator: { onLine: true }, ...globals });
+  const require = (id) => id === '@/lib/ideas' && mocks[id] ? { ...IDEAS_DEFAULTS, ...mocks[id] } : mocks[id] ?? DRIVE_DEFAULTS[id] ?? {};
+  vm.runInNewContext(source, { exports, require, navigator: { onLine: true }, ...globals });
   return exports;
 }
 

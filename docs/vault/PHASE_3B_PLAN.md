@@ -1,4 +1,4 @@
-# Slice 3B plan: idea attachments and recordings in Google Drive (proposal; not approved, nothing built)
+# Slice 3B plan: idea attachments and recordings in Google Drive (approved 2026-11-20; built locally, not applied or deployed)
 
 Parent plan: [PHASE_3_PLAN.md](PHASE_3_PLAN.md). Builds on 3A (live 2026-11-20). Decisions: V-007a (owner-picked folder, `drive.file`), V-008a (legacy Supabase files stay), V-008b (up to 1 GB), V-013 (fallback to Supabase under its limit; larger files wait for Drive).
 

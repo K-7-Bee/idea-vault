@@ -1,6 +1,7 @@
 import { Suspense } from "react";
 import { createClient } from "@/lib/supabase/server";
 import { IDEA_COLUMNS, PAGE_SIZE, withFileUrls, type RawIdea } from "@/lib/ideas";
+import { driveUploadsEnabled } from "@/lib/drive/files";
 import { vaultStats } from "@/lib/vault-stats";
 import Capture from "./capture";
 import Dashboard from "./dashboard";
@@ -84,6 +85,7 @@ async function VaultContent() {
       initial={initial}
       initialTags={index.map((r) => r.tags)}
       initialMeta={index.map(({ id, status, created_at }) => ({ id, status, created_at }))}
+      driveUploads={driveUploadsEnabled()}
     >
       <Dashboard stats={vaultStats(index, new Date())} />
     </Capture>

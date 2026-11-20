@@ -38,7 +38,7 @@ function reset() {
   sessions.clear(); signed.clear(); rules = []; events = [];
   drive = new Map();
   google = { email: 'owner@fixture.invalid', scope: DRIVE_SCOPE, deny: false, noRefresh: false, refreshFail: false, expiresIn: 3599,
-    codes: new Map(), refresh: new Map(), access: new Map(), revoked: [], calls: [],
+    codes: new Map(), refresh: new Map(), access: new Map(), revoked: [], calls: [], sessions: new Map(), dropAfterChunk: 0, chunkCount: 0,
     files: new Map([['fixture-folder-0001', { name: 'Vault Files', mimeType: FOLDER_MIME, granted: true }],
       ['fixture-doc-000001', { name: 'notes.txt', mimeType: 'text/plain', granted: true }]]) };
   work = Object.fromEntries(WORK_TABLES.map((t) => [t, []]));
@@ -86,9 +86,9 @@ function matches(row, params) {
 const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, 'http://127.0.0.1:4317');
   res.setHeader('Access-Control-Allow-Origin', 'http://127.0.0.1:4318');
-  res.setHeader('Access-Control-Allow-Headers', 'authorization, apikey, content-type, x-client-info, x-supabase-api-version, accept-profile, content-profile, prefer, range, range-unit, x-upsert, cache-control');
-  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PATCH, DELETE, OPTIONS');
-  res.setHeader('Access-Control-Expose-Headers', 'Content-Range');
+  res.setHeader('Access-Control-Allow-Headers', 'authorization, apikey, content-type, x-client-info, x-supabase-api-version, accept-profile, content-profile, prefer, range, range-unit, x-upsert, cache-control, content-range');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PATCH, PUT, DELETE, OPTIONS');
+  res.setHeader('Access-Control-Expose-Headers', 'Content-Range, Range');
   const event = { method: req.method, path: url.pathname, status: null };
   let drop = false;
   const reply = (status, data) => {
@@ -110,12 +110,13 @@ const server = http.createServer(async (req, res) => {
         const body = json();
         if (body.rules) rules = body.rules;
         if (body.google) Object.assign(google, body.google);
+        if (body.googleDelete) google.files.delete(body.googleDelete);
         if (body.edit) Object.assign(ideas.find((idea) => idea.id === body.edit.id), body.edit);
         if (body.editRow) { const row = work[body.editRow.table].find((r) => r.id === body.editRow.id); Object.assign(row, body.editRow.changes); touch(row); }
         return reply(200, {});
       }
       if (url.pathname === '/_test/state') return reply(200, { ideas, files, work, drive: [...drive.values()],
-        google: { revoked: google.revoked, calls: google.calls, files: [...google.files].map(([id, f]) => ({ id, ...f })) },
+        google: { revoked: google.revoked, calls: google.calls, files: [...google.files].map(([id, { bytes, ...f }]) => ({ id, ...f, stored: bytes ? bytes.length : 0 })) },
         objects: [...objects].map(([path, data]) => ({ path, size: data.length })), events });
       return reply(404, {});
     }
@@ -331,24 +332,88 @@ async function googleRequest(url, req, bytes, reply, res, event) {
     return reply(400, { error: 'unsupported_grant_type' });
   }
   if (path === '/revoke' && req.method === 'POST') { google.revoked.push(form().token); return reply(200, {}); }
+  if (path === '/upload/drive/v3/files' && req.method === 'PUT') return uploadBytes(url, req, bytes, reply, res, event);
+  if (path.startsWith('/view/') && req.method === 'GET') {
+    event.status = 200; res.writeHead(200, { 'Content-Type': 'text/html' }); return res.end('<title>Synthetic Drive viewer</title><p>Synthetic Drive viewer</p>');
+  }
   const bearer = req.headers.authorization?.replace(/^Bearer /i, '');
   const access = google.access.get(bearer);
   if (!access || access.exp < Date.now() || google.revoked.includes(access.refresh) || google.revoked.includes(bearer)) return reply(401, { error: { status: 'UNAUTHENTICATED' } });
+  if (path === '/upload/drive/v3/files' && req.method === 'POST' && url.searchParams.get('uploadType') === 'resumable') {
+    const body = JSON.parse(bytes.toString());
+    if (!google.files.get(body.parents?.[0])?.granted) return reply(404, { error: { status: 'NOT_FOUND' } });
+    const sid = randomUUID();
+    google.sessions.set(sid, { meta: body, size: Number(req.headers['x-upload-content-length']), type: req.headers['x-upload-content-type'],
+      origin: req.headers.origin, chunks: [], received: 0, fileId: null });
+    event.status = 200;
+    res.writeHead(200, { Location: `http://127.0.0.1:4317/google/upload/drive/v3/files?uploadType=resumable&upload_id=${sid}` });
+    return res.end();
+  }
+  if (path === '/drive/v3/files' && req.method === 'GET') {
+    const wanted = /value='([^']+)'/.exec(url.searchParams.get('q') ?? '')?.[1];
+    return reply(200, { files: [...google.files].filter(([, f]) => wanted && f.appProperties?.vaultFileId === wanted && !f.trashed).map(([id]) => ({ id })) });
+  }
   if (path === '/drive/v3/about' && req.method === 'GET') return reply(200, { user: { permissionId: `perm-${google.email}`, emailAddress: google.email } });
   if (path === '/drive/v3/files' && req.method === 'POST') {
     const body = JSON.parse(bytes.toString());
     const parent = google.files.get(body.parents?.[0]);
     if (!parent?.granted) return reply(404, { error: { status: 'NOT_FOUND' } });
     const id = `fixture-new-${randomUUID()}`;
-    google.files.set(id, { name: body.name, mimeType: body.mimeType, granted: true, parent: body.parents[0], created: true });
+    google.files.set(id, { name: body.name, mimeType: body.mimeType, granted: true, parent: body.parents[0], parents: body.parents, appProperties: body.appProperties, created: true, bytes: Buffer.alloc(0) });
     return reply(200, { id });
   }
   const fileId = path.startsWith('/drive/v3/files/') ? decodeURIComponent(path.slice('/drive/v3/files/'.length)) : null;
   const file = fileId && google.files.get(fileId);
   if (!file?.granted) return reply(404, { error: { status: 'NOT_FOUND' } });
-  if (req.method === 'GET') return reply(200, { id: fileId, name: file.name, mimeType: file.mimeType, trashed: false, capabilities: { canAddChildren: true } });
+  if (req.method === 'GET' && url.searchParams.get('alt') === 'media') {
+    const data = file.bytes ?? Buffer.alloc(0);
+    const range = /^bytes=(\d+)-(\d*)$/.exec(req.headers.range ?? '');
+    if (range) {
+      const start = Number(range[1]), end = range[2] ? Math.min(Number(range[2]), data.length - 1) : data.length - 1;
+      if (start >= data.length) { event.status = 416; res.writeHead(416, { 'Content-Range': `bytes */${data.length}` }); return res.end(); }
+      event.status = 206;
+      res.writeHead(206, { 'Content-Type': file.mimeType, 'Content-Length': end - start + 1, 'Content-Range': `bytes ${start}-${end}/${data.length}` });
+      return res.end(data.subarray(start, end + 1));
+    }
+    event.status = 200; res.writeHead(200, { 'Content-Type': file.mimeType, 'Content-Length': data.length }); return res.end(data);
+  }
+  if (req.method === 'GET') return reply(200, { id: fileId, name: file.name, mimeType: file.mimeType, trashed: !!file.trashed,
+    capabilities: { canAddChildren: true }, parents: file.parents, appProperties: file.appProperties,
+    ...(file.bytes ? { size: String(file.bytes.length), md5Checksum: createHash('md5').update(file.bytes).digest('hex') } : {}),
+    webViewLink: `http://127.0.0.1:4317/google/view/${fileId}` });
   if (req.method === 'DELETE') { google.files.delete(fileId); return reply(204); }
   return reply(404, {});
+}
+
+// Imitates Google's resumable protocol: 308 + Range while incomplete, 200 + file when complete.
+function uploadBytes(url, req, bytes, reply, res, event) {
+  const session = google.sessions.get(url.searchParams.get('upload_id'));
+  if (!session) return reply(404, { error: { status: 'NOT_FOUND' } });
+  if (req.headers.origin && req.headers.origin !== session.origin) return reply(403, { error: { status: 'ORIGIN_MISMATCH' } });
+  const incomplete = () => {
+    event.status = 308;
+    res.writeHead(308, session.received ? { Range: `bytes=0-${session.received - 1}` } : {});
+    return res.end();
+  };
+  const complete = () => reply(200, { kind: 'drive#file', id: session.fileId, name: session.meta.name, mimeType: session.meta.mimeType });
+  const header = req.headers['content-range'] ?? '';
+  if (/^bytes \*\/\d+$/.test(header)) return session.fileId ? complete() : incomplete();
+  const m = /^bytes (\d+)-(\d+)\/(\d+)$/.exec(header);
+  if (!m || Number(m[3]) !== session.size) return reply(400, { error: { status: 'BAD_RANGE' } });
+  if (Number(m[1]) !== session.received) return incomplete();
+  if (bytes.length !== Number(m[2]) - Number(m[1]) + 1) return reply(400, { error: { status: 'BAD_LENGTH' } });
+  session.chunks.push(Buffer.from(bytes));
+  session.received += bytes.length;
+  google.chunkCount++;
+  if (session.received === session.size) {
+    const data = Buffer.concat(session.chunks);
+    session.fileId = `fixture-up-${randomUUID()}`;
+    google.files.set(session.fileId, { name: session.meta.name, mimeType: session.meta.mimeType, granted: true, created: true,
+      parents: session.meta.parents, appProperties: session.meta.appProperties, bytes: data, uploaded: true });
+  }
+  // A dropped response after the bytes were stored: the browser must ask and resume.
+  if (google.dropAfterChunk && google.chunkCount === google.dropAfterChunk) { req.socket.destroy(); return; }
+  return session.fileId ? complete() : incomplete();
 }
 
 server.listen(4317, '127.0.0.1', () => console.log('Synthetic API fixture on 127.0.0.1:4317'));

@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useRef, useState } from "react";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { createClient } from "@/lib/supabase/client";
-import { STATUSES, formatSize } from "@/lib/ideas";
+import { DRIVE_PREVIEW_MAX_BYTES, STATUSES, canPreview, formatSize, isDriveFile } from "@/lib/ideas";
 import {
   TITLE_MAX,
   archiveIdea,
@@ -210,11 +210,11 @@ export default function IdeaView({ ownerId, initial }: { ownerId: string; initia
               <ul className="grid gap-3 sm:grid-cols-2">
                 {idea.files.map((f) => (
                   <li key={f.id} className="overflow-hidden rounded-xl border border-line bg-background">
-                    {f.url && f.mime_type?.startsWith("image/") && (
+                    {canPreview(f) && f.mime_type?.startsWith("image/") && (
                       // eslint-disable-next-line @next/next/no-img-element
                       <img src={f.url} alt={f.name} className="max-h-72 w-full object-contain" />
                     )}
-                    {f.url && f.mime_type?.startsWith("audio/") && (
+                    {canPreview(f) && f.mime_type?.startsWith("audio/") && (
                       <audio controls preload="none" src={f.url} className="w-full p-2" />
                     )}
                     <div className="flex items-center gap-2 px-3 py-2 text-sm">
@@ -224,7 +224,9 @@ export default function IdeaView({ ownerId, initial }: { ownerId: string; initia
                       ) : (
                         <span className="min-w-0 truncate">{f.name} <span className="text-muted">(link unavailable — reload to retry)</span></span>
                       )}
-                      <span className="ml-auto shrink-0 text-muted">{formatSize(f.size)}</span>
+                      <span className="ml-auto shrink-0 text-muted">
+                        {formatSize(f.size)}{isDriveFile(f) && f.size > DRIVE_PREVIEW_MAX_BYTES ? " · Open in Google Drive" : isDriveFile(f) ? " · Google Drive" : ""}
+                      </span>
                     </div>
                   </li>
                 ))}
