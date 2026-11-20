@@ -1,4 +1,4 @@
-# Slice 3C plan: project files and linking existing Drive files (approved 2026-11-20 with all recommended choices; built locally, not applied or deployed)
+# Slice 3C plan: project files and linking existing Drive files (approved 2026-11-20 with all recommended choices; live 2026-11-20)
 
 Parent plan: [PHASE_3_PLAN.md](PHASE_3_PLAN.md). Builds on 3A (connection, folder) and 3B (resumable upload, verified recording, owner-checked viewing), both live. Decisions so far: V-007a (`drive.file`, owner-picked folder), V-008b (1 GB), V-013 (capture fallback).
 
