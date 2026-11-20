@@ -509,3 +509,7 @@ Live acceptance with the owner, verified from the database (read-only) and the D
 During the test the owner saw no Check files result, because confirmations faded after 4 s; the first attempts left `checked_at` empty (most likely run before the rename, or the click did not register; no server logs exist to tell). Follow-up `73cdf45` (deployment `dpl_CAxfR5SvMLSq952oThGni1Z6hXFX`): the check result stays until dismissed, reports names refreshed and any file that could not be checked or saved with a reason, and each update must touch exactly one row. Note: the successful live check ran on the previous deployment, so the original route was working. Verified locally: 144 unit tests, 7 Files-tab browser tests (extended to assert the result persists), tsc, ESLint, build.
 
 Not verified live: uploads over 8 MB with resume, the over-50 MB open-in-Drive path, unlink, trashed/deleted detection against real Drive, Safari.
+
+## 2026-11-20 - Phase 3D plan drafted
+
+Owner asked to plan 3D. Read the story schema (007): characters and story units already carry unique (project_id, id), so project files can reference them with same-project keys. Drafted [PHASE_3D_PLAN.md](PHASE_3D_PLAN.md): images on characters and Structure items (main image plus strip, Add image on cards), an image-first Gallery in the Files tab for story projects, owner-checked thumbnails via Drive, placeholders for missing images, additive `012_story_images.sql`. Awaiting owner approval. No code written.
