@@ -437,3 +437,15 @@ Found and fixed during testing: `request.nextUrl.origin` named the server's bind
 Observed: `next build` alternately stops with a Next.js `SecurityFatalError` upgrade notice for 16.4.3 and succeeds on retry. No upgrade was run. Whether Vercel's build is affected is unknown.
 
 Not verified: real Google consent, `about.get` and Picker behaviour under `drive.file`, creating a file inside a Picker-granted folder, Vercel. Owner setup still needed: enable Google Picker API, create a restricted API key, add `NEXT_PUBLIC_GOOGLE_PICKER_API_KEY` and `NEXT_PUBLIC_GOOGLE_APP_ID`. Not committed, not applied to production, not deployed.
+
+## 2026-11-20 - Phase 3A live; Next.js security patch prepared
+
+Owner chose "Yes, go live" and a separate worktree for the Next.js upgrade. Owner finished the Picker setup; Vercel shows `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `DRIVE_TOKEN_KEY` (secret) and `NEXT_PUBLIC_GOOGLE_PICKER_API_KEY`, `NEXT_PUBLIC_GOOGLE_APP_ID` (config) in Production (names and types only; values not read).
+
+Committed `82ce3f1`. Read-only production pre-check (`transaction_read_only=on`): PostgreSQL 17.11, no `drive_connections`, 0 ideas, 0 projects, 1 Auth user. Applied `008_drive_connections.sql` via Supabase CLI `db query --remote=<ref> --yes --file`. Read-only post-check: RLS on, 4 owner policies, 1 trigger, 9 check constraints, `authenticated` select/insert/update/delete, `anon` no privileges, 0 rows; ideas policies unchanged (4). Note: as with the earlier tables, Supabase's default grants also give `authenticated` TRUNCATE/REFERENCES/TRIGGER; PostgREST does not expose those. Tightening every table's grants is a possible later hardening step.
+
+Fast-forwarded `main` f1cc3ee → 82ce3f1 (no force). Vercel production deployment `dpl_FNWJaRm9jyMz5KdAS77XLe7fQYpf` live on kaushik-kamal.vercel.app (Next.js 16.4.3 build did not stop on Vercel). Logged-out smoke check: `/`, `/login`, `/projects` 200; `/vault`, `/vault/settings`, `/vault/projects` redirect to login; `/api/drive/status` 401 `no-store`; `/api/drive/connect` and `/callback` 303 to login on the production host; POST disconnect/picker-token/folder 401 same-origin, 403 cross-origin or no Origin. No runtime errors in the first check. Rollback: promote `dpl_oop1wQ95tMsp1fCGmE9tZ2Zd1AX3` (f1cc3ee); `drive_connections` can stay.
+
+Not verified yet: logged-in connect, Picker folder choice and disconnect on the live site (needs the owner).
+
+Next.js: `npm audit` listed seven moderate advisories for next >=16.0.0 <=16.4.4. In worktree `../idea-vault-next-16.4.6`, branch `next-security-16.4.6`, commit `1471396` upgrades next and eslint-config-next to 16.4.6 (exact). Verified there: npm audit 0 vulnerabilities, 116 unit tests, 28 browser tests, tsc, ESLint, build (no SecurityFatalError stop). Not merged or deployed.
