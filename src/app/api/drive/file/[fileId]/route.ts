@@ -11,6 +11,9 @@ import { routeOwner } from "@/lib/drive/route-helpers";
 
 const THUMB_WIDTH = 640;
 const LOCKED = { "Cache-Control": "private, no-store", "X-Content-Type-Options": "nosniff" };
+// Previews may stay in the owner's own browser for 5 minutes (never in a shared cache), so moving
+// between pages doesn't reload every picture. A file trashed in Drive can still show for that long.
+const THUMB_CACHED = { ...LOCKED, "Cache-Control": "private, max-age=300" };
 
 function unavailable(status: number, message: string): Response {
   const page = `<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>Attachment unavailable</title>`
@@ -48,8 +51,9 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     const r = await q.limit(1).then((x) => x, () => null);
     return !r || r.error || !Array.isArray(r.data) ? undefined : ((r.data[0] as Linked | undefined) ?? null);
   };
-  const ideaRow = await lookup("idea_files");
-  const row = ideaRow ?? (ideaRow === null ? await lookup("project_files") : undefined);
+  // Both lookups run together (one database round trip instead of two); the idea row wins.
+  const [ideaRow, projectRow] = await Promise.all([lookup("idea_files"), lookup("project_files")]);
+  const row = ideaRow ?? (ideaRow === null ? projectRow : undefined);
   if (row === undefined) return unavailable(503, "The Vault couldn't load this attachment. Try again.");
   if (!row) return unavailable(404, "This attachment doesn't exist.");
 
@@ -65,7 +69,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       const thumb = await fileThumbnail(access.token, row.drive_file_id, THUMB_WIDTH);
       const type = thumb?.ok ? thumb.headers.get("content-type")?.split(";")[0].trim().toLowerCase() : undefined;
       if (thumb?.ok && type && /^image\/(jpeg|png|webp|gif)$/.test(type)) {
-        return new Response(thumb.body, { status: 200, headers: { ...LOCKED, "Content-Type": type,
+        return new Response(thumb.body, { status: 200, headers: { ...THUMB_CACHED, "Content-Type": type,
           "Content-Disposition": "inline", "Content-Security-Policy": "default-src 'none'; sandbox" } });
       }
     } catch (error) {

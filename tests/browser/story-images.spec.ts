@@ -99,7 +99,11 @@ test("a character gets a portrait by upload and by link; the first image is main
   await expect.poll(async () => thumbs(await state(request))).toBeGreaterThan(0);
   const thumb = await page.request.get(`/api/drive/file/${uploaded.id}?size=thumb`);
   expect(thumb.headers()["content-type"]).toBe("image/png");
-  expect(thumb.headers()["cache-control"]).toContain("no-store");
+  // Previews stay only in the owner's own browser, for 5 minutes; never in a shared cache.
+  expect(thumb.headers()["cache-control"]).toBe("private, max-age=300");
+  const missing = await page.request.get(`/api/drive/file/00000000-0000-4000-8000-000000000000?size=thumb`);
+  expect(missing.status()).toBe(404);
+  expect(missing.headers()["cache-control"]).toContain("no-store");
 
   // A second image, linked from Drive (as the Picker would), goes in the strip.
   const linked = await link(page, { projectId, characterId: mira.id, driveFileIds: ["fixture-img-000001"] });
