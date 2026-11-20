@@ -487,3 +487,7 @@ Owner chose the security tidy-up. Read-only production audit: `ideas`, `idea_fil
 ## 2026-11-20 - Migration 010 applied to production
 
 Owner said "yes apply it". Read-only pre-check: 21 anon table privileges across public tables, 48 authenticated TRUNCATE/REFERENCES/TRIGGER, 64 authenticated SELECT/INSERT/UPDATE/DELETE, 62 policies; 2 ideas, 2 attachments, 1 Drive connection. Applied `010_tighten_grants.sql` via Supabase CLI. Read-only post-check: anon 0, authenticated extra 0, authenticated CRUD 64, policies 62, data counts unchanged. Logged-out smoke check unchanged (`/`, `/login`, `/projects` 200; `/vault` redirects; `/api/drive/status` 401); no Vercel runtime errors. No deployment needed. Rollback: re-grant the revoked privileges per table (no data involved).
+
+## 2026-11-20 - Phase 3C plan drafted
+
+Owner asked to start the 3C plan. Read the project schema (006) and workspace: records hold text and web links only, the workspace is online-only with direct confirmed deletes. Drafted [PHASE_3C_PLAN.md](PHASE_3C_PLAN.md): a Files tab per project (resumable upload into `Projects/<title>`, Google Picker linking of existing files in place, optional attachment to a lab entry or component, unlink only, "Check files" for renamed/trashed/missing), additive `011_project_files.sql` (`project_files`, `drive_folders`), viewing through the existing owner-checked route, and no Supabase fallback for projects. Three owner decisions are pending (folder layout, link vs copy, behaviour without Drive). No code written.
