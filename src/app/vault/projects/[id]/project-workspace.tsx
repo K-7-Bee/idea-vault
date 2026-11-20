@@ -22,6 +22,7 @@ import { STATUS_COLOR, STATUS_INFO } from "../../status";
 import { LockedNotice, useVaultWriter } from "../../use-vault-writer";
 import RecordSection, { field, type Records } from "./record-section";
 import ProjectFiles from "./project-files";
+import { useFileActions } from "./file-actions";
 import type { ProjectFile } from "@/lib/project-files";
 import type { PickerConfig } from "@/lib/drive/picker";
 
@@ -80,6 +81,9 @@ export default function ProjectWorkspace({ ownerId, initialProject, initialRecor
   const [draft, setDraft] = useState(() => ({ ...initialProject }));
   const { run, busy, message, setMessage, online, locked, retry, region } = useVaultWriter(ownerId);
   const writer = { run, busy, online, setMessage };
+  // Phase 3C/3D: one set of file actions shared by the Files tab and story image cards.
+  const fileActions = useFileActions({ ownerId, projectId: initialProject.id, writer, picker, setFiles });
+  const media = { files, actions: fileActions, canAdd: driveUploads };
   const tabs = tabsFor(project.project_type);
   const current = tabs.find((t) => t.id === tab) ?? tabs[0];
   const archived = project.archived_at !== null;
@@ -301,10 +305,12 @@ export default function ProjectWorkspace({ ownerId, initialProject, initialRecor
               </aside>
             </section>
           ) : current.id === "files" ? (
-            <ProjectFiles ownerId={ownerId} projectId={project.id} files={files} setFiles={setFiles}
+            <ProjectFiles files={files}
               entries={hasEngineering(project.project_type) ? records.project_entries : []}
               components={hasEngineering(project.project_type) ? records.project_components : []}
-              writer={writer} driveUploads={driveUploads} picker={picker} />
+              characters={hasStory(project.project_type) ? records.story_characters : []}
+              units={hasStory(project.project_type) ? records.story_units : []}
+              writer={writer} driveUploads={driveUploads} actions={fileActions} />
           ) : (
             <div className="grid gap-8">
               {current.tables.map((table) => (
@@ -320,6 +326,7 @@ export default function ProjectWorkspace({ ownerId, initialProject, initialRecor
                   intro={INTRO[table]}
                   layout={table === "project_tasks" ? "board" : table === "story_units" ? "tree" : "list"}
                   files={table === "project_entries" || table === "project_components" ? files : undefined}
+                  media={table === "story_characters" || table === "story_units" ? media : undefined}
                 />
               ))}
             </div>

@@ -17,6 +17,8 @@ const WORK_TABLES = ['projects', 'project_milestones', 'project_tasks', 'project
   'story_bible_entries', 'story_characters', 'story_relationships', 'story_units', 'story_timeline_events', 'story_continuity'];
 const LEVELS = ['season', 'episode', 'scene', 'shot'];
 const failure = (status, code, message) => ({ status, body: { code, message } });
+const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==', 'base64');
+
 function levelProblem(row) {
   if (!row.parent_id) return null;
   const parent = work.story_units.find((u) => u.id === row.parent_id && u.project_id === row.project_id);
@@ -29,6 +31,9 @@ function clearLinks(table, id) {
   const unlink = (target, column) => work[target].filter((r) => r[column] === id).forEach((r) => { r[column] = null; touch(r); });
   if (table === 'project_milestones') unlink('project_tasks', 'milestone_id');
   if (table === 'story_units') { unlink('story_timeline_events', 'unit_id'); unlink('story_continuity', 'unit_id'); }
+  const unlinkFiles = (column) => simple.project_files.filter((r) => r[column] === id).forEach((r) => { r[column] = null; r.is_main = false; });
+  if (table === 'story_units') unlinkFiles('unit_id');
+  if (table === 'story_characters') unlinkFiles('character_id');
   if (table === 'story_characters') {
     work.story_relationships = work.story_relationships.filter((r) => r.from_character_id !== id && r.to_character_id !== id);
     unlink('story_continuity', 'character_id');
@@ -42,7 +47,9 @@ function reset() {
     files: new Map([['fixture-folder-0001', { name: 'Vault Files', mimeType: FOLDER_MIME, granted: true }],
       ['fixture-doc-000001', { name: 'notes.txt', mimeType: 'text/plain', granted: true, bytes: Buffer.from('synthetic notes') }],
       ['fixture-gdoc-00001', { name: 'Design brief', mimeType: 'application/vnd.google-apps.document', granted: true }],
-      ['fixture-hidden-001', { name: 'secret.txt', mimeType: 'text/plain', granted: false }]]) };
+      ['fixture-hidden-001', { name: 'secret.txt', mimeType: 'text/plain', granted: false }],
+      ['fixture-img-000001', { name: 'castle.png', mimeType: 'image/png', granted: true, bytes: PNG }],
+      ['fixture-img-000002', { name: 'forest.png', mimeType: 'image/png', granted: true, bytes: PNG }]]) };
   simple = { project_files: [], drive_folders: [] };
   work = Object.fromEntries(WORK_TABLES.map((t) => [t, []]));
   const created_at = '2026-11-15T00:00:00.000Z';
@@ -156,6 +163,13 @@ const server = http.createServer(async (req, res) => {
     if (!identity) return reply(401, { message: 'Fixture authentication required' });
     const owner = identity.id;
     if (url.pathname === '/rest/v1/drive_connections') return driveRows(url, req, json, owner, reply);
+    if (url.pathname === '/rest/v1/rpc/project_file_make_main' && req.method === 'POST') {
+      const target = simple.project_files.find((r) => r.id === json().file_id && r.user_id === owner);
+      if (!target || (!target.character_id && !target.unit_id)) return reply(200, false);
+      const column = target.character_id ? 'character_id' : 'unit_id';
+      for (const r of simple.project_files) if (r[column] === target[column]) r.is_main = r === target;
+      return reply(200, true);
+    }
     if (url.pathname === '/rest/v1/project_files' || url.pathname === '/rest/v1/drive_folders') return simpleRows(url.pathname.slice(9), url, req, json, owner, reply);
     if (url.pathname.startsWith('/rest/v1/')) {
       const table = url.pathname.slice('/rest/v1/'.length);
@@ -315,7 +329,9 @@ function simpleRows(table, url, req, json, owner, reply) {
   const linkOk = (row) => {
     if (row.entry_id && !work.project_entries.some((e) => e.id === row.entry_id && e.project_id === row.project_id)) return false;
     if (row.component_id && !work.project_components.some((c) => c.id === row.component_id && c.project_id === row.project_id)) return false;
-    return true;
+    if (row.character_id && !work.story_characters.some((c) => c.id === row.character_id && c.project_id === row.project_id)) return false;
+    if (row.unit_id && !work.story_units.some((c) => c.id === row.unit_id && c.project_id === row.project_id)) return false;
+    return ['entry_id', 'component_id', 'character_id', 'unit_id'].filter((k) => row[k]).length <= 1;
   };
   if (req.method === 'GET') return respond(200, found());
   if (req.method === 'DELETE') { const gone = found(); for (const row of gone) rows.splice(rows.indexOf(row), 1); return respond(200, gone); }
@@ -328,7 +344,7 @@ function simpleRows(table, url, req, json, owner, reply) {
       if (!work.projects.some((p) => p.id === row.project_id && p.user_id === owner)) return reply(409, { code: '23503', message: 'project fk' });
       if (!linkOk(row)) return reply(409, { code: '23503', message: 'record fk' });
       if (rows.some((r) => r.project_id === row.project_id && r.drive_file_id === row.drive_file_id)) return reply(409, { code: '23505', message: 'project_files_project_id_drive_file_id_key' });
-      Object.assign(row, { state: 'ok', state_reason: null, checked_at: null, entry_id: row.entry_id ?? null, component_id: row.component_id ?? null, ...body, created_at: now, updated_at: now });
+      Object.assign(row, { state: 'ok', state_reason: null, checked_at: null, entry_id: null, component_id: null, character_id: null, unit_id: null, ...body, is_main: false, created_at: now, updated_at: now });
     } else if (rows.some((r) => r.user_id === owner && r.purpose === row.purpose && r.parent_folder_id === row.parent_folder_id && (row.purpose !== 'project' || r.project_id === row.project_id))) {
       return reply(409, { code: '23505', message: 'drive_folders key' });
     }
@@ -339,7 +355,11 @@ function simpleRows(table, url, req, json, owner, reply) {
     const targets = found();
     for (const key of ['id', 'user_id', 'project_id', 'source', 'drive_file_id', 'created_at']) delete body[key];
     for (const row of targets) { if (!linkOk({ ...row, ...body })) return reply(409, { code: '23503', message: 'record fk' }); }
-    for (const row of targets) Object.assign(row, body, { updated_at: now });
+    for (const row of targets) {
+      const moved = ['character_id', 'unit_id'].some((k) => k in body && body[k] !== row[k]);
+      Object.assign(row, body, { updated_at: now });
+      if (moved || (!row.character_id && !row.unit_id)) row.is_main = false;
+    }
     return respond(200, targets);
   }
   return reply(405, {});
@@ -390,6 +410,11 @@ async function googleRequest(url, req, bytes, reply, res, event) {
   const bearer = req.headers.authorization?.replace(/^Bearer /i, '');
   const access = google.access.get(bearer);
   if (!access || access.exp < Date.now() || google.revoked.includes(access.refresh) || google.revoked.includes(bearer)) return reply(401, { error: { status: 'UNAUTHENTICATED' } });
+  if (path.startsWith('/thumb/') && req.method === 'GET') {
+    const id = decodeURIComponent(path.slice('/thumb/'.length)).replace(/=s\d+$/, '');
+    if (!google.files.get(id)?.granted) return reply(404, {});
+    event.status = 200; res.writeHead(200, { 'Content-Type': 'image/png', 'Content-Length': PNG.length }); return res.end(PNG);
+  }
   if (path === '/upload/drive/v3/files' && req.method === 'POST' && url.searchParams.get('uploadType') === 'resumable') {
     const body = JSON.parse(bytes.toString());
     if (!google.files.get(body.parents?.[0])?.granted) return reply(404, { error: { status: 'NOT_FOUND' } });
@@ -431,7 +456,8 @@ async function googleRequest(url, req, bytes, reply, res, event) {
   if (req.method === 'GET') return reply(200, { id: fileId, name: file.name, mimeType: file.mimeType, trashed: !!file.trashed,
     capabilities: { canAddChildren: true }, parents: file.parents, appProperties: file.appProperties,
     ...(file.bytes ? { size: String(file.bytes.length), md5Checksum: createHash('md5').update(file.bytes).digest('hex') } : {}),
-    webViewLink: `http://127.0.0.1:4317/google/view/${fileId}` });
+    webViewLink: `http://127.0.0.1:4317/google/view/${fileId}`,
+    ...(file.mimeType?.startsWith('image/') && !file.noThumb ? { thumbnailLink: `http://127.0.0.1:4317/google/thumb/${fileId}=s220` } : {}) });
   if (req.method === 'DELETE') { google.files.delete(fileId); return reply(204); }
   return reply(404, {});
 }

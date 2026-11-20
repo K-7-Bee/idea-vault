@@ -28,19 +28,19 @@ const F = '44444444-4444-4444-8444-444444444444';
 
 test('an upload targets exactly one idea or one project, optionally one of its records', () => {
   assert.deepEqual(plain(files.parseTarget({ ideaId: I })), { kind: 'idea', ideaId: I });
-  assert.deepEqual(plain(files.parseTarget({ projectId: P })), { kind: 'project', projectId: P, entryId: null, componentId: null });
-  assert.deepEqual(plain(files.parseTarget({ projectId: P, entryId: E })), { kind: 'project', projectId: P, entryId: E, componentId: null });
-  assert.deepEqual(plain(files.parseTarget({ projectId: P, componentId: C, entryId: null })), { kind: 'project', projectId: P, entryId: null, componentId: C });
+  assert.deepEqual(plain(files.parseTarget({ projectId: P })), { kind: 'project', projectId: P, entryId: null, componentId: null, characterId: null, unitId: null });
+  assert.deepEqual(plain(files.parseTarget({ projectId: P, entryId: E })), { kind: 'project', projectId: P, entryId: E, componentId: null, characterId: null, unitId: null });
+  assert.deepEqual(plain(files.parseTarget({ projectId: P, componentId: C, entryId: null })), { kind: 'project', projectId: P, entryId: null, componentId: C, characterId: null, unitId: null });
   for (const bad of [{}, { ideaId: I, projectId: P }, { ideaId: I, entryId: E }, { projectId: P, entryId: E, componentId: C },
     { projectId: 'x' }, { projectId: P, entryId: '../x' }, null]) {
     assert.equal(files.parseTarget(bad), null, JSON.stringify(bad));
   }
   assert.deepEqual(plain(files.parseUploadRequest({ projectId: P, componentId: C, fileId: F, name: 'spec.pdf', mimeType: 'application/pdf', size: 3 }).target),
-    { kind: 'project', projectId: P, entryId: null, componentId: C });
+    { kind: 'project', projectId: P, entryId: null, componentId: C, characterId: null, unitId: null });
 });
 
 test('project uploads are tagged and verified against the project, not an idea', () => {
-  const tags = files.targetTags({ kind: 'project', projectId: P, entryId: E, componentId: null }, F);
+  const tags = files.targetTags({ kind: 'project', projectId: P, entryId: E, componentId: null, characterId: null, unitId: null }, F);
   assert.deepEqual(plain(tags), { vaultFileId: F, vaultProjectId: P });
   const meta = { id: 'drive-file-000001', name: 'a', mimeType: 'text/plain', size: '3', parents: ['folder-proj-00001'], appProperties: { vaultFileId: F, vaultProjectId: P } };
   assert.equal(files.checkUploaded(meta, { tags, folderId: 'folder-proj-00001', size: 3 }).ok, true);
@@ -95,9 +95,37 @@ test('a project upload sends the project target and never reuses an idea upload 
   const row = await upload.uploadToDrive({ ownerId: 'owner', projectId: P, entryId: E, fileId: F, file }, { fetch, sessions: store });
   assert.deepEqual(plain(row), { id: F, project_id: P });
   assert.equal(calls.some((c) => c.url === 'https://idea-session.invalid/'), false);
-  assert.deepEqual(calls[0].body, { projectId: P, entryId: E, componentId: null, fileId: F, name: 'notes.txt', mimeType: 'text/plain', size: 3 });
-  assert.deepEqual(calls.at(-1).body, { projectId: P, entryId: E, componentId: null, fileId: F, size: 3, driveFileId: 'drive-file-000002' });
+  assert.deepEqual(calls[0].body, { projectId: P, entryId: E, componentId: null, characterId: null, unitId: null, fileId: F, name: 'notes.txt', mimeType: 'text/plain', size: 3 });
+  assert.deepEqual(calls.at(-1).body, { projectId: P, entryId: E, componentId: null, characterId: null, unitId: null, fileId: F, size: 3, driveFileId: 'drive-file-000002' });
   assert.equal(sessions.size, 0);
+});
+
+test('3D: a file can belong to a character or a structure item, never two records', () => {
+  const H = '55555555-5555-4555-8555-555555555555', U = '66666666-6666-4666-8666-666666666666';
+  assert.deepEqual(plain(files.parseTarget({ projectId: P, characterId: H })), { kind: 'project', projectId: P, entryId: null, componentId: null, characterId: H, unitId: null });
+  assert.deepEqual(plain(files.parseTarget({ projectId: P, unitId: U, characterId: null })), { kind: 'project', projectId: P, entryId: null, componentId: null, characterId: null, unitId: U });
+  for (const bad of [{ projectId: P, characterId: H, unitId: U }, { projectId: P, entryId: E, unitId: U }, { projectId: P, characterId: 'x' },
+    { ideaId: I, characterId: H }, { ideaId: I, unitId: U }]) {
+    assert.equal(files.parseTarget(bad), null, JSON.stringify(bad));
+  }
+  assert.deepEqual(plain(files.linkColumns({ entryId: null, componentId: null, characterId: H, unitId: null })),
+    { entry_id: null, component_id: null, character_id: H, unit_id: null });
+  assert.equal(files.parseLink({ characterId: H, unitId: U }), null);
+  assert.deepEqual(plain(files.parseLink({})), { entryId: null, componentId: null, characterId: null, unitId: null });
+});
+
+test('3D: a record shows its main image first, else the first image attached; other files are ignored', () => {
+  const H = '55555555-5555-4555-8555-555555555555';
+  const img = (id, created, extra = {}) => ({ id, created_at: created, mime_type: 'image/png', character_id: H, unit_id: null, is_main: false, ...extra });
+  const first = img('a', '2026-01-01'), second = img('b', '2026-01-02'), third = img('c', '2026-01-03');
+  const doc = img('d', '2025-01-01', { mime_type: 'application/pdf' }), svg = img('e', '2025-01-02', { mime_type: 'image/svg+xml' });
+  const other = img('f', '2025-01-03', { character_id: 'someone-else' });
+  const order = (list) => plain(projectFiles.imagesFor(list, { kind: 'character', id: H }).map((f) => f.id));
+  assert.deepEqual(order([third, doc, second, first, svg, other]), ['a', 'b', 'c'], 'oldest image is main by default; SVG and PDF are not images');
+  assert.deepEqual(order([third, second, { ...first }, { ...second, id: 'b2', is_main: true }].filter((f) => f.id !== 'b')), ['b2', 'a', 'c']);
+  assert.deepEqual(plain(projectFiles.imagesFor([first], { kind: 'unit', id: H })), [], 'a character image is not a unit image');
+  assert.equal(projectFiles.thumbUrl({ id: 'abc' }), '/api/drive/file/abc?size=thumb');
+  assert.deepEqual(plain(projectFiles.imageOwner({ character_id: null, unit_id: 'u1' })), { kind: 'unit', id: 'u1' });
 });
 
 // --- server: project folders ---
@@ -133,7 +161,7 @@ function loadTargets(google) {
   return { targets: load('src/lib/drive/targets.ts', { './files': files, './google': { GoogleError, ...google(GoogleError) } }), GoogleError };
 }
 const ROOT = 'vault-root-folder-1';
-const projectTarget = { kind: 'project', projectId: P, entryId: null, componentId: null };
+const projectTarget = { kind: 'project', projectId: P, entryId: null, componentId: null, characterId: null, unitId: null };
 
 test('project folders are created once under Projects/ and then reused', async () => {
   const made = [];

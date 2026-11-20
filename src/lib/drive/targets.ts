@@ -1,5 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { folderName, type UploadTarget } from "./files";
+import { folderName, linkColumns, type UploadTarget } from "./files";
 import { GoogleError, createFolder, getFileMeta, type DriveFileMeta } from "./google";
 
 // Server only. Where an upload's record lives and which Drive folder it goes into:
@@ -7,7 +7,7 @@ import { GoogleError, createFolder, getFileMeta, type DriveFileMeta } from "./go
 // project files → project_files, in Projects/<project title> inside that folder (3C).
 
 export const IDEA_FILE_COLUMNS = "id, path, name, mime_type, size, provider, drive_file_id";
-export const PROJECT_FILE_COLUMNS = "id, project_id, entry_id, component_id, source, drive_file_id, name, mime_type, size, md5, state, state_reason, checked_at, created_at";
+export const PROJECT_FILE_COLUMNS = "id, project_id, entry_id, component_id, character_id, unit_id, is_main, source, drive_file_id, name, mime_type, size, md5, state, state_reason, checked_at, created_at";
 
 type Rows = { data: unknown[] | null; error: unknown } | null;
 const settle = <T,>(p: PromiseLike<T>) => Promise.resolve(p).then((r) => r, () => null);
@@ -26,6 +26,8 @@ export async function verifyTarget(supabase: SupabaseClient, ownerId: string, ta
   if (project !== "ok") return project;
   if (target.entryId) return one("project_entries", [["id", target.entryId], ["project_id", target.projectId]]);
   if (target.componentId) return one("project_components", [["id", target.componentId], ["project_id", target.projectId]]);
+  if (target.characterId) return one("story_characters", [["id", target.characterId], ["project_id", target.projectId]]);
+  if (target.unitId) return one("story_units", [["id", target.unitId], ["project_id", target.projectId]]);
   return "ok";
 }
 
@@ -97,8 +99,8 @@ export async function recordUpload(supabase: SupabaseClient, ownerId: string, ta
   const insert: PromiseLike<unknown> = target.kind === "idea"
     ? supabase.from("idea_files").insert({ id: fileId, idea_id: target.ideaId, user_id: ownerId, path: `drive/${meta.id}`, name,
         mime_type: meta.mimeType || null, size: check.size, provider: "drive", drive_file_id: meta.id, md5: check.md5 }).select(IDEA_FILE_COLUMNS).single()
-    : supabase.from("project_files").insert({ id: fileId, project_id: target.projectId, user_id: ownerId, entry_id: target.entryId,
-        component_id: target.componentId, source: "upload", drive_file_id: meta.id, name, mime_type: meta.mimeType || null,
+    : supabase.from("project_files").insert({ id: fileId, project_id: target.projectId, user_id: ownerId, ...linkColumns(target),
+        source: "upload", drive_file_id: meta.id, name, mime_type: meta.mimeType || null,
         size: check.size, md5: check.md5 }).select(PROJECT_FILE_COLUMNS).single();
   const inserted = await settle(insert) as { data: unknown; error: unknown } | null;
   if (inserted && !inserted.error && inserted.data) return inserted.data as Record<string, unknown>;

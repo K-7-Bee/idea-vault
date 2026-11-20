@@ -11,13 +11,31 @@ export function driveUploadsEnabled(env: Record<string, string | undefined> = pr
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 export const isUuid = (value: unknown): value is string => typeof value === "string" && UUID.test(value);
 
-// Where an upload belongs: an idea attachment (3B) or a project file (3C), optionally tied to one of
-// the project's lab entries or components.
+// The one project record a file may be attached to: a lab entry or component (3C), or a story
+// character or structure item (3D). At most one is set.
+export const LINK_KEYS = ["entryId", "componentId", "characterId", "unitId"] as const;
+export type RecordLink = { entryId: string | null; componentId: string | null; characterId: string | null; unitId: string | null };
+export const NO_LINK: RecordLink = { entryId: null, componentId: null, characterId: null, unitId: null };
+
+// Where an upload belongs: an idea attachment (3B) or a project file (3C/3D).
 export type UploadTarget =
   | { kind: "idea"; ideaId: string }
-  | { kind: "project"; projectId: string; entryId: string | null; componentId: string | null };
+  | ({ kind: "project"; projectId: string } & RecordLink);
 
 const optionalUuid = (value: unknown) => value === undefined || value === null || isUuid(value);
+
+// Reads the record link from a request body. Null when malformed or naming more than one record.
+export function parseLink(body: unknown): RecordLink | null {
+  const b = (body ?? {}) as Record<string, unknown>;
+  if (!LINK_KEYS.every((key) => optionalUuid(b[key]))) return null;
+  const link = Object.fromEntries(LINK_KEYS.map((key) => [key, (b[key] as string | null | undefined) ?? null])) as RecordLink;
+  return LINK_KEYS.filter((key) => link[key]).length > 1 ? null : link;
+}
+
+// The database columns for a record link.
+export const linkColumns = (link: RecordLink) => ({
+  entry_id: link.entryId, component_id: link.componentId, character_id: link.characterId, unit_id: link.unitId,
+});
 
 export function parseTarget(body: unknown): UploadTarget | null {
   const b = body as Record<string, unknown> | null;
@@ -25,12 +43,12 @@ export function parseTarget(body: unknown): UploadTarget | null {
   const idea = b.ideaId !== undefined, project = b.projectId !== undefined;
   if (idea === project) return null;
   if (idea) {
-    if (!isUuid(b.ideaId) || b.entryId != null || b.componentId != null) return null;
+    if (!isUuid(b.ideaId) || LINK_KEYS.some((key) => b[key] != null)) return null;
     return { kind: "idea", ideaId: b.ideaId };
   }
-  if (!isUuid(b.projectId) || !optionalUuid(b.entryId) || !optionalUuid(b.componentId)) return null;
-  if (b.entryId && b.componentId) return null;
-  return { kind: "project", projectId: b.projectId, entryId: (b.entryId as string | null) ?? null, componentId: (b.componentId as string | null) ?? null };
+  const link = parseLink(b);
+  if (!isUuid(b.projectId) || !link) return null;
+  return { kind: "project", projectId: b.projectId, ...link };
 }
 
 // The private Drive tags that tie an uploaded file to its Vault record.

@@ -1,4 +1,4 @@
-# Slice 3D plan: Story Studio images (proposal, 2026-11-20; awaiting owner approval)
+# Slice 3D plan: Story Studio images (approved 2026-11-20 with all recommended choices; built locally, not applied or deployed)
 
 Parent plan: [PHASE_3_PLAN.md](PHASE_3_PLAN.md). Builds on 3C (live): project files in Drive, uploads into `Projects/<title>`, Picker linking in place, attach to a record, Check files. Parent acceptance for 3D: "Images load from Drive with owner checks; missing image shows a placeholder, record intact."
 

@@ -1,5 +1,6 @@
 // Browser only. Google Picker, loaded from Google only when the owner asks to choose something.
-// Used by Settings (choose the Vault folder, 3A) and project Files (link existing files, 3C).
+// Used by Settings (choose the Vault folder, 3A), project Files (link existing files, 3C) and story
+// images (pictures only, 3D).
 // The short-lived drive.file access token it needs is held in memory for the picker only.
 
 export class PickerUnavailable extends Error {}
@@ -42,8 +43,9 @@ function loadPicker(): Promise<PickerNamespace> {
 }
 
 // "folder": one folder (Settings). "files": any number of files, any type (project Files).
+// "images": any number of pictures (story images).
 // Resolves with the picked Drive IDs, or [] if the owner cancels.
-export async function pickFromDrive(config: PickerConfig, token: string, mode: "folder" | "files"): Promise<string[]> {
+export async function pickFromDrive(config: PickerConfig, token: string, mode: "folder" | "files" | "images"): Promise<string[]> {
   if (!config.apiKey || !config.appId) throw new PickerUnavailable("The Google Drive picker isn't configured on this server yet.");
   let picker: PickerNamespace;
   try {
@@ -53,10 +55,12 @@ export async function pickFromDrive(config: PickerConfig, token: string, mode: "
   }
   const view = mode === "folder"
     ? new picker.DocsView(picker.ViewId.FOLDERS).setIncludeFolders(true).setSelectFolderEnabled(true).setMimeTypes("application/vnd.google-apps.folder")
-    : new picker.DocsView(picker.ViewId.DOCS).setIncludeFolders(true).setSelectFolderEnabled(false);
+    : mode === "images"
+      ? new picker.DocsView(picker.ViewId.DOCS).setIncludeFolders(true).setSelectFolderEnabled(false).setMimeTypes("image/png,image/jpeg,image/webp,image/gif")
+      : new picker.DocsView(picker.ViewId.DOCS).setIncludeFolders(true).setSelectFolderEnabled(false);
   return new Promise((resolve) => {
     let builder = new picker.PickerBuilder()
-      .setTitle(mode === "folder" ? "Choose the folder for Idea Vault files" : "Choose files to link to this project")
+      .setTitle(mode === "folder" ? "Choose the folder for Idea Vault files" : mode === "images" ? "Choose pictures to link" : "Choose files to link to this project")
       .setAppId(config.appId)
       .setOAuthToken(token)
       .setDeveloperKey(config.apiKey)
@@ -65,7 +69,7 @@ export async function pickFromDrive(config: PickerConfig, token: string, mode: "
         if (data.action === picker.Action.PICKED) resolve((data.docs ?? []).map((d) => d.id));
         else if (data.action === picker.Action.CANCEL) resolve([]);
       });
-    if (mode === "files") builder = builder.enableFeature(picker.Feature.MULTISELECT_ENABLED);
+    if (mode !== "folder") builder = builder.enableFeature(picker.Feature.MULTISELECT_ENABLED);
     builder.build().setVisible(true);
   });
 }

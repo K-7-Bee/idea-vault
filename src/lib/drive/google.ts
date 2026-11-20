@@ -203,6 +203,23 @@ export function fileMedia(accessToken: string, id: string, range: string | null)
   });
 }
 
+// Drive's own preview image of a file (3D). thumbnailLink is short-lived and private: it is fetched
+// here with the owner's token and never sent to the browser. Null when Drive has no thumbnail or
+// the link isn't a Google host; a trashed file is reported as missing.
+export async function fileThumbnail(accessToken: string, id: string, width: number): Promise<Response | null> {
+  const meta = await drive<{ thumbnailLink?: string; trashed?: boolean }>(accessToken,
+    `/files/${encodeURIComponent(id)}?fields=thumbnailLink,trashed&supportsAllDrives=true`);
+  if (meta.trashed) throw new GoogleError("trashed", 404);
+  if (!meta.thumbnailLink) return null;
+  let url: URL;
+  try { url = new URL(meta.thumbnailLink.replace(/=s\d+$/, `=s${Math.round(width)}`)); } catch { return null; }
+  const base = endpoints();
+  const test = base === REAL ? null : new URL(base.drive).origin;
+  const google = url.protocol === "https:" && /(^|\.)(googleusercontent\.com|google\.com|googleapis\.com)$/.test(url.hostname);
+  if (!google && url.origin !== test) return null;
+  return fetch(url, { headers: { Authorization: `Bearer ${accessToken}` }, cache: "no-store", redirect: "error", signal: AbortSignal.timeout(20_000) });
+}
+
 export function deleteFile(accessToken: string, id: string) {
   return drive<null>(accessToken, `/files/${encodeURIComponent(id)}?supportsAllDrives=true`, { method: "DELETE" });
 }

@@ -3,6 +3,8 @@
 import { useState } from "react";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { projectFileMeta, projectFileView, type ProjectFile } from "@/lib/project-files";
+import type { FileActions } from "./file-actions";
+import StoryImages from "./story-image";
 import {
   TABLES,
   UNIT_LEVELS,
@@ -169,13 +171,15 @@ function rowTitle(config: TableConfig, row: Row, records: Records) {
   return String(row[config.titleField]);
 }
 
-export default function RecordSection({ table, records, ownerId, projectId, writer, update, reload, intro, layout = "list", files }: {
+export default function RecordSection({ table, records, ownerId, projectId, writer, update, reload, intro, layout = "list", files, media }: {
   table: TableName; records: Records; ownerId: string; projectId: string; writer: Writer;
   update: (table: TableName, change: (rows: Row[]) => Row[]) => void;
   reload: (tables: TableName[], done: string) => void;
   intro?: string; layout?: "list" | "board" | "tree";
   // Phase 3C: project files, listed under the lab entry or component they are attached to.
   files?: ProjectFile[];
+  // Phase 3D: images on characters (portrait) and structure items (frame; shots show it as the panel).
+  media?: { files: ProjectFile[]; actions: FileActions; canAdd: boolean };
 }) {
   const attached = (rowId: string) => (files ?? []).filter((f) => (table === "project_entries" ? f.entry_id : f.component_id) === rowId);
   const config = TABLES[table];
@@ -238,7 +242,11 @@ export default function RecordSection({ table, records, ownerId, projectId, writ
     const disabled = writer.busy || !writer.online;
     return (
       <li key={row.id} className={`list-none rounded-xl border border-line bg-card p-3 shadow-sm ${isShot ? "flex flex-col" : ""}`}>
-        {isShot && <div aria-hidden className="mb-2 aspect-video w-full rounded-lg border border-dashed border-line bg-background" />}
+        {media ? (
+          <StoryImages owner={{ kind: table === "story_characters" ? "character" : "unit", id: row.id }} label={rowTitle(config, row, records)}
+            files={media.files} actions={media.actions} canAdd={media.canAdd} disabled={disabled}
+            shape={table === "story_characters" ? "portrait" : "frame"} />
+        ) : isShot && <div aria-hidden className="mb-2 aspect-video w-full rounded-lg border border-dashed border-line bg-background" />}
         <div className="flex flex-wrap items-start justify-between gap-2">
           <h4 className="min-w-0 break-words font-semibold">
             {kindLabel && <span className="mr-2 rounded-full border border-line px-2 py-0.5 text-xs font-medium text-muted">{kindLabel}</span>}

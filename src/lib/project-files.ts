@@ -6,6 +6,10 @@ export type ProjectFile = {
   project_id: string;
   entry_id: string | null;
   component_id: string | null;
+  // 3D: a story character or structure item, and whether this is its main image.
+  character_id?: string | null;
+  unit_id?: string | null;
+  is_main?: boolean;
   source: "upload" | "picked";
   drive_file_id: string;
   name: string;
@@ -40,4 +44,26 @@ export function projectFileMeta(file: ProjectFile): string {
   if (googleNative(file.mime_type)) parts.push("Google file");
   else if (file.size !== null) parts.push(formatSize(file.size));
   return parts.join(" · ");
+}
+
+// 3D: images on story characters and structure items.
+export type ImageOwner = { kind: "character" | "unit"; id: string };
+
+export const isImage = (file: ProjectFile) => !!file.mime_type && /^image\/(png|jpeg|webp|gif)$/i.test(file.mime_type);
+
+// Small preview for cards and the gallery (owner-checked, served through the Vault).
+export const thumbUrl = (file: ProjectFile) => `/api/drive/file/${file.id}?size=thumb`;
+
+export function imageOwner(file: ProjectFile): ImageOwner | null {
+  if (file.character_id) return { kind: "character", id: file.character_id };
+  if (file.unit_id) return { kind: "unit", id: file.unit_id };
+  return null;
+}
+
+// A record's images, main first: the one marked main, else the first image attached.
+export function imagesFor(files: ProjectFile[], owner: ImageOwner): ProjectFile[] {
+  const mine = files.filter((f) => isImage(f) && (owner.kind === "character" ? f.character_id : f.unit_id) === owner.id)
+    .sort((a, b) => a.created_at.localeCompare(b.created_at));
+  const main = mine.find((f) => f.is_main) ?? mine[0];
+  return main ? [main, ...mine.filter((f) => f !== main)] : [];
 }

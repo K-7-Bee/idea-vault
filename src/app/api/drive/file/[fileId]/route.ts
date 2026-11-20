@@ -1,7 +1,7 @@
 import type { NextRequest } from "next/server";
 import { accessToken } from "@/lib/drive/connection";
 import { disposition, inlineSafe, isGoogleNative, isUuid, safeRange } from "@/lib/drive/files";
-import { GoogleError, fileMedia, getFileMeta } from "@/lib/drive/google";
+import { GoogleError, fileMedia, fileThumbnail, getFileMeta } from "@/lib/drive/google";
 import { DRIVE_PREVIEW_MAX_BYTES } from "@/lib/ideas";
 import { routeOwner } from "@/lib/drive/route-helpers";
 
@@ -9,6 +9,7 @@ import { routeOwner } from "@/lib/drive/route-helpers";
 // and video can seek); large ones, or ?open=drive, redirect to the file in the owner's Google Drive.
 // Not gated by the upload switch: linked files stay viewable after uploads are turned off.
 
+const THUMB_WIDTH = 640;
 const LOCKED = { "Cache-Control": "private, no-store", "X-Content-Type-Options": "nosniff" };
 
 function unavailable(status: number, message: string): Response {
@@ -55,6 +56,25 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
   const access = await accessToken(session.supabase, session.owner.id, Date.now());
   if (!access.ok) {
     return unavailable(409, access.reason === "reconnect" || access.reason === "not_connected" ? RECONNECT : "Google Drive couldn't be reached. Try again.");
+  }
+
+  // 3D: ?size=thumb serves Drive's small preview for cards and the gallery. Without one, a small,
+  // safe image falls through to the full file below; anything else has no preview (404).
+  if (request.nextUrl.searchParams.get("size") === "thumb") {
+    try {
+      const thumb = await fileThumbnail(access.token, row.drive_file_id, THUMB_WIDTH);
+      const type = thumb?.ok ? thumb.headers.get("content-type")?.split(";")[0].trim().toLowerCase() : undefined;
+      if (thumb?.ok && type && /^image\/(jpeg|png|webp|gif)$/.test(type)) {
+        return new Response(thumb.body, { status: 200, headers: { ...LOCKED, "Content-Type": type,
+          "Content-Disposition": "inline", "Content-Security-Policy": "default-src 'none'; sandbox" } });
+      }
+    } catch (error) {
+      if (error instanceof GoogleError && error.status === 404) return unavailable(404, GONE);
+      if (error instanceof GoogleError && error.status === 401) return unavailable(409, RECONNECT);
+      // Other failures: try the full image below.
+    }
+    const image = inlineSafe(row.mime_type) && !!row.mime_type?.startsWith("image/");
+    if (!image || row.size === null || Number(row.size) > DRIVE_PREVIEW_MAX_BYTES) return unavailable(404, "There is no preview for this file.");
   }
 
   // Google Docs/Sheets/Slides (no size, no bytes) and large files open in Drive.

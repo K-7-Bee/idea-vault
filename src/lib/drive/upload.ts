@@ -136,10 +136,11 @@ async function sendBytes(f: typeof fetch, session: string, file: Blob, deps: Req
   return { done: true, driveFileId: null };
 }
 
-// An idea attachment (3B), or a project file optionally tied to a lab entry or component (3C).
+// An idea attachment (3B), or a project file optionally tied to one record (3C/3D).
+type LinkInput = { entryId?: string | null; componentId?: string | null; characterId?: string | null; unitId?: string | null };
 export type UploadInput = { ownerId: string; fileId: string; file: File } & (
-  | { ideaId: string; projectId?: undefined; entryId?: undefined; componentId?: undefined }
-  | { projectId: string; entryId?: string | null; componentId?: string | null; ideaId?: undefined }
+  | { ideaId: string; projectId?: undefined; entryId?: undefined; componentId?: undefined; characterId?: undefined; unitId?: undefined }
+  | ({ projectId: string; ideaId?: undefined } & LinkInput)
 );
 
 export async function uploadToDrive<T = FileRow>(input: UploadInput, deps: UploadDeps = {}): Promise<T> {
@@ -149,7 +150,8 @@ export async function uploadToDrive<T = FileRow>(input: UploadInput, deps: Uploa
   const { ownerId, fileId, file } = input;
   const target = input.ideaId !== undefined
     ? { ideaId: input.ideaId }
-    : { projectId: input.projectId, entryId: input.entryId ?? null, componentId: input.componentId ?? null };
+    : { projectId: input.projectId, entryId: input.entryId ?? null, componentId: input.componentId ?? null,
+        characterId: input.characterId ?? null, unitId: input.unitId ?? null };
   const targetKey = input.ideaId ?? `project:${input.projectId}`;
   // Saved sessions keep the field name ideaId (3B records on devices); it holds the target key.
   const base = { fileId, ownerId, ideaId: targetKey, size: file.size };
