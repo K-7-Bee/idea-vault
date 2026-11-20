@@ -559,3 +559,11 @@ Verified locally:
 - **Static checks:** tsc, ESLint, production build (35 pages), `git diff --check`. The disposable containers were removed.
 
 Not verified: real Supabase Storage (bucket MIME/size enforcement, public URL caching, the `list` call), real Drive image bytes, and the Vercel response headers for request-time pages. Unpublished addresses are soft 404s (status 200 with the not-found page and `noindex`). Not committed, not applied, not deployed.
+
+## 2026-11-21 - Phase 4A live
+
+Owner said "commit it and go live". Committed `0fb8dd2`. Read-only production pre-check: 2 projects (0 published), 7 project files, 2 ideas, 2 idea files, 0 storage objects; no showcase tables or bucket; 0 anon table grants. Applied `013_showcases.sql` via Supabase CLI `db query --remote=<ref> --yes --file`. Read-only post-check: both tables with RLS; anon may select only slug, title, category, summary, technologies, sections, links, images, published_at on `showcases` (authenticated also project_id; `user_id` to neither); no insert/update/delete on `showcases` for anon or authenticated; anon has no other public table; `projects_publication_rules` and `projects_drop_snapshot` triggers present; `publish_showcase`/`unpublish_showcase` security definer, executable by authenticated only; public `showcase` bucket (5 MB, JPEG/PNG/WebP) with 3 owner policies; data counts unchanged. (`information_schema` hides column grants from the read-only role, so they were checked with `has_column_privilege`.)
+
+Fast-forwarded `main` 9facd98 → 0fb8dd2 (no force); Vercel `dpl_HeKeLdD27y3RxBoDdBmLPxWAdfCf` in `icn1`. Unauthenticated smoke check: `/`, `/projects` and the three case studies 200 with unchanged titles; an unknown `/projects/<slug>` shows "Project not found" with noindex (soft 404, status 200); `/vault/portfolio` and the preview redirect to `/login`; the publish, unpublish and cleanup routes give 403 cross-origin and 401 without a session; no runtime errors.
+
+Not yet verified live: a real publish and unpublish by the owner (Drive image copy into real Storage, the public page and image, removal on unpublish/stage change). Rollback: unpublish everything, promote `dpl_7ctoUJEZD72jGMFQwYpnK6nwYfbm` (9facd98), then `revoke select on public.showcases from anon`.
