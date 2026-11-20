@@ -3,6 +3,7 @@
 import { useState } from "react";
 import type { DriveStatus } from "@/lib/drive/connection";
 import type { CallbackResult } from "@/lib/drive/flow";
+import { PickerUnavailable, pickFromDrive, type PickerConfig } from "@/lib/drive/picker";
 
 const RESULT_TEXT: Record<CallbackResult, { ok: boolean; text: string }> = {
   connected: { ok: true, text: "Google Drive is connected." },
@@ -28,7 +29,6 @@ const FOLDER_ERRORS: Record<string, string> = {
   not_connected: "Connect Google Drive first.",
 };
 
-type PickerConfig = { apiKey: string; appId: string };
 
 export default function DriveSettings({ initial, result, picker }: {
   initial: DriveStatus; result: CallbackResult | null; picker: PickerConfig;
@@ -70,7 +70,7 @@ export default function DriveSettings({ initial, result, picker }: {
         setMessage({ ok: false, text: FOLDER_ERRORS[tokenBody.error ?? ""] ?? "Drive couldn't be reached. Please try again." });
         return;
       }
-      const picked = await pickFolder(picker, tokenBody.token);
+      const [picked] = await pickFromDrive(picker, tokenBody.token, "folder");
       if (!picked) return;
       const response = await fetch("/api/drive/folder", {
         method: "POST",
@@ -154,70 +154,4 @@ export default function DriveSettings({ initial, result, picker }: {
       </div>
     </div>
   );
-}
-
-class PickerUnavailable extends Error {}
-
-// Minimal shapes of the Google Picker API that this page uses.
-type PickerData = { action: string; docs?: { id: string }[] };
-type PickerNamespace = {
-  Action: { PICKED: string; CANCEL: string };
-  ViewId: { FOLDERS: string };
-  DocsView: new (viewId: string) => PickerView;
-  PickerBuilder: new () => PickerBuilder;
-};
-type PickerView = {
-  setIncludeFolders(v: boolean): PickerView; setSelectFolderEnabled(v: boolean): PickerView; setMimeTypes(m: string): PickerView;
-};
-type PickerBuilder = {
-  setAppId(id: string): PickerBuilder; setOAuthToken(t: string): PickerBuilder; setDeveloperKey(k: string): PickerBuilder;
-  addView(v: unknown): PickerBuilder; setCallback(cb: (data: PickerData) => void): PickerBuilder; setTitle(t: string): PickerBuilder;
-  build(): { setVisible(v: boolean): void };
-};
-type GoogleWindow = Window & { gapi?: { load(name: string, done: () => void): void }; google?: { picker?: PickerNamespace } };
-
-let pickerLoad: Promise<PickerNamespace> | null = null;
-
-// Loads Google's picker script only when the owner asks to choose a folder.
-function loadPicker(): Promise<PickerNamespace> {
-  const w = window as GoogleWindow;
-  pickerLoad ??= new Promise<PickerNamespace>((resolve, reject) => {
-    const ready = () => w.gapi!.load("picker", () => (w.google?.picker ? resolve(w.google.picker) : reject(new Error("picker"))));
-    if (w.gapi) return ready();
-    const script = document.createElement("script");
-    script.src = "https://apis.google.com/js/api.js";
-    script.async = true;
-    script.onload = ready;
-    script.onerror = () => reject(new Error("script"));
-    document.head.appendChild(script);
-  }).catch((error) => { pickerLoad = null; throw error; });
-  return pickerLoad;
-}
-
-async function pickFolder(config: PickerConfig, token: string): Promise<string | null> {
-  if (!config.apiKey || !config.appId) throw new PickerUnavailable("The folder picker isn't configured on this server yet.");
-  let picker: PickerNamespace;
-  try {
-    picker = await loadPicker();
-  } catch {
-    throw new PickerUnavailable("Google's folder picker couldn't be loaded. Check your connection and try again.");
-  }
-  const view = new picker.DocsView(picker.ViewId.FOLDERS)
-    .setIncludeFolders(true)
-    .setSelectFolderEnabled(true)
-    .setMimeTypes("application/vnd.google-apps.folder");
-  return new Promise((resolve) => {
-    new picker.PickerBuilder()
-      .setTitle("Choose the folder for Idea Vault files")
-      .setAppId(config.appId)
-      .setOAuthToken(token)
-      .setDeveloperKey(config.apiKey)
-      .addView(view)
-      .setCallback((data) => {
-        if (data.action === picker.Action.PICKED) resolve(data.docs?.[0]?.id ?? null);
-        else if (data.action === picker.Action.CANCEL) resolve(null);
-      })
-      .build()
-      .setVisible(true);
-  });
 }

@@ -8,7 +8,7 @@ const OTHER = '22222222-2222-4222-8222-222222222222';
 const IDEA = '33333333-3333-4333-8333-333333333333';
 const FILE = '44444444-4444-4444-8444-444444444444';
 const sessions = new Map(), signed = new Map();
-let ideas, files, objects, rules, events, work, drive, google;
+let ideas, files, objects, rules, events, work, drive, google, simple;
 // Phase 3A: a synthetic Google (OAuth + the few Drive calls the app makes). Not Google.
 const DRIVE_SCOPE = 'https://www.googleapis.com/auth/drive.file';
 const FOLDER_MIME = 'application/vnd.google-apps.folder';
@@ -40,7 +40,10 @@ function reset() {
   google = { email: 'owner@fixture.invalid', scope: DRIVE_SCOPE, deny: false, noRefresh: false, refreshFail: false, expiresIn: 3599,
     codes: new Map(), refresh: new Map(), access: new Map(), revoked: [], calls: [], sessions: new Map(), dropAfterChunk: 0, chunkCount: 0,
     files: new Map([['fixture-folder-0001', { name: 'Vault Files', mimeType: FOLDER_MIME, granted: true }],
-      ['fixture-doc-000001', { name: 'notes.txt', mimeType: 'text/plain', granted: true }]]) };
+      ['fixture-doc-000001', { name: 'notes.txt', mimeType: 'text/plain', granted: true, bytes: Buffer.from('synthetic notes') }],
+      ['fixture-gdoc-00001', { name: 'Design brief', mimeType: 'application/vnd.google-apps.document', granted: true }],
+      ['fixture-hidden-001', { name: 'secret.txt', mimeType: 'text/plain', granted: false }]]) };
+  simple = { project_files: [], drive_folders: [] };
   work = Object.fromEntries(WORK_TABLES.map((t) => [t, []]));
   const created_at = '2026-11-15T00:00:00.000Z';
   ideas = [{ id: IDEA, user_id: OWNER, title: null, content: 'Fixture original #test', original_content: 'Fixture original #test',
@@ -111,12 +114,13 @@ const server = http.createServer(async (req, res) => {
         if (body.rules) rules = body.rules;
         if (body.google) Object.assign(google, body.google);
         if (body.googleDelete) google.files.delete(body.googleDelete);
+        if (body.googleFile) Object.assign(google.files.get(body.googleFile.id), body.googleFile.changes);
         if (body.edit) Object.assign(ideas.find((idea) => idea.id === body.edit.id), body.edit);
         if (body.editRow) { const row = work[body.editRow.table].find((r) => r.id === body.editRow.id); Object.assign(row, body.editRow.changes); touch(row); }
         return reply(200, {});
       }
       if (url.pathname === '/_test/state') return reply(200, { ideas, files, work, drive: [...drive.values()],
-        google: { revoked: google.revoked, calls: google.calls, files: [...google.files].map(([id, { bytes, ...f }]) => ({ id, ...f, stored: bytes ? bytes.length : 0 })) },
+        simple, google: { revoked: google.revoked, calls: google.calls, files: [...google.files].map(([id, { bytes, ...f }]) => ({ id, ...f, stored: bytes ? bytes.length : 0 })) },
         objects: [...objects].map(([path, data]) => ({ path, size: data.length })), events });
       return reply(404, {});
     }
@@ -152,6 +156,7 @@ const server = http.createServer(async (req, res) => {
     if (!identity) return reply(401, { message: 'Fixture authentication required' });
     const owner = identity.id;
     if (url.pathname === '/rest/v1/drive_connections') return driveRows(url, req, json, owner, reply);
+    if (url.pathname === '/rest/v1/project_files' || url.pathname === '/rest/v1/drive_folders') return simpleRows(url.pathname.slice(9), url, req, json, owner, reply);
     if (url.pathname.startsWith('/rest/v1/')) {
       const table = url.pathname.slice('/rest/v1/'.length);
       if (!['ideas', 'idea_files', ...WORK_TABLES].includes(table)) return reply(404, {});
@@ -290,6 +295,52 @@ function driveRows(url, req, json, owner, reply) {
     delete body.user_id;
     Object.assign(current, body, { updated_at: now });
     return reply(200, [current]);
+  }
+  return reply(405, {});
+}
+
+// Imitates migration 011: owner-only rows, same-project record links, unique Drive link per project,
+// one folder row per parent, and server-owned identity on update. Not PostgreSQL.
+function simpleRows(table, url, req, json, owner, reply) {
+  const rows = simple[table];
+  const now = new Date().toISOString();
+  const found = () => rows.filter((row) => row.user_id === owner && matches(row, url.searchParams));
+  const respond = (status, list) => {
+    const sorted = [...list].sort((a, b) => (b.created_at ?? '').localeCompare(a.created_at ?? ''));
+    if (req.headers.accept?.includes('application/vnd.pgrst.object+json')) {
+      return sorted.length === 1 ? reply(status, sorted[0]) : reply(406, { code: 'PGRST116', message: 'Expected one row' });
+    }
+    return reply(status, sorted);
+  };
+  const linkOk = (row) => {
+    if (row.entry_id && !work.project_entries.some((e) => e.id === row.entry_id && e.project_id === row.project_id)) return false;
+    if (row.component_id && !work.project_components.some((c) => c.id === row.component_id && c.project_id === row.project_id)) return false;
+    return true;
+  };
+  if (req.method === 'GET') return respond(200, found());
+  if (req.method === 'DELETE') { const gone = found(); for (const row of gone) rows.splice(rows.indexOf(row), 1); return respond(200, gone); }
+  const body = json();
+  if (req.method === 'POST') {
+    const row = { id: body.id ?? randomUUID(), ...body, created_at: now, updated_at: now };
+    if (row.user_id !== owner) return reply(403, { code: '42501', message: 'row-level security' });
+    if (rows.some((r) => r.id === row.id)) return reply(409, { code: '23505', message: 'duplicate key' });
+    if (table === 'project_files') {
+      if (!work.projects.some((p) => p.id === row.project_id && p.user_id === owner)) return reply(409, { code: '23503', message: 'project fk' });
+      if (!linkOk(row)) return reply(409, { code: '23503', message: 'record fk' });
+      if (rows.some((r) => r.project_id === row.project_id && r.drive_file_id === row.drive_file_id)) return reply(409, { code: '23505', message: 'project_files_project_id_drive_file_id_key' });
+      Object.assign(row, { state: 'ok', state_reason: null, checked_at: null, entry_id: row.entry_id ?? null, component_id: row.component_id ?? null, ...body, created_at: now, updated_at: now });
+    } else if (rows.some((r) => r.user_id === owner && r.purpose === row.purpose && r.parent_folder_id === row.parent_folder_id && (row.purpose !== 'project' || r.project_id === row.project_id))) {
+      return reply(409, { code: '23505', message: 'drive_folders key' });
+    }
+    rows.push(row);
+    return req.headers.prefer?.includes('return=representation') ? respond(201, [row]) : reply(201);
+  }
+  if (req.method === 'PATCH') {
+    const targets = found();
+    for (const key of ['id', 'user_id', 'project_id', 'source', 'drive_file_id', 'created_at']) delete body[key];
+    for (const row of targets) { if (!linkOk({ ...row, ...body })) return reply(409, { code: '23503', message: 'record fk' }); }
+    for (const row of targets) Object.assign(row, body, { updated_at: now });
+    return respond(200, targets);
   }
   return reply(405, {});
 }

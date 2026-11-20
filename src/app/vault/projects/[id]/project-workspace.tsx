@@ -21,6 +21,9 @@ import {
 import { STATUS_COLOR, STATUS_INFO } from "../../status";
 import { LockedNotice, useVaultWriter } from "../../use-vault-writer";
 import RecordSection, { field, type Records } from "./record-section";
+import ProjectFiles from "./project-files";
+import type { ProjectFile } from "@/lib/project-files";
+import type { PickerConfig } from "@/lib/drive/picker";
 
 type Tab = { id: string; label: string; tables: TableName[] };
 
@@ -44,6 +47,7 @@ function tabsFor(type: string): Tab[] {
     );
   }
   tabs.push({ id: "links", label: hasEngineering(type) ? "Code & links" : "References", tables: ["project_links"] });
+  tabs.push({ id: "files", label: "Files", tables: [] });
   return tabs;
 }
 
@@ -61,12 +65,16 @@ function when(value: string) {
   return new Date(value).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
 }
 
-export default function ProjectWorkspace({ ownerId, initialProject, initialRecords, sourceIdea, truncated }: {
+export default function ProjectWorkspace({ ownerId, initialProject, initialRecords, sourceIdea, truncated, initialFiles = [], driveUploads = false, picker = { apiKey: "", appId: "" } }: {
   ownerId: string; initialProject: Project; initialRecords: Records;
   sourceIdea: { id: string; label: string } | null; truncated: TableName[];
+  // Phase 3C: files in Google Drive, the upload switch and the Picker configuration.
+  initialFiles?: ProjectFile[]; driveUploads?: boolean; picker?: PickerConfig;
 }) {
   const [project, setProject] = useState(initialProject);
   const [records, setRecords] = useState(initialRecords);
+  const [files, setFilesState] = useState(initialFiles);
+  const setFiles = (change: (list: ProjectFile[]) => ProjectFile[]) => setFilesState(change);
   const [tab, setTab] = useState("overview");
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(() => ({ ...initialProject }));
@@ -278,7 +286,7 @@ export default function ProjectWorkspace({ ownerId, initialProject, initialRecor
                     {tabs.filter((t) => t.tables.length).map((t) => (
                       <li key={t.id} className="flex justify-between gap-2">
                         <button type="button" className="underline-offset-4 hover:underline" onClick={() => open(t.id)}>{t.label}</button>
-                        <span className="tabular-nums text-muted">{t.tables.reduce((n, table) => n + records[table].length, 0)}</span>
+                        <span className="tabular-nums text-muted">{t.id === "files" ? files.length : t.tables.reduce((n, table) => n + records[table].length, 0)}</span>
                       </li>
                     ))}
                   </ul>
@@ -292,6 +300,11 @@ export default function ProjectWorkspace({ ownerId, initialProject, initialRecor
                 </dl>
               </aside>
             </section>
+          ) : current.id === "files" ? (
+            <ProjectFiles ownerId={ownerId} projectId={project.id} files={files} setFiles={setFiles}
+              entries={hasEngineering(project.project_type) ? records.project_entries : []}
+              components={hasEngineering(project.project_type) ? records.project_components : []}
+              writer={writer} driveUploads={driveUploads} picker={picker} />
           ) : (
             <div className="grid gap-8">
               {current.tables.map((table) => (
@@ -306,6 +319,7 @@ export default function ProjectWorkspace({ ownerId, initialProject, initialRecor
                   reload={reload}
                   intro={INTRO[table]}
                   layout={table === "project_tasks" ? "board" : table === "story_units" ? "tree" : "list"}
+                  files={table === "project_entries" || table === "project_components" ? files : undefined}
                 />
               ))}
             </div>

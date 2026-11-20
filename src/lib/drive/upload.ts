@@ -136,18 +136,26 @@ async function sendBytes(f: typeof fetch, session: string, file: Blob, deps: Req
   return { done: true, driveFileId: null };
 }
 
-export async function uploadToDrive(
-  input: { ownerId: string; ideaId: string; fileId: string; file: File },
-  deps: UploadDeps = {},
-): Promise<FileRow> {
+// An idea attachment (3B), or a project file optionally tied to a lab entry or component (3C).
+export type UploadInput = { ownerId: string; fileId: string; file: File } & (
+  | { ideaId: string; projectId?: undefined; entryId?: undefined; componentId?: undefined }
+  | { projectId: string; entryId?: string | null; componentId?: string | null; ideaId?: undefined }
+);
+
+export async function uploadToDrive<T = FileRow>(input: UploadInput, deps: UploadDeps = {}): Promise<T> {
   const f = deps.fetch ?? fetch;
   const sessions = deps.sessions ?? deviceSessions;
   const run = { ...deps, sleep: deps.sleep ?? ((ms: number) => new Promise<void>((r) => setTimeout(r, ms))), active: deps.active ?? (() => true) };
-  const { ownerId, ideaId, fileId, file } = input;
-  const base = { fileId, ownerId, ideaId, size: file.size };
+  const { ownerId, fileId, file } = input;
+  const target = input.ideaId !== undefined
+    ? { ideaId: input.ideaId }
+    : { projectId: input.projectId, entryId: input.entryId ?? null, componentId: input.componentId ?? null };
+  const targetKey = input.ideaId ?? `project:${input.projectId}`;
+  // Saved sessions keep the field name ideaId (3B records on devices); it holds the target key.
+  const base = { fileId, ownerId, ideaId: targetKey, size: file.size };
 
   let saved = await sessions.get(fileId).catch(() => undefined);
-  if (saved && (saved.ownerId !== ownerId || saved.ideaId !== ideaId || saved.size !== file.size)) saved = undefined;
+  if (saved && (saved.ownerId !== ownerId || saved.ideaId !== targetKey || saved.size !== file.size)) saved = undefined;
   let driveFileId: string | null = saved?.driveFileId ?? null;
   let bytesDone = !!saved?.driveFileId;
 
@@ -155,11 +163,13 @@ export async function uploadToDrive(
   for (let attempt = 0; !bytesDone; attempt++) {
     if (!session) {
       if (!run.active()) throw new DriveOffline("Upload paused.");
-      const started = await api(f, "/api/drive/upload-session", { ideaId, fileId, name: file.name, mimeType: file.type, size: file.size });
+      const started = await api(f, "/api/drive/upload-session", { ...target, fileId, name: file.name, mimeType: file.type, size: file.size });
       const reason = typeof started.body.error === "string" ? started.body.error : "";
       if (!started.ok) {
         if (UNAVAILABLE.has(reason)) throw new DriveUnavailable(reason);
-        throw new Error(reason === "no_idea" ? "The idea for this file isn't saved yet." : `Drive upload couldn't start (${reason || started.status}).`);
+        throw new Error(reason === "no_idea" ? "The idea for this file isn't saved yet."
+          : reason === "no_project" ? "This project, or the record the file is attached to, no longer exists."
+          : `Drive upload couldn't start (${reason || started.status}).`);
       }
       if (started.body.done === true) {
         driveFileId = typeof started.body.driveFileId === "string" ? started.body.driveFileId : null;
@@ -183,8 +193,8 @@ export async function uploadToDrive(
   await sessions.put({ ...base, driveFileId: driveFileId ?? undefined }).catch(() => {});
 
   if (!run.active()) throw new DriveOffline("Upload paused.");
-  const done = await api(f, "/api/drive/upload-complete", { ideaId, fileId, size: file.size, driveFileId });
-  const file_ = done.body.file as FileRow | undefined;
+  const done = await api(f, "/api/drive/upload-complete", { ...target, fileId, size: file.size, driveFileId });
+  const file_ = done.body.file as T | undefined;
   if (!done.ok || !file_) {
     // The bytes are in Drive: never fall back to a second copy. Keep the file and retry later.
     throw new Error(`The file reached Google Drive but couldn't be recorded yet (${String(done.body.error ?? done.status)}). It will retry.`);

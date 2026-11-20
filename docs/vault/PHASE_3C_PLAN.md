@@ -1,4 +1,4 @@
-# Slice 3C plan: project files and linking existing Drive files (proposal; not approved, nothing built)
+# Slice 3C plan: project files and linking existing Drive files (approved 2026-11-20 with all recommended choices; built locally, not applied or deployed)
 
 Parent plan: [PHASE_3_PLAN.md](PHASE_3_PLAN.md). Builds on 3A (connection, folder) and 3B (resumable upload, verified recording, owner-checked viewing), both live. Decisions so far: V-007a (`drive.file`, owner-picked folder), V-008b (1 GB), V-013 (capture fallback).
 
@@ -67,7 +67,7 @@ Changed:
 - **Picker grants are per file.** A picked file stays accessible until you remove the app's access in your Google account. Unlinking in the Vault doesn't revoke Google's grant: the Vault simply stops using it.
 - **Picker-linked files live anywhere in your Drive**, not in the Vault folder. If you delete or trash them in Drive, they show as unavailable; the Vault can't prevent that.
 - **The access token in the browser for the Picker** works as in 3A: short-lived, `drive.file` only, never stored.
-- **Large file lists:** "Check files" asks Drive in batches of 50 with bounded retries on rate limits.
+- **Large file lists:** "Check files" asks Drive about up to 5 files at a time (individual requests, not the batch API), with up to 3 attempts on rate limits or server errors; anything still unanswered is reported as not checked and keeps its stored state.
 - **Folder creation races:** two uploads at once could each create a project folder. Folder creation is serialised per project on the server: the unique row in `drive_folders` decides the winner, and an extra empty folder is left in place (not deleted).
 
 ## Acceptance tests
@@ -76,7 +76,7 @@ Unit:
 - Upload target validation (idea vs project, entry/component must belong to the project).
 - Classification of check results: ok, renamed, trashed, missing, no access.
 - Google Docs are treated as open-in-Drive.
-- Batch splitting and retry bounds.
+- Folder creation, reuse and the race rule; forgetting only folders that are gone.
 
 SQL (disposable Postgres, run twice):
 - Owner-only rules; other users and anon are denied.

@@ -1,6 +1,6 @@
 import type { NextRequest } from "next/server";
 import { accessToken } from "@/lib/drive/connection";
-import { disposition, inlineSafe, isUuid, safeRange } from "@/lib/drive/files";
+import { disposition, inlineSafe, isGoogleNative, isUuid, safeRange } from "@/lib/drive/files";
 import { GoogleError, fileMedia, getFileMeta } from "@/lib/drive/google";
 import { DRIVE_PREVIEW_MAX_BYTES } from "@/lib/ideas";
 import { routeOwner } from "@/lib/drive/route-helpers";
@@ -39,10 +39,17 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
   const { fileId } = await params;
   if (!isUuid(fileId)) return unavailable(404, "This attachment doesn't exist.");
 
-  const result = await session.supabase.from("idea_files").select("id, name, mime_type, size, provider, drive_file_id")
-    .eq("id", fileId).eq("user_id", session.owner.id).eq("provider", "drive").limit(1).then((r) => r, () => null);
-  if (!result || result.error || !Array.isArray(result.data)) return unavailable(503, "The Vault couldn't load this attachment. Try again.");
-  const row = result.data[0] as { name: string; mime_type: string | null; size: number; drive_file_id: string } | undefined;
+  // Idea attachments (3B) first, then project files (3C). Both are owner-filtered.
+  type Linked = { name: string; mime_type: string | null; size: number | null; drive_file_id: string };
+  const lookup = async (table: "idea_files" | "project_files") => {
+    let q = session.supabase.from(table).select("id, name, mime_type, size, drive_file_id").eq("id", fileId).eq("user_id", session.owner.id);
+    if (table === "idea_files") q = q.eq("provider", "drive");
+    const r = await q.limit(1).then((x) => x, () => null);
+    return !r || r.error || !Array.isArray(r.data) ? undefined : ((r.data[0] as Linked | undefined) ?? null);
+  };
+  const ideaRow = await lookup("idea_files");
+  const row = ideaRow ?? (ideaRow === null ? await lookup("project_files") : undefined);
+  if (row === undefined) return unavailable(503, "The Vault couldn't load this attachment. Try again.");
   if (!row) return unavailable(404, "This attachment doesn't exist.");
 
   const access = await accessToken(session.supabase, session.owner.id, Date.now());
@@ -50,7 +57,9 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     return unavailable(409, access.reason === "reconnect" || access.reason === "not_connected" ? RECONNECT : "Google Drive couldn't be reached. Try again.");
   }
 
-  if (request.nextUrl.searchParams.get("open") === "drive" || Number(row.size) > DRIVE_PREVIEW_MAX_BYTES) {
+  // Google Docs/Sheets/Slides (no size, no bytes) and large files open in Drive.
+  if (request.nextUrl.searchParams.get("open") === "drive" || row.size === null || isGoogleNative(row.mime_type)
+      || Number(row.size) > DRIVE_PREVIEW_MAX_BYTES) {
     try {
       const meta = await getFileMeta(access.token, row.drive_file_id);
       const link = driveLink(meta.webViewLink);

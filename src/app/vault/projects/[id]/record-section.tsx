@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { projectFileMeta, projectFileView, type ProjectFile } from "@/lib/project-files";
 import {
   TABLES,
   UNIT_LEVELS,
@@ -168,12 +169,15 @@ function rowTitle(config: TableConfig, row: Row, records: Records) {
   return String(row[config.titleField]);
 }
 
-export default function RecordSection({ table, records, ownerId, projectId, writer, update, reload, intro, layout = "list" }: {
+export default function RecordSection({ table, records, ownerId, projectId, writer, update, reload, intro, layout = "list", files }: {
   table: TableName; records: Records; ownerId: string; projectId: string; writer: Writer;
   update: (table: TableName, change: (rows: Row[]) => Row[]) => void;
   reload: (tables: TableName[], done: string) => void;
   intro?: string; layout?: "list" | "board" | "tree";
+  // Phase 3C: project files, listed under the lab entry or component they are attached to.
+  files?: ProjectFile[];
 }) {
+  const attached = (rowId: string) => (files ?? []).filter((f) => (table === "project_entries" ? f.entry_id : f.component_id) === rowId);
   const config = TABLES[table];
   const rows = records[table];
   const [adding, setAdding] = useState<Draft | null>(null);
@@ -242,6 +246,19 @@ export default function RecordSection({ table, records, ownerId, projectId, writ
           </h4>
         </div>
         <RowDetails config={config} row={row} records={records} />
+        {attached(row.id).length > 0 && (
+          <ul aria-label={`Files attached to ${rowTitle(config, row, records)}`} className="mt-2 grid gap-1 text-sm">
+            {attached(row.id).map((f) => {
+              const view = projectFileView(f);
+              return (
+                <li key={f.id} className="flex flex-wrap items-baseline gap-x-2">
+                  <a href={view.href} target="_blank" rel="noreferrer" className="break-words underline underline-offset-4">{f.name}</a>
+                  <span className="text-xs text-muted">{f.state === "unavailable" ? "Unavailable in Drive" : projectFileMeta(f)}</span>
+                </li>
+              );
+            })}
+          </ul>
+        )}
         <div className="mt-3 flex flex-wrap gap-1.5">
           <button type="button" className={smallButton} disabled={disabled} onClick={() => setEditing({ id: row.id, draft: draftFrom(config, row) })}>Edit</button>
           {groupField && g > 0 && (

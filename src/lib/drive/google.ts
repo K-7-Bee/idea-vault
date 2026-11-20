@@ -132,7 +132,7 @@ export function createEmptyFile(accessToken: string, folderId: string, name: str
 
 // Private tags on every file the Vault uploads, so a file can be matched to its record even if
 // the upload's final response was lost.
-export type VaultTags = { vaultFileId: string; vaultIdeaId: string };
+export type VaultTags = Record<string, string>;
 
 // Starts a resumable upload into the chosen folder and returns the session URL. The browser then
 // sends the bytes itself; Google accepts that only from the Origin the session was created with.
@@ -162,6 +162,14 @@ export function createTaggedEmptyFile(accessToken: string, input: { folderId: st
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ name: input.name, parents: [input.folderId], mimeType: input.mimeType, appProperties: input.tags }),
+  });
+}
+
+export function createFolder(accessToken: string, name: string, parentId: string) {
+  return drive<{ id: string }>(accessToken, "/files?fields=id&supportsAllDrives=true", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ name, parents: [parentId], mimeType: "application/vnd.google-apps.folder" }),
   });
 }
 

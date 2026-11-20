@@ -31,7 +31,7 @@ test('the upload switch is off unless explicitly enabled', () => {
 
 test('upload requests are validated and normalised', () => {
   const good = { ideaId: IDEA, fileId: FILE, name: ' photo\u0007.jpg ', mimeType: 'IMAGE/JPEG', size: 5 * MB };
-  assert.deepEqual(plain(files.parseUploadRequest(good)), { ideaId: IDEA, fileId: FILE, name: 'photo.jpg', mimeType: 'image/jpeg', size: 5 * MB });
+  assert.deepEqual(plain(files.parseUploadRequest(good)), { target: { kind: 'idea', ideaId: IDEA }, fileId: FILE, name: 'photo.jpg', mimeType: 'image/jpeg', size: 5 * MB });
   assert.equal(files.parseUploadRequest({ ...good, mimeType: 'text/html; x=<script>' }).mimeType, 'application/octet-stream');
   assert.equal(files.parseUploadRequest({ ...good, size: 0 }).size, 0);
   assert.equal(files.parseUploadRequest({ ...good, size: 1024 * MB }).size, 1024 * MB);
@@ -42,7 +42,7 @@ test('upload requests are validated and normalised', () => {
 });
 
 test('a finished upload is recorded only if Drive holds exactly what the Vault asked for', () => {
-  const expected = { fileId: FILE, ideaId: IDEA, folderId: 'folder-0000000001', size: 10 };
+  const expected = { tags: files.targetTags({ kind: 'idea', ideaId: IDEA }, FILE), folderId: 'folder-0000000001', size: 10 };
   const meta = { id: 'drive-file-000001', name: 'a.jpg', mimeType: 'image/jpeg', size: '10', md5Checksum: 'd41d8cd98f00b204e9800998ecf8427e',
     parents: ['folder-0000000001'], trashed: false, appProperties: { vaultFileId: FILE, vaultIdeaId: IDEA } };
   assert.deepEqual(plain(files.checkUploaded(meta, expected)), { ok: true, size: 10, md5: 'd41d8cd98f00b204e9800998ecf8427e' });
