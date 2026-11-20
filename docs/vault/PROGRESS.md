@@ -421,3 +421,19 @@ Read-only production catalog check: 12 Phase 2 tables, anon has no privilege on 
 ## 2026-11-17 - Phase 2 fixes live; Phase 3 plan drafted
 
 Owner said "yes". Fast-forwarded `main` cb108ba → f1cc3ee; Vercel production deployment `dpl_Di5KCp7HPLBsqTvgxERHSZJUJqn8` READY on kaushik-kamal.vercel.app. Smoke check: public pages 200, Vault routes redirect to login. Rollback: promote `dpl_29dVb8BgPEdppuL3gFz9Fxfv3qTr`. Drafted [PHASE_3_PLAN.md](PHASE_3_PLAN.md) (Google Drive): a proposal only, waiting on owner decisions V-007/V-008a/V-008b/V-013 and Google Cloud and Vercel setup. No Phase 3 code written.
+
+## 2026-11-20 - Phase 3 owner setup done; decisions recorded; 3A plan drafted
+
+Owner completed the Google Cloud setup (project `idea-vault-515017`, Drive API enabled, External/Testing consent screen with the owner as test user, `drive.file` scope, Web client with production and localhost callbacks) and added `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` and `DRIVE_TOKEN_KEY` to Vercel Production (names seen in a screenshot; values not seen). The first client secret was exposed through an IDE selection in conversation; owner confirmed it was replaced, the old one deleted and the downloaded JSON deleted. Decisions V-007/V-007a/V-008a/V-008b/V-013 recorded in DECISIONS.md: personal account, `drive.file` with an owner-picked folder via Google Picker, legacy Supabase files left in place, 1 GB maximum, Supabase fallback only under the bucket limit. Drafted [PHASE_3A_PLAN.md](PHASE_3A_PLAN.md). No code, migration or deployment.
+
+## 2026-11-20 - Phase 3A (Connect Google Drive) built locally
+
+Owner approved the 3A plan ("ok"). Read the installed Next.js 16.4.3 Route Handlers guide. Added migration `supabase/008_drive_connections.sql`, server library `src/lib/drive/` (AES-256-GCM sealing bound to purpose and owner, OAuth state/PKCE/scope/account checks, fetch-only Google calls, connection storage and refresh), six route handlers under `/api/drive/` (connect, callback, disconnect, picker-token, folder, status; each re-checks the Vault owner, POSTs require same origin), `/vault/settings` with Google Picker folder choice, a Settings nav link and `.env.example` names. No new dependencies; no capture, outbox or attachment behaviour changed.
+
+Verified locally: 116 unit tests (20 new in `tests/drive.test.mjs`); 28 browser tests (8 new in `tests/browser/drive.spec.ts` against a synthetic Google added to the fixture: connect, wrong account/broader scope/denied refused and revoked, forged callback, folder probe created and removed, non-folder/ungranted rejected, picker script blocked message, disconnect revokes, expired grant then reconnect, anonymous/other-account/cross-origin denial, 320–1280 px); migration 008 applied twice in a disposable offline `supabase/postgres:17.11.0.018` container plus 17 checks in `tests/sql/phase3a-behaviour.sql` (sealed-only tokens, drive.file only, folder ID rules, server-owned owner/timestamps, account change clears folder, other user and anon denied); tsc; ESLint; production build (26 pages); `git diff --check`. The existing recovery container was not touched; the disposable one was removed.
+
+Found and fixed during testing: `request.nextUrl.origin` named the server's bind address (`localhost`) rather than the browser's host, which broke redirects and the same-origin check; routes now derive the site origin from the forwarded/Host headers.
+
+Observed: `next build` alternately stops with a Next.js `SecurityFatalError` upgrade notice for 16.4.3 and succeeds on retry. No upgrade was run. Whether Vercel's build is affected is unknown.
+
+Not verified: real Google consent, `about.get` and Picker behaviour under `drive.file`, creating a file inside a Picker-granted folder, Vercel. Owner setup still needed: enable Google Picker API, create a restricted API key, add `NEXT_PUBLIC_GOOGLE_PICKER_API_KEY` and `NEXT_PUBLIC_GOOGLE_APP_ID`. Not committed, not applied to production, not deployed.

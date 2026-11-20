@@ -1,14 +1,17 @@
 // A wire-protocol fixture, NOT a Supabase/PostgreSQL implementation or proof of live RLS.
 // All rows, passwords, tokens and object bytes here are synthetic and disposable.
 import http from 'node:http';
-import { randomUUID, createHmac } from 'node:crypto';
+import { randomUUID, createHmac, createHash } from 'node:crypto';
 
 const OWNER = '11111111-1111-4111-8111-111111111111';
 const OTHER = '22222222-2222-4222-8222-222222222222';
 const IDEA = '33333333-3333-4333-8333-333333333333';
 const FILE = '44444444-4444-4444-8444-444444444444';
 const sessions = new Map(), signed = new Map();
-let ideas, files, objects, rules, events, work;
+let ideas, files, objects, rules, events, work, drive, google;
+// Phase 3A: a synthetic Google (OAuth + the few Drive calls the app makes). Not Google.
+const DRIVE_SCOPE = 'https://www.googleapis.com/auth/drive.file';
+const FOLDER_MIME = 'application/vnd.google-apps.folder';
 // Phase 2 tables (migrations 006/007). Imitates their triggers and keys; not PostgreSQL.
 const WORK_TABLES = ['projects', 'project_milestones', 'project_tasks', 'project_entries', 'project_components', 'project_links',
   'story_bible_entries', 'story_characters', 'story_relationships', 'story_units', 'story_timeline_events', 'story_continuity'];
@@ -33,6 +36,11 @@ function clearLinks(table, id) {
 }
 function reset() {
   sessions.clear(); signed.clear(); rules = []; events = [];
+  drive = new Map();
+  google = { email: 'owner@fixture.invalid', scope: DRIVE_SCOPE, deny: false, noRefresh: false, refreshFail: false, expiresIn: 3599,
+    codes: new Map(), refresh: new Map(), access: new Map(), revoked: [], calls: [],
+    files: new Map([['fixture-folder-0001', { name: 'Vault Files', mimeType: FOLDER_MIME, granted: true }],
+      ['fixture-doc-000001', { name: 'notes.txt', mimeType: 'text/plain', granted: true }]]) };
   work = Object.fromEntries(WORK_TABLES.map((t) => [t, []]));
   const created_at = '2026-11-15T00:00:00.000Z';
   ideas = [{ id: IDEA, user_id: OWNER, title: null, content: 'Fixture original #test', original_content: 'Fixture original #test',
@@ -101,11 +109,13 @@ const server = http.createServer(async (req, res) => {
       if (url.pathname === '/_test/control') {
         const body = json();
         if (body.rules) rules = body.rules;
+        if (body.google) Object.assign(google, body.google);
         if (body.edit) Object.assign(ideas.find((idea) => idea.id === body.edit.id), body.edit);
         if (body.editRow) { const row = work[body.editRow.table].find((r) => r.id === body.editRow.id); Object.assign(row, body.editRow.changes); touch(row); }
         return reply(200, {});
       }
-      if (url.pathname === '/_test/state') return reply(200, { ideas, files, work,
+      if (url.pathname === '/_test/state') return reply(200, { ideas, files, work, drive: [...drive.values()],
+        google: { revoked: google.revoked, calls: google.calls, files: [...google.files].map(([id, f]) => ({ id, ...f })) },
         objects: [...objects].map(([path, data]) => ({ path, size: data.length })), events });
       return reply(404, {});
     }
@@ -117,6 +127,7 @@ const server = http.createServer(async (req, res) => {
       if (rule.mode === 'error') return reply(503, { code: 'fixture_failure', message: 'Synthetic failure' });
       drop = rule.mode === 'drop-after';
     }
+    if (url.pathname.startsWith('/google/')) return googleRequest(url, req, bytes, reply, res, event);
     const token = req.headers.authorization?.replace(/^Bearer /i, '');
     const identity = sessions.get(token);
     if (url.pathname === '/auth/v1/token') {
@@ -139,6 +150,7 @@ const server = http.createServer(async (req, res) => {
     }
     if (!identity) return reply(401, { message: 'Fixture authentication required' });
     const owner = identity.id;
+    if (url.pathname === '/rest/v1/drive_connections') return driveRows(url, req, json, owner, reply);
     if (url.pathname.startsWith('/rest/v1/')) {
       const table = url.pathname.slice('/rest/v1/'.length);
       if (!['ideas', 'idea_files', ...WORK_TABLES].includes(table)) return reply(404, {});
@@ -251,4 +263,92 @@ const server = http.createServer(async (req, res) => {
     return reply(404, { message: 'Unsupported fixture request' });
   } catch (error) { console.error('Fixture request failed:', error.message); if (!res.headersSent) reply(500, { message: 'Fixture implementation error' }); }
 });
+// Imitates migration 008: owner-only rows and its trigger (connected_at, folder cleared on account change).
+function driveRows(url, req, json, owner, reply) {
+  const filter = url.searchParams.get('user_id');
+  if (filter && filter !== `eq.${owner}`) return reply(200, []);
+  const now = new Date().toISOString();
+  const current = drive.get(owner);
+  if (req.method === 'GET') return reply(200, current ? [current] : []);
+  if (req.method === 'DELETE') { drive.delete(owner); return reply(204); }
+  const body = json();
+  for (const [key, value] of Object.entries(body)) {
+    if (/_enc$/.test(key) && value != null && !/^v[0-9]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/.test(value)) return reply(400, { code: '23514', message: `${key} check` });
+  }
+  if (body.scope !== undefined && body.scope !== DRIVE_SCOPE) return reply(400, { code: '23514', message: 'scope check' });
+  if (req.method === 'POST') {
+    if (body.user_id !== owner) return reply(403, { code: '42501', message: 'new row violates row-level security policy' });
+    const next = { folder_id: null, folder_name: null, ...current, ...body, updated_at: now };
+    next.connected_at = !current || current.refresh_token_enc !== next.refresh_token_enc ? now : current.connected_at;
+    if (current && current.google_account_id !== next.google_account_id) Object.assign(next, { folder_id: null, folder_name: null });
+    drive.set(owner, next);
+    return req.headers.prefer?.includes('return=representation') ? reply(201, [next]) : reply(201);
+  }
+  if (req.method === 'PATCH') {
+    if (!current) return reply(200, []);
+    delete body.user_id;
+    Object.assign(current, body, { updated_at: now });
+    return reply(200, [current]);
+  }
+  return reply(405, {});
+}
+
+const issue = (map, value) => { const token = `fixture-${randomUUID()}`; map.set(token, value); return token; };
+async function googleRequest(url, req, bytes, reply, res, event) {
+  const path = url.pathname.slice('/google'.length);
+  google.calls.push(`${req.method} ${path}`);
+  const form = () => Object.fromEntries(new URLSearchParams(bytes.toString()));
+  if (path === '/auth' && req.method === 'GET') {
+    const p = Object.fromEntries(url.searchParams);
+    const back = new URL(p.redirect_uri);
+    back.searchParams.set('state', p.state ?? '');
+    if (p.client_id !== 'fixture-client-id' || p.scope !== DRIVE_SCOPE || p.code_challenge_method !== 'S256' || p.access_type !== 'offline') {
+      back.searchParams.set('error', 'invalid_request');
+    } else if (google.deny) back.searchParams.set('error', 'access_denied');
+    else back.searchParams.set('code', issue(google.codes, { challenge: p.code_challenge, redirect: p.redirect_uri }));
+    event.status = 302; res.writeHead(302, { Location: back.toString() }); return res.end();
+  }
+  if (path === '/token' && req.method === 'POST') {
+    const body = form();
+    if (body.client_id !== 'fixture-client-id' || body.client_secret !== 'fixture-client-secret') return reply(401, { error: 'invalid_client' });
+    const grant = (refreshToken) => {
+      const access_token = issue(google.access, { refresh: refreshToken, exp: Date.now() + google.expiresIn * 1000 });
+      return { access_token, expires_in: google.expiresIn, scope: google.scope, token_type: 'Bearer' };
+    };
+    if (body.grant_type === 'authorization_code') {
+      const code = google.codes.get(body.code); google.codes.delete(body.code);
+      if (!code || code.redirect !== body.redirect_uri || createHash('sha256').update(body.code_verifier ?? '').digest('base64url') !== code.challenge) {
+        return reply(400, { error: 'invalid_grant' });
+      }
+      const refresh = issue(google.refresh, {});
+      const result = grant(refresh);
+      return reply(200, google.noRefresh ? result : { ...result, refresh_token: refresh });
+    }
+    if (body.grant_type === 'refresh_token') {
+      if (google.refreshFail || !google.refresh.has(body.refresh_token) || google.revoked.includes(body.refresh_token)) return reply(400, { error: 'invalid_grant' });
+      return reply(200, grant(body.refresh_token));
+    }
+    return reply(400, { error: 'unsupported_grant_type' });
+  }
+  if (path === '/revoke' && req.method === 'POST') { google.revoked.push(form().token); return reply(200, {}); }
+  const bearer = req.headers.authorization?.replace(/^Bearer /i, '');
+  const access = google.access.get(bearer);
+  if (!access || access.exp < Date.now() || google.revoked.includes(access.refresh) || google.revoked.includes(bearer)) return reply(401, { error: { status: 'UNAUTHENTICATED' } });
+  if (path === '/drive/v3/about' && req.method === 'GET') return reply(200, { user: { permissionId: `perm-${google.email}`, emailAddress: google.email } });
+  if (path === '/drive/v3/files' && req.method === 'POST') {
+    const body = JSON.parse(bytes.toString());
+    const parent = google.files.get(body.parents?.[0]);
+    if (!parent?.granted) return reply(404, { error: { status: 'NOT_FOUND' } });
+    const id = `fixture-new-${randomUUID()}`;
+    google.files.set(id, { name: body.name, mimeType: body.mimeType, granted: true, parent: body.parents[0], created: true });
+    return reply(200, { id });
+  }
+  const fileId = path.startsWith('/drive/v3/files/') ? decodeURIComponent(path.slice('/drive/v3/files/'.length)) : null;
+  const file = fileId && google.files.get(fileId);
+  if (!file?.granted) return reply(404, { error: { status: 'NOT_FOUND' } });
+  if (req.method === 'GET') return reply(200, { id: fileId, name: file.name, mimeType: file.mimeType, trashed: false, capabilities: { canAddChildren: true } });
+  if (req.method === 'DELETE') { google.files.delete(fileId); return reply(204); }
+  return reply(404, {});
+}
+
 server.listen(4317, '127.0.0.1', () => console.log('Synthetic API fixture on 127.0.0.1:4317'));

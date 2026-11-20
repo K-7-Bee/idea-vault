@@ -34,3 +34,13 @@ Record each answer with date, conversation/file source, authorized scope and res
 | --- | --- | --- |
 | V-011 | The spec says "maintain current stages Exploring → Analyzing → Building → Completed", but stored stages were raw/exploring/building/done. Relabel, keep, or migrate? | Migrate stored values (raw→exploring, exploring→analyzing, building, done→completed). See `supabase/005_idea_stages.sql`. |
 | V-012 | Phase 2 scope? | 2A projects + 2B Engineering Lab + 2C Story Studio (text/structure). Drive, Gemini, Portfolio Manager and public publishing remain later phases. |
+
+## Phase 3 decisions (2026-11-18 to 2026-11-20, in conversation)
+
+| ID | Question | Answer |
+| --- | --- | --- |
+| V-007 | Google account and Cloud project | Owner's personal Google account (address kept out of the repo; enforced through configuration). Cloud project `idea-vault-515017`, consent screen External/Testing with the owner as the only test user, Web client "Idea Vault web" with the production and localhost `/api/drive/callback` redirect URIs. Drive API enabled. `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` and `DRIVE_TOKEN_KEY` set in Vercel Production. The first client secret was exposed in a conversation; owner confirmed it was replaced and the old one deleted, and the downloaded JSON deleted. |
+| V-007a | Drive scope and location | `drive.file` only. New files go into an existing owner folder chosen once through Google Picker (option A), not an app-created folder. Folder ID is stored in the database, not the repo. The app cannot see other files, including existing files in that folder. |
+| V-008a | Existing Supabase attachments | Leave them in Supabase, readable as today; no copy, move or deletion. |
+| V-008b | Largest expected file | 1 GB. Uploads are resumable and go from the browser straight to Drive; large videos play through "Open in Drive" rather than streaming through a Vercel function. |
+| V-013 | Drive disconnected or unreachable | Fall back to the existing Supabase upload for files under the bucket's size limit. Larger files stay queued on the device with a "waiting for Drive" status and upload when Drive is reachable. |

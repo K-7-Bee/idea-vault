@@ -10,6 +10,7 @@ const LINKS = [
   { label: "Engineering Lab", href: "/vault/lab", match: (p: string) => p.startsWith("/vault/lab") },
   { label: "Story Studio", href: "/vault/story", match: (p: string) => p.startsWith("/vault/story") },
   { label: "Archive", href: "/vault/archive", match: (p: string) => p.startsWith("/vault/archive") },
+  { label: "Settings", href: "/vault/settings", match: (p: string) => p.startsWith("/vault/settings") },
 ];
 
 type Variant = "sidebar" | "bar";
