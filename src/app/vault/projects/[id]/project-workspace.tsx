@@ -96,7 +96,7 @@ export default function ProjectWorkspace({ ownerId, initialProject, initialRecor
   }, []);
   // Confirmations fade on their own; errors stay until dismissed or replaced.
   useEffect(() => {
-    if (!message || message.error) return;
+    if (!message || message.error || message.keep) return;
     const timer = setTimeout(() => setMessage(null), 4000);
     return () => clearTimeout(timer);
   }, [message, setMessage]);

@@ -149,6 +149,9 @@ test("Check files refreshes renamed files and flags trashed and deleted ones wit
   await filesTab(page);
   await page.getByRole("button", { name: "Check files" }).click();
   await expect(status(page, "1 unavailable")).toBeVisible();
+  await expect(status(page, "1 name updated from Drive.")).toBeVisible();
+  await page.waitForTimeout(4500); // the result stays until dismissed
+  await expect(status(page, "1 name updated from Drive.")).toBeVisible();
   await expect(page.getByRole("link", { name: "notes-v2.txt" })).toBeVisible();
   await expect(page.getByText("Unavailable in Drive: In the Drive trash")).toBeVisible();
 

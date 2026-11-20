@@ -31,7 +31,7 @@ export type Writer = {
   run: <T>(op: (client: SupabaseClient) => Promise<Outcome<T>>, done: string | null, onSuccess: (value: T) => void) => Promise<boolean>;
   busy: boolean;
   online: boolean;
-  setMessage: (message: { text: string; error: boolean } | null) => void;
+  setMessage: (message: { text: string; error: boolean; keep?: boolean } | null) => void;
 };
 type Draft = Record<string, string>;
 

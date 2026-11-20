@@ -26,32 +26,43 @@ export async function POST(request: NextRequest) {
   if (!access.ok) return json({ error: access.reason }, access.reason === "unavailable" ? 503 : 409);
 
   const files = listed.data as { id: string; drive_file_id: string; name: string; state: string; state_reason: string | null }[];
-  let unchecked = 0;
+  // Files that couldn't be checked or saved, with a short reason shown to the owner (no tokens,
+  // no backend messages; Drive code never logs).
+  const problems: { id: string; name: string; reason: string }[] = [];
+  let renamed = 0;
   const queue = [...files];
   async function worker() {
     for (let file = queue.shift(); file; file = queue.shift()) {
       let outcome = null;
+      let lastStatus = 0;
       for (let attempt = 1; attempt <= MAX_ATTEMPTS && !outcome; attempt++) {
         try {
           outcome = classifyCheck({ meta: await getFileMeta(access.ok ? access.token : "", file.drive_file_id) });
         } catch (error) {
-          const status = error instanceof GoogleError ? error.status : 0;
-          outcome = classifyCheck({ status });
-          if (!outcome && attempt < MAX_ATTEMPTS && (status === 429 || status >= 500)) await new Promise((r) => setTimeout(r, 500 * 2 ** attempt));
+          lastStatus = error instanceof GoogleError ? error.status : 0;
+          outcome = classifyCheck({ status: lastStatus });
+          if (!outcome && attempt < MAX_ATTEMPTS && (lastStatus === 429 || lastStatus >= 500)) await new Promise((r) => setTimeout(r, 500 * 2 ** attempt));
           else if (!outcome) break;
         }
       }
-      if (!outcome) { unchecked++; continue; }
+      if (!outcome) { problems.push({ id: file.id, name: file.name, reason: `drive_${lastStatus || "network"}` }); continue; }
+      const newName = outcome.state === "ok" && outcome.name && outcome.name !== file.name ? outcome.name : null;
       const changes = outcome.state === "ok"
-        ? { state: "ok", state_reason: null, checked_at: new Date().toISOString(), ...(outcome.name && outcome.name !== file.name ? { name: outcome.name } : {}) }
+        ? { state: "ok", state_reason: null, checked_at: new Date().toISOString(), ...(newName ? { name: newName } : {}) }
         : { state: "unavailable", state_reason: outcome.reason, checked_at: new Date().toISOString() };
-      await supabase.from("project_files").update(changes).eq("id", file.id).eq("user_id", owner.id).then((r) => r, () => null);
+      const saved = await supabase.from("project_files").update(changes).eq("id", file.id).eq("user_id", owner.id).select("id")
+        .then((r) => r, () => null);
+      if (!saved || saved.error || !Array.isArray(saved.data) || saved.data.length !== 1) {
+        const code = saved?.error && typeof saved.error === "object" && "code" in saved.error ? String(saved.error.code) : saved ? "no_row" : "network";
+        problems.push({ id: file.id, name: file.name, reason: `save_${code}` });
+      } else if (newName) renamed++;
     }
   }
   await Promise.all(Array.from({ length: Math.min(CONCURRENCY, files.length) }, worker));
+  const unchecked = problems.length;
 
   const fresh = await supabase.from("project_files").select(PROJECT_FILE_COLUMNS).eq("project_id", body.projectId).eq("user_id", owner.id)
     .order("created_at", { ascending: false }).limit(1000).then((r) => r, () => null);
   if (!fresh || fresh.error) return json({ error: "unavailable" }, 503);
-  return json({ files: fresh.data, unchecked });
+  return json({ files: fresh.data, unchecked, renamed, problems: problems.map(({ name, reason }) => ({ name, reason })) });
 }

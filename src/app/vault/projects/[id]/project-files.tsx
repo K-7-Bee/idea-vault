@@ -106,12 +106,20 @@ export default function ProjectFiles({ ownerId, projectId, files, setFiles, entr
 
   function checkFiles() {
     void writer.run(async () => {
-      const result = await api<{ files: ProjectFile[]; unchecked: number }>("/api/drive/project-files/check", "POST", { projectId });
-      return result.ok ? { ok: true, value: result.body } : failed(RECONNECT);
-    }, null, ({ files: fresh, unchecked }) => {
+      const result = await api<{ files: ProjectFile[]; unchecked: number; renamed?: number; problems?: { name: string; reason: string }[] }>(
+        "/api/drive/project-files/check", "POST", { projectId });
+      if (result.ok) return { ok: true, value: result.body };
+      const reason = result.body.error;
+      return failed(reason === "not_connected" || reason === "reconnect" ? RECONNECT
+        : `Check files failed (${reason ?? `HTTP ${result.status}`}). Nothing was changed. Try again in a minute.`);
+    }, null, ({ files: fresh, unchecked, renamed = 0, problems = [] }) => {
       setFiles(() => fresh);
       const gone = fresh.filter((f) => f.state === "unavailable").length;
-      writer.setMessage({ text: `Checked with Google Drive. ${gone ? `${gone} unavailable.` : "All files are available."}${unchecked ? ` ${unchecked} couldn't be checked right now.` : ""}`, error: gone > 0 });
+      const parts = [`Checked with Google Drive. ${gone ? `${gone} unavailable.` : "All files are available."}`];
+      if (renamed) parts.push(`${renamed} name${renamed === 1 ? "" : "s"} updated from Drive.`);
+      if (unchecked) parts.push(`${unchecked} couldn't be checked: ${problems.map((p) => `${p.name} (${p.reason})`).join(", ")}.`);
+      // The result stays until dismissed, so it can't be missed.
+      writer.setMessage({ text: parts.join(" "), error: gone > 0 || unchecked > 0, keep: true });
     });
   }
 

@@ -7,7 +7,7 @@ import type { Outcome } from "@/lib/workspace";
 import { useOnline } from "./use-online";
 import { useSessionGate } from "./use-session-gate";
 
-export type Message = { text: string; error: boolean } | null;
+export type Message = { text: string; error: boolean; keep?: boolean } | null;
 
 // Online-only writes for project pages. Every write re-checks the signed-in account first and
 // drops its result if the Vault locked (logout, account change) while it was running.
