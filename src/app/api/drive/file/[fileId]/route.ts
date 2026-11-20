@@ -11,9 +11,9 @@ import { routeOwner } from "@/lib/drive/route-helpers";
 
 const THUMB_WIDTH = 640;
 const LOCKED = { "Cache-Control": "private, no-store", "X-Content-Type-Options": "nosniff" };
-// Previews may stay in the owner's own browser for 5 minutes (never in a shared cache), so moving
+// Previews may stay in the owner's own browser for 1 hour (never in a shared cache), so moving
 // between pages doesn't reload every picture. A file trashed in Drive can still show for that long.
-const THUMB_CACHED = { ...LOCKED, "Cache-Control": "private, max-age=300" };
+const THUMB_CACHED = { ...LOCKED, "Cache-Control": "private, max-age=3600" };
 
 function unavailable(status: number, message: string): Response {
   const page = `<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>Attachment unavailable</title>`
@@ -66,7 +66,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
   // safe image falls through to the full file below; anything else has no preview (404).
   if (request.nextUrl.searchParams.get("size") === "thumb") {
     try {
-      const thumb = await fileThumbnail(access.token, row.drive_file_id, THUMB_WIDTH);
+      const thumb = await fileThumbnail(access.token, row.drive_file_id, THUMB_WIDTH, `${session.owner.id}\n${fileId}`);
       const type = thumb?.ok ? thumb.headers.get("content-type")?.split(";")[0].trim().toLowerCase() : undefined;
       if (thumb?.ok && type && /^image\/(jpeg|png|webp|gif)$/.test(type)) {
         return new Response(thumb.body, { status: 200, headers: { ...THUMB_CACHED, "Content-Type": type,

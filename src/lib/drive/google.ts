@@ -206,7 +206,39 @@ export function fileMedia(accessToken: string, id: string, range: string | null)
 // Drive's own preview image of a file (3D). thumbnailLink is short-lived and private: it is fetched
 // here with the owner's token and never sent to the browser. Null when Drive has no thumbnail or
 // the link isn't a Google host; a trashed file is reported as missing.
-export async function fileThumbnail(accessToken: string, id: string, width: number): Promise<Response | null> {
+//
+// A warm server remembers each link for up to 30 minutes (in memory only, keyed by the caller's
+// owner and Vault file), so repeat views make one Google trip instead of two. During that time a
+// file trashed in Drive can still show; Check files marks it unavailable. A remembered link that
+// stops working is dropped and Drive is asked again.
+const THUMB_LINK_MS = 30 * 60_000;
+const THUMB_LINK_MAX = 500;
+const thumbLinks = new Map<string, { url: URL; until: number }>();
+
+function fetchThumb(accessToken: string, url: URL): Promise<Response> {
+  return fetch(url, { headers: { Authorization: `Bearer ${accessToken}` }, cache: "no-store", redirect: "error", signal: AbortSignal.timeout(20_000) });
+}
+
+export async function fileThumbnail(accessToken: string, id: string, width: number, cacheKey?: string): Promise<Response | null> {
+  const key = cacheKey ? `${cacheKey}\n${id}\n${Math.round(width)}` : null;
+  const known = key ? thumbLinks.get(key) : undefined;
+  if (key && known) {
+    if (known.until > Date.now()) {
+      const cached = await fetchThumb(accessToken, known.url).catch(() => null);
+      if (cached?.ok) return cached;
+      await cached?.body?.cancel().catch(() => undefined);
+    }
+    thumbLinks.delete(key);
+  }
+  const fresh = await freshThumbnail(accessToken, id, width);
+  if (key && fresh?.response.ok) {
+    if (thumbLinks.size >= THUMB_LINK_MAX) thumbLinks.delete(thumbLinks.keys().next().value!);
+    thumbLinks.set(key, { url: fresh.url, until: Date.now() + THUMB_LINK_MS });
+  }
+  return fresh?.response ?? null;
+}
+
+async function freshThumbnail(accessToken: string, id: string, width: number): Promise<{ url: URL; response: Response } | null> {
   const meta = await drive<{ thumbnailLink?: string; trashed?: boolean }>(accessToken,
     `/files/${encodeURIComponent(id)}?fields=thumbnailLink,trashed&supportsAllDrives=true`);
   if (meta.trashed) throw new GoogleError("trashed", 404);
@@ -217,7 +249,7 @@ export async function fileThumbnail(accessToken: string, id: string, width: numb
   const test = base === REAL ? null : new URL(base.drive).origin;
   const google = url.protocol === "https:" && /(^|\.)(googleusercontent\.com|google\.com|googleapis\.com)$/.test(url.hostname);
   if (!google && url.origin !== test) return null;
-  return fetch(url, { headers: { Authorization: `Bearer ${accessToken}` }, cache: "no-store", redirect: "error", signal: AbortSignal.timeout(20_000) });
+  return { url, response: await fetchThumb(accessToken, url) };
 }
 
 export function deleteFile(accessToken: string, id: string) {

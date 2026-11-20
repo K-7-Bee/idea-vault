@@ -65,6 +65,7 @@ async function patch(page: Page, id: string, body: object, origin?: string) {
   }, { id, body, origin });
 }
 const thumbs = (s: State) => s.google.calls.filter((c) => c.startsWith("GET /thumb/")).length;
+const metaCalls = (s: State, driveId: string) => s.google.calls.filter((c) => c === `GET /drive/v3/files/${encodeURIComponent(driveId)}`).length;
 
 test.beforeEach(async ({ request, context, page }) => {
   expect((await request.post(`${API}/_test/reset`, { headers: controlHeaders })).ok()).toBeTruthy();
@@ -99,8 +100,14 @@ test("a character gets a portrait by upload and by link; the first image is main
   await expect.poll(async () => thumbs(await state(request))).toBeGreaterThan(0);
   const thumb = await page.request.get(`/api/drive/file/${uploaded.id}?size=thumb`);
   expect(thumb.headers()["content-type"]).toBe("image/png");
-  // Previews stay only in the owner's own browser, for 5 minutes; never in a shared cache.
-  expect(thumb.headers()["cache-control"]).toBe("private, max-age=300");
+  // Previews stay only in the owner's own browser, for 1 hour; never in a shared cache.
+  expect(thumb.headers()["cache-control"]).toBe("private, max-age=3600");
+  // A second view reuses the remembered Drive link: one Google trip (the thumbnail), no metadata call.
+  const before = await state(request);
+  expect((await page.request.get(`/api/drive/file/${uploaded.id}?size=thumb`)).status()).toBe(200);
+  const after = await state(request);
+  expect(thumbs(after)).toBe(thumbs(before) + 1);
+  expect(metaCalls(after, uploaded.drive_file_id)).toBe(metaCalls(before, uploaded.drive_file_id));
   const missing = await page.request.get(`/api/drive/file/00000000-0000-4000-8000-000000000000?size=thumb`);
   expect(missing.status()).toBe(404);
   expect(missing.headers()["cache-control"]).toContain("no-store");
@@ -119,6 +126,13 @@ test("a character gets a portrait by upload and by link; the first image is main
   await expect(card.getByRole("list", { name: "More images of Mira" }).getByRole("img", { name: "Mira: mira.png" })).toBeVisible();
   s = await state(request);
   expect(s.simple.project_files.filter((f) => f.is_main).map((f) => f.name)).toEqual(["castle.png"]);
+
+  // A remembered link that stops working is dropped; Drive is asked again and the loss is reported.
+  await control(request, { googleFile: { id: uploaded.drive_file_id, changes: { granted: false } } });
+  const lost = await page.request.get(`/api/drive/file/${uploaded.id}?size=thumb`);
+  expect(lost.status()).toBe(404);
+  expect(lost.headers()["cache-control"]).toContain("no-store");
+  expect(metaCalls(await state(request), uploaded.drive_file_id)).toBeGreaterThan(metaCalls(after, uploaded.drive_file_id));
 });
 
 test("a shot shows its frame inside its scene; the Gallery filters by character and by shot", async ({ page, request }) => {
