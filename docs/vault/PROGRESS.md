@@ -664,3 +664,39 @@ Verified locally:
 - **Static checks and build:** tsc, ESLint and the production build pass. `/` stays static. A build without database settings serves a homepage whose visible text, links and section ids are identical to the pre-4B baseline, and `/resume` answers 404.
 
 Not verified: real Supabase Storage (bucket limits, policies with `is_site_owner()`, `list` search, `?download=` naming), `sharp` running in a Vercel function, and a real upload and publish.
+
+## 2026-11-21 - Phase 4C live
+
+Owner said "commit it and go live". The full browser suite (65) passed first.
+
+Committed `30de53c`.
+
+Read-only production pre-check:
+- Exactly 1 Auth account, recorded in `site_owner`.
+- 2 ideas, 2 idea files, 2 projects, 4 project files; 0 showcases, profile rows or storage objects.
+- No `library_files` table, `library` or `profile-files` bucket, or `is_site_owner`.
+- `publish_profile` is owned by `postgres`, which can read `storage.objects`.
+
+Applied `015_library.sql` via Supabase CLI `db query --remote=<ref> --yes --file`.
+
+Read-only post-check:
+- **Buckets:** `library` is private and `profile-files` public, both 10 MB and PDF/JPEG/PNG/WebP only. The six owner and site-owner Storage policies are present.
+- **`library_files`:** RLS on. Anon has no access. Authenticated can update only `name` and `public_path`, not `sha256`. Both triggers present.
+- **Functions:** `is_site_owner` is security definer and executable by authenticated only. `publish_profile` is still a single security-definer function, not executable by anon, and now checks for public copies.
+- **Data:** counts unchanged.
+
+Fast-forwarded `main` 8fd40d8 → 30de53c (no force); Vercel `dpl_7n6ErtYiqBzuJmBmN77QP6VsGSbQ` in `icn1`.
+
+Smoke check:
+- `/` and `/projects` return 200. The homepage's visible text, links and section ids match the pre-4B baseline; the only difference is the favicon build hash.
+- `/resume` gives 404 "No résumé is published." (text/plain, `no-store`).
+- The Files, profile editor and preview pages redirect to `/login`.
+- `/api/profile/cleanup` and `/api/profile/publish` give 403 cross-origin and 401 without a session.
+- No runtime errors.
+
+Not yet verified live: a real upload into the library, a publish that runs `sharp` in a Vercel function, the public copy and `/resume` download name on real Storage, and clean-up.
+
+Rollback:
+1. Remove the résumé and photo in the editor and publish.
+2. Promote `dpl_FZCXsHbroanZ4nvZHU2n4gUJg4Qx` (8fd40d8).
+3. Set `profile-files` to non-public.

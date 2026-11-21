@@ -1,4 +1,4 @@
-# Slice 4C plan: Résumé, profile photo and a files library (approved 2026-11-21 with all recommendations; built locally, not deployed)
+# Slice 4C plan: Résumé, profile photo and a files library (approved 2026-11-21 with all recommendations; live 2026-11-21 as 30de53c)
 
 ## As built (2026-11-21, local only)
 
