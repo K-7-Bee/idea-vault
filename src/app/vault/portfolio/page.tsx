@@ -11,7 +11,8 @@ import OrphanCleanup from "./orphan-cleanup";
 
 // Phase 4A: the Portfolio page. Which projects are on the public site, which are ready to
 // showcase, and which could be once they are completed. Publishing happens on each project's
-// Showcase tab; nothing here changes the public site. Phase 4B adds the Profile (homepage text) entry.
+// Showcase tab; nothing here changes the public site. Phase 4B adds the Profile (homepage text) entry;
+// Phase 4C adds Files (the private library).
 export default function PortfolioPage() {
   return (
     <VaultShell>
@@ -75,9 +76,13 @@ async function PortfolioContent() {
             <span className="font-semibold underline-offset-4">Homepage text</span>
             <span className="mt-1 block text-sm text-muted">
               {liveProfile
-                ? `Version ${liveProfile.version} is on your homepage. Edit your introduction, experience, certificates and contact details.`
-                : "Not edited here yet; your homepage shows its original text. Edit your introduction, experience, certificates and contact details."}
+                ? `Version ${liveProfile.version} is on your homepage. Edit your introduction, experience, certificates, contact details, résumé and photo.`
+                : "Not edited here yet; your homepage shows its original text. Edit your introduction, experience, certificates, contact details, résumé and photo."}
             </span>
+          </Link>
+          <Link href="/vault/portfolio/files" className="mt-3 block rounded-2xl border border-line bg-card p-4 shadow-sm hover:bg-background">
+            <span className="font-semibold underline-offset-4">Files</span>
+            <span className="mt-1 block text-sm text-muted">Your private library of PDFs and images for the résumé and photo. Files become public only when you publish them.</span>
           </Link>
         </section>
 

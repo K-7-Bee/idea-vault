@@ -2,9 +2,13 @@
 
 import { useMemo, useState } from "react";
 import {
-  ICONS, KINDS, LIMITS, SEED, changedSections, normalize, publishProblems, saveDraft, splitEmail,
-  type Certificate, type EntryKind, type Highlight, type IconName, type ProfileContent, type ProfileDraft, type ProfileLink, type ProfileVersion,
+  ICONS, KINDS, LIMITS, PHOTO_ALT_MAX, SEED, changedSections, filesUsed, normalize, publishProblems, saveDraft, splitEmail,
+  type Certificate, type EntryKind, type Highlight, type IconName, type ProfileContent, type ProfileDraft, type ProfileLink,
+  type ProfilePhoto, type ProfileResume, type ProfileVersion,
 } from "@/lib/profile";
+import { sizeLabel, uploadToLibrary, type LibraryKind } from "@/lib/library";
+import type { LibraryItem } from "@/lib/library-server";
+import LibraryPicker from "../library-picker";
 import type { Outcome } from "@/lib/workspace";
 import { LockedNotice, useVaultWriter } from "../../use-vault-writer";
 import { field } from "../../projects/[id]/record-section";
@@ -32,6 +36,8 @@ type Form = {
   contactHeading: string;
   contactText: string;
   email: string;
+  resume: ProfileResume;
+  photo: ProfilePhoto;
 };
 
 const lines = (text: string) => text.split("\n").map((s) => s.trim()).filter(Boolean);
@@ -49,6 +55,8 @@ const toForm = (c: ProfileContent): Form => ({
   contactHeading: c.contact.heading,
   contactText: c.contact.text,
   email: c.contact.email.user || c.contact.email.domain ? `${c.contact.email.user}@${c.contact.email.domain}` : "",
+  resume: { ...c.resume },
+  photo: { ...c.photo },
 });
 const fromForm = (f: Form): ProfileContent => normalize({
   name: f.name,
@@ -61,7 +69,11 @@ const fromForm = (f: Form): ProfileContent => normalize({
   focus: lines(f.focus),
   links: f.links,
   contact: { heading: f.contactHeading, text: f.contactText, email: splitEmail(f.email) },
+  resume: f.resume,
+  photo: f.photo,
 });
+// A suggested download name from the owner's name, e.g. "MD-Kaushik-Kamal-Resume.pdf".
+const resumeName = (name: string) => `${name.normalize("NFKD").replace(/[^A-Za-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 80) || "My"}-Resume.pdf`;
 const same = (a: ProfileContent, b: ProfileContent) => JSON.stringify(a) === JSON.stringify(b);
 const when = (iso: string) => new Date(iso).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
 
@@ -109,8 +121,8 @@ async function homepageShows(publishedAt: string): Promise<boolean> {
 
 // Phase 4B: edit the homepage text, preview it, publish it and roll back. The draft starts from
 // what is published (or, before the first publish, from the text the homepage already shows).
-export default function ProfileEditor({ ownerId, initialDraft, live: initialLive, initialVersions, historyLimited }: {
-  ownerId: string; initialDraft: ProfileDraft | null; live: Live; initialVersions: ProfileVersion[]; historyLimited: boolean;
+export default function ProfileEditor({ ownerId, initialDraft, live: initialLive, initialVersions, historyLimited, initialLibrary }: {
+  ownerId: string; initialDraft: ProfileDraft | null; live: Live; initialVersions: ProfileVersion[]; historyLimited: boolean; initialLibrary: LibraryItem[];
 }) {
   const { run, busy, message, setMessage, online, locked, retry, region } = useVaultWriter(ownerId);
   const [saved, setSaved] = useState<ProfileDraft | null>(initialDraft);
@@ -118,10 +130,16 @@ export default function ProfileEditor({ ownerId, initialDraft, live: initialLive
   const [versions, setVersions] = useState<ProfileVersion[]>(initialVersions);
   const [form, setForm] = useState<Form>(() => toForm(initialDraft?.content ?? initialLive?.content ?? SEED));
   const [confirming, setConfirming] = useState(false);
+  const [library, setLibrary] = useState<LibraryItem[]>(initialLibrary);
   const content = useMemo(() => fromForm(form), [form]);
   const dirty = !saved || !same(content, saved.content);
   const disabled = busy || !online;
-  const problems = saved ? publishProblems(saved.content) : [];
+  const fileOf = (id: string) => library.find((f) => f.id === id) ?? null;
+  const problems = saved ? [
+    ...publishProblems(saved.content),
+    ...filesUsed(saved.content).filter((u) => !fileOf(u.id))
+      .map((u) => `The ${u.part === "resume" ? "résumé" : "photo"} file is no longer in your library. Choose it again.`),
+  ] : [];
   const changes = saved ? changedSections(saved.content, live?.content ?? null) : [];
 
   const set = (change: Partial<Form>) => { setForm((f) => ({ ...f, ...change })); setConfirming(false); };
@@ -132,6 +150,19 @@ export default function ProfileEditor({ ownerId, initialDraft, live: initialLive
       setSaved(row);
       setForm(toForm(row.content));
     });
+  }
+
+  // Uploads into the private library (or finds the identical file already there) and returns it.
+  async function upload(file: File, kind: LibraryKind): Promise<LibraryItem | null> {
+    const bytes = new Uint8Array(await file.arrayBuffer());
+    let added: LibraryItem | null = null;
+    await run((client) => uploadToLibrary(client, ownerId, file.name, bytes, kind), null, ({ file: row, existing }) => {
+      const item: LibraryItem = { ...row, thumb: row.kind === "image" ? URL.createObjectURL(file) : null };
+      added = item;
+      setLibrary((list) => list.some((f) => f.id === item.id) ? list : [item, ...list]);
+      setMessage({ text: existing ? `"${row.name}" is already in your library, so that copy is used.` : `"${row.name}" added to your library. It stays private until you publish.`, error: false });
+    });
+    return added;
   }
 
   function restore(v: ProfileVersion) {
@@ -163,8 +194,14 @@ export default function ProfileEditor({ ownerId, initialDraft, live: initialLive
       setLive({ version, content: draft.content, published_at });
       setVersions((list) => [{ version, content: draft.content, published_at }, ...list]);
       setConfirming(false);
+      // Public copies the new version no longer uses (an old résumé or photo) can go now that the
+      // homepage has moved on. If it couldn't be confirmed, the Portfolio page does it later.
+      if (confirmed) void fetch("/api/profile/cleanup", { method: "POST" }).catch(() => {});
     });
   }
+
+  const resumeFile = form.resume.file ? fileOf(form.resume.file) : null;
+  const photoFile = form.photo.file ? fileOf(form.photo.file) : null;
 
   return (
     <>
@@ -364,6 +401,60 @@ export default function ProfileEditor({ ownerId, initialDraft, live: initialLive
               {form.links.length < LIMITS.links && (
                 <button type="button" className={`${small} justify-self-start`} onClick={() => set({ links: [...form.links, { label: "", href: "" }] })}>Add link</button>
               )}
+            </div>
+          </fieldset>
+
+          <fieldset className={card}>
+            <legend className="sr-only">Résumé and photo</legend>
+            <h3 className="text-sm font-semibold uppercase tracking-wider text-muted">Résumé and photo <span className="normal-case tracking-normal">(both optional; hidden while empty)</span></h3>
+            <p className="text-sm text-muted">
+              Files come from your private <a href="/vault/portfolio/files" className="underline underline-offset-4">files library</a>. They are copied to the public site only when you publish, and removed from it when you take them off.
+            </p>
+
+            <div role="group" aria-label="Résumé" className="grid gap-3 rounded-xl border border-line p-3">
+              <p className="text-sm font-semibold">Résumé</p>
+              {resumeFile ? <p className="text-sm">PDF: <span className="font-medium">{resumeFile.name}</span> <span className="text-muted">· {sizeLabel(resumeFile.bytes)}</span></p>
+                : form.resume.file ? <p className="text-sm text-danger">The chosen PDF is no longer in your library. Choose another.</p>
+                : <p className="text-sm text-muted">None chosen. The homepage shows no résumé button.</p>}
+              <div className="flex flex-wrap gap-2">
+                <LibraryPicker kind="pdf" items={library} disabled={disabled} label={form.resume.file ? "Choose another PDF" : "Choose a résumé PDF"}
+                  onUpload={(file) => upload(file, "pdf")}
+                  onPick={(item) => set({ resume: { file: item.id, name: form.resume.name || resumeName(form.name) } })} />
+                {form.resume.file && <button type="button" className={small} onClick={() => set({ resume: { ...form.resume, file: "" } })}>Remove résumé</button>}
+              </div>
+              {form.resume.file && (
+                <label className={label}>Download file name <span className={hint}>(what visitors&apos; browsers save it as; ends in .pdf)</span>
+                  <input maxLength={100} value={form.resume.name} onChange={(e) => set({ resume: { ...form.resume, name: e.target.value } })} className={field} />
+                </label>
+              )}
+              <p className="text-xs text-muted">
+                Everything inside the PDF becomes public when you publish, including its text and document properties such as the author name.
+                Consider a version without your home address or phone number.
+              </p>
+            </div>
+
+            <div role="group" aria-label="Photo" className="grid gap-3 rounded-xl border border-line p-3">
+              <p className="text-sm font-semibold">Photo <span className={hint}>(shown in the About section)</span></p>
+              {photoFile ? (
+                <div className="flex items-center gap-3">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  {photoFile.thumb && <img src={photoFile.thumb} alt="" className="h-20 w-16 rounded-lg object-cover" />}
+                  <p className="text-sm"><span className="font-medium">{photoFile.name}</span> <span className="text-muted">· {sizeLabel(photoFile.bytes)}</span></p>
+                </div>
+              ) : form.photo.file ? <p className="text-sm text-danger">The chosen image is no longer in your library. Choose another.</p>
+                : <p className="text-sm text-muted">None chosen.</p>}
+              <div className="flex flex-wrap gap-2">
+                <LibraryPicker kind="image" items={library} disabled={disabled} label={form.photo.file ? "Choose another image" : "Choose a photo"}
+                  onUpload={(file) => upload(file, "image")}
+                  onPick={(item) => set({ photo: { ...form.photo, file: item.id } })} />
+                {form.photo.file && <button type="button" className={small} onClick={() => set({ photo: { ...form.photo, file: "" } })}>Remove photo</button>}
+              </div>
+              {form.photo.file && (
+                <label className={label}>Describe the photo <span className={hint}>(for people who can&apos;t see it, up to {PHOTO_ALT_MAX} characters)</span>
+                  <input maxLength={PHOTO_ALT_MAX} value={form.photo.alt} onChange={(e) => set({ photo: { ...form.photo, alt: e.target.value } })} className={field} />
+                </label>
+              )}
+              <p className="text-xs text-muted">The public copy is re-encoded upright without its hidden details (camera, date, GPS location). Your library original is unchanged.</p>
             </div>
           </fieldset>
 

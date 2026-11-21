@@ -82,8 +82,14 @@ const paragraphs = (value: string) => value.split(/\n{2,}/).map((p) => p.trim())
 
 // publishedAt marks which published version this page shows (it is public anyway), so the publish
 // route can confirm the new version is live.
-export default function HomeView({ content: c, publishedAt }: { content: ProfileContent; publishedAt?: string }) {
-  const hasAbout = Boolean(c.about.heading || c.about.paragraphs.length);
+// Phase 4C: media gives the résumé link and photo address for this rendering (the public copies on
+// the homepage, private signed links in the preview). Without it, neither is shown.
+export type HomeMedia = { resumeHref?: string; photoSrc?: string };
+
+export default function HomeView({ content: c, publishedAt, media = {} }: { content: ProfileContent; publishedAt?: string; media?: HomeMedia }) {
+  const photo = media.photoSrc && c.photo.alt ? { src: media.photoSrc, alt: c.photo.alt } : null;
+  const resumeHref = c.resume.file ? media.resumeHref : undefined;
+  const hasAbout = Boolean(c.about.heading || c.about.paragraphs.length || photo);
   const hasExperience = Boolean(c.timeline.length || c.focus.length || c.certificates.length);
   const hasEmail = Boolean(c.contact.email.user && c.contact.email.domain);
   // Journal is part of the planned navigation; it stays hidden until a real entry is published.
@@ -155,6 +161,11 @@ export default function HomeView({ content: c, publishedAt }: { content: Profile
                   About me
                 </a>
               )}
+              {resumeHref && (
+                <a href={resumeHref} className="font-nav inline-flex items-center rounded-full border border-white/70 bg-white/10 px-6 py-3 text-sm font-bold backdrop-blur transition hover:bg-white/20">
+                  Résumé <span className="sr-only">(PDF)</span>
+                </a>
+              )}
             </div>
           </div>
         </div>
@@ -181,6 +192,12 @@ export default function HomeView({ content: c, publishedAt }: { content: Profile
             <div>
               <p className={`${eyebrow} text-pf-blue`}>About</p>
               {c.about.heading && <h2 className="font-nav mt-3 text-3xl font-extrabold tracking-tight sm:text-4xl">{c.about.heading}</h2>}
+              {photo && (
+                // A public copy re-encoded at publish (or a private preview link), so next/image isn't used.
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={photo.src} alt={photo.alt} loading="lazy" decoding="async"
+                  className="mt-6 aspect-[4/5] w-44 rounded-2xl object-cover shadow-lg shadow-black/10 sm:w-56" />
+              )}
             </div>
             {c.about.paragraphs.length > 0 && (
               <div className="pf-card space-y-4 p-6 text-lg leading-relaxed text-pf-muted sm:p-8">
@@ -299,6 +316,13 @@ export default function HomeView({ content: c, publishedAt }: { content: Profile
                 icon={<Icon name="mail" className="h-5 w-5 shrink-0" />}
                 className="font-nav mt-8 inline-flex max-w-full items-center gap-3 break-all rounded-full bg-white px-6 py-3 font-bold text-[#0a2540] transition hover:bg-pf-aqua"
               />
+            )}
+            {resumeHref && (
+              <p className="mt-6">
+                <a href={resumeHref} className="font-nav inline-flex items-center gap-2 rounded-full border border-white/60 px-5 py-2.5 text-sm font-bold transition hover:bg-white/15">
+                  Download my résumé <span className="sr-only">(PDF)</span>
+                </a>
+              </p>
             )}
             {c.links.length > 0 && (
               <ul className="font-nav mt-8 flex flex-wrap gap-3 text-sm font-semibold">

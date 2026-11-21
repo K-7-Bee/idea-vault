@@ -1,6 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { fileMedia } from "./drive/google";
 import { PUBLIC_IMAGE_MAX, PUBLIC_IMAGE_TYPES, sniffImage } from "./showcase";
+import { PublicFileError, cleanImage } from "./public-files";
 
 // Server only. Public copies of showcase images in the "showcase" bucket (migration 013), stored as
 // <owner id>/<random uuid>.<ext>. The Drive original is only read, never shared or changed.
@@ -38,6 +39,8 @@ async function readCapped(response: Response, max: number): Promise<Uint8Array |
 
 // Copies one Drive image into the public bucket and returns its path. The bytes must really be a
 // JPEG, PNG or WebP (checked from the bytes, not the name or Drive's label) and at most 5 MB.
+// Phase 4C: the copy is re-encoded upright without metadata, so a phone photo's GPS location and
+// camera details never reach the public bucket.
 export async function copyImage(supabase: SupabaseClient, ownerId: string, accessToken: string, driveFileId: string, label: string): Promise<string> {
   let response: Response;
   try {
@@ -52,8 +55,14 @@ export async function copyImage(supabase: SupabaseClient, ownerId: string, acces
   if (!bytes) throw new CopyError(`${label} is larger than 5 MB.`, 413);
   const type = sniffImage(bytes);
   if (!type) throw new CopyError(`${label} isn't a JPEG, PNG or WebP image.`, 415);
+  let clean: Uint8Array;
+  try {
+    clean = await cleanImage(bytes, type as "image/jpeg" | "image/png" | "image/webp");
+  } catch (error) {
+    throw new CopyError(`${label}: ${error instanceof PublicFileError ? error.message : "the image couldn't be prepared."}`, error instanceof PublicFileError ? error.status : 500);
+  }
   const path = `${ownerId}/${crypto.randomUUID()}.${PUBLIC_IMAGE_TYPES[type]}`;
-  const { error } = await supabase.storage.from(BUCKET).upload(path, bytes, { contentType: type, upsert: false, cacheControl: PUBLIC_CACHE_SECONDS });
+  const { error } = await supabase.storage.from(BUCKET).upload(path, clean, { contentType: type, upsert: false, cacheControl: PUBLIC_CACHE_SECONDS });
   if (error) throw new CopyError(`Couldn't store the public copy of ${label}. Try again.`, 502);
   return path;
 }

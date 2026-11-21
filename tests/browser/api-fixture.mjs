@@ -8,7 +8,7 @@ const OTHER = '22222222-2222-4222-8222-222222222222';
 const IDEA = '33333333-3333-4333-8333-333333333333';
 const FILE = '44444444-4444-4444-8444-444444444444';
 const sessions = new Map(), signed = new Map();
-let ideas, files, objects, rules, events, work, drive, google, simple, showcase, profile;
+let ideas, files, objects, rules, events, work, drive, google, simple, showcase, profile, library;
 // Phase 3A: a synthetic Google (OAuth + the few Drive calls the app makes). Not Google.
 const DRIVE_SCOPE = 'https://www.googleapis.com/auth/drive.file';
 const FOLDER_MIME = 'application/vnd.google-apps.folder';
@@ -54,6 +54,8 @@ function reset() {
   showcase = { drafts: [], live: [], objects: new Map() };
   // Phase 4B (migration 014). The fixture's owner is the recorded site owner.
   profile = { drafts: [], published: null, versions: [] };
+  // Phase 4C (migration 015): library rows, the private "library" bucket and public "profile-files".
+  library = { rows: [], objects: new Map(), public: new Map() };
   work = Object.fromEntries(WORK_TABLES.map((t) => [t, []]));
   const created_at = '2026-11-15T00:00:00.000Z';
   ideas = [{ id: IDEA, user_id: OWNER, title: null, content: 'Fixture original #test', original_content: 'Fixture original #test',
@@ -127,12 +129,15 @@ const server = http.createServer(async (req, res) => {
         if (body.googleFile) Object.assign(google.files.get(body.googleFile.id), body.googleFile.changes);
         if (body.edit) Object.assign(ideas.find((idea) => idea.id === body.edit.id), body.edit);
         if (body.googleBytes) google.files.get(body.googleBytes.id).bytes = Buffer.from(body.googleBytes.text);
+        if (body.publicFileAge) for (const o of library.public.values()) o.created_at = new Date(Date.now() - body.publicFileAge).toISOString();
         if (body.showcaseObjectAge) for (const o of showcase.objects.values()) o.created_at = new Date(Date.now() - body.showcaseObjectAge).toISOString();
         if (body.editRow) { const row = work[body.editRow.table].find((r) => r.id === body.editRow.id); Object.assign(row, body.editRow.changes); touch(row); }
         return reply(200, {});
       }
       if (url.pathname === '/_test/state') return reply(200, { ideas, files, work, drive: [...drive.values()],
-        simple, profile, showcase: { drafts: showcase.drafts, live: showcase.live, objects: [...showcase.objects].map(([path, o]) => ({ path, size: o.bytes.length, type: o.type })) },
+        simple, profile, library: { rows: library.rows, objects: [...library.objects].map(([path, o]) => ({ path, size: o.bytes.length, type: o.type })),
+          public: [...library.public].map(([name, o]) => ({ name, size: o.bytes.length, type: o.type, sha: createHash('sha256').update(o.bytes).digest('hex') })) },
+        showcase: { drafts: showcase.drafts, live: showcase.live, objects: [...showcase.objects].map(([path, o]) => ({ path, size: o.bytes.length, type: o.type })) },
         google: { revoked: google.revoked, calls: google.calls, files: [...google.files].map(([id, { bytes, ...f }]) => ({ id, ...f, stored: bytes ? bytes.length : 0 })) },
         objects: [...objects].map(([path, data]) => ({ path, size: data.length })), events });
       return reply(404, {});
@@ -175,7 +180,26 @@ const server = http.createServer(async (req, res) => {
     }
     // Phase 4B: the published profile is readable without a session (two columns only).
     if (url.pathname === '/rest/v1/profile_published') return profilePublishedRows(url, req, identity, reply);
+    // Phase 4C: public file copies are readable by anyone; library files only through a signed link.
+    if (url.pathname.startsWith('/storage/v1/object/public/profile-files/') && req.method === 'GET') {
+      const object = library.public.get(decodeURIComponent(url.pathname.slice('/storage/v1/object/public/profile-files/'.length)));
+      if (!object) return reply(400, { statusCode: '404', error: 'not_found', message: 'Object not found' });
+      const download = url.searchParams.get('download');
+      event.status = 200;
+      res.writeHead(200, { 'Content-Type': object.type, 'Cache-Control': 'max-age=60',
+        ...(download !== null ? { 'Content-Disposition': `attachment; filename="${download}"` } : {}) });
+      return res.end(object.bytes);
+    }
+    if (url.pathname.startsWith('/storage/v1/object/sign/library/') && req.method === 'GET') {
+      const path = decodeURIComponent(url.pathname.slice('/storage/v1/object/sign/library/'.length));
+      if (signed.get(url.searchParams.get('token')) !== `library/${path}` || !library.objects.has(path)) return reply(400, { statusCode: '400', message: 'Invalid signature' });
+      const object = library.objects.get(path);
+      event.status = 200; res.writeHead(200, { 'Content-Type': object.type }); return res.end(object.bytes);
+    }
+    if (url.pathname === '/storage/v1/object/list/profile-files' && req.method === 'POST' && !identity) return reply(200, []);
     if (!identity) return reply(401, { message: 'Fixture authentication required' });
+    if (url.pathname === '/rest/v1/library_files') return libraryRows(url, req, json, identity.id, reply);
+    if (/^\/storage\/v1\/object\/(sign\/|list\/)?(library|profile-files)(\/|$)/.test(url.pathname)) return libraryStorage(url, req, bytes, json, identity.id, reply, res, event);
     if (url.pathname === '/rest/v1/profile_drafts') return profileDraftRows(url, req, json, identity.id, reply);
     if (url.pathname === '/rest/v1/profile_versions') {
       if (req.method !== 'GET') return reply(401, { code: '42501', message: 'permission denied for table profile_versions' });
@@ -695,17 +719,143 @@ function profileProblem(c) {
   return null;
 }
 
+// Phase 4C: the publish function swaps each library id for its public copy's name (migration 015).
+function publishedForm(content, owner) {
+  const pub = structuredClone(content);
+  for (const part of ['resume', 'photo']) {
+    const id = content?.[part]?.file;
+    if (!id) continue;
+    const row = library.rows.find((r) => r.id === id && r.user_id === owner && r.kind === (part === 'resume' ? 'pdf' : 'image'));
+    if (!row?.public_path || !library.public.has(row.public_path)) return null;
+    pub[part].file = row.public_path;
+  }
+  return pub;
+}
+
 function publishProfile({ p_draft_version }, owner, reply) {
   if (owner !== OWNER) return reply(403, { code: '42501', message: 'Only the site owner can publish the profile.' });
   const d = profile.drafts.find((x) => x.user_id === owner);
   if (!d || d.version !== p_draft_version) return reply(400, { code: '40001', message: 'The profile changed since you checked it. Review it again before publishing.' });
   const problem = profileProblem(d.content);
   if (problem) return reply(400, { code: '23514', message: problem });
+  const pub = publishedForm(d.content, owner);
+  if (!pub) return reply(400, { code: '55000', message: 'The résumé file is not ready to publish. Choose it again and retry.' });
   const version = Math.max(0, ...profile.versions.map((v) => v.version)) + 1;
   const published_at = new Date().toISOString();
   profile.versions.push({ user_id: owner, version, content: structuredClone(d.content), published_at });
-  profile.published = { user_id: owner, content: structuredClone(d.content), version, published_at };
+  profile.published = { user_id: owner, content: pub, version, published_at };
   return reply(200, version);
+}
+
+// ---------- Phase 4C: files library (imitates migration 015; not PostgreSQL or Supabase Storage) ----------
+
+const LIBRARY_TYPES = { 'application/pdf': ['pdf', 'pdf'], 'image/jpeg': ['jpg', 'image'], 'image/png': ['png', 'image'], 'image/webp': ['webp', 'image'] };
+const LIBRARY_COLUMNS = ['id', 'path', 'kind', 'mime_type', 'bytes', 'sha256', 'name', 'public_path', 'created_at'];
+const libraryColumns = (row) => Object.fromEntries(LIBRARY_COLUMNS.map((c) => [c, row[c]]));
+
+function libraryRows(url, req, json, owner, reply) {
+  const found = () => library.rows.filter((r) => r.user_id === owner && matches(r, url.searchParams));
+  if (req.method === 'GET') return respondRows(req, reply, found().map(libraryColumns));
+  if (req.method === 'POST') {
+    const body = json();
+    const type = LIBRARY_TYPES[body.mime_type];
+    if (body.user_id !== owner) return reply(403, { code: '42501', message: 'new row violates row-level security policy' });
+    if (!type || body.kind !== type[1] || !String(body.path).startsWith(`${owner}/`) || !/^[0-9a-f]{64}$/.test(body.sha256)
+      || !(body.bytes > 0 && body.bytes <= 10 * 1024 * 1024)) return reply(400, { code: '23514', message: 'library_files check' });
+    if (library.rows.some((r) => r.user_id === owner && r.sha256 === body.sha256)) return reply(409, { code: '23505', message: 'library_files_user_id_sha256_key' });
+    const row = { ...body, public_path: null, created_at: new Date().toISOString() };
+    library.rows.push(row);
+    return respondRows(req, reply, [libraryColumns(row)]);
+  }
+  if (req.method === 'PATCH') {
+    const body = json();
+    if (Object.keys(body).some((k) => !['name', 'public_path'].includes(k))) return reply(401, { code: '42501', message: 'permission denied for table library_files' });
+    const targets = found();
+    for (const row of targets) Object.assign(row, body);
+    return respondRows(req, reply, targets.map(libraryColumns));
+  }
+  if (req.method === 'DELETE') {
+    const targets = found();
+    for (const row of targets) {
+      if (row.public_path) return reply(409, { code: '23503', message: 'This file is on your public site. Remove it from the profile and publish first.' });
+      const draft = profile.drafts.find((d) => d.user_id === owner);
+      if (draft && (draft.content?.resume?.file === row.id || draft.content?.photo?.file === row.id)) {
+        return reply(409, { code: '23503', message: 'The profile draft uses this file. Remove it from the draft first.' });
+      }
+    }
+    library.rows = library.rows.filter((r) => !targets.includes(r));
+    return respondRows(req, reply, targets.map(libraryColumns));
+  }
+  return reply(405, {});
+}
+
+async function uploadedBytes(req, bytes) {
+  if (!req.headers['content-type']?.includes('multipart/form-data')) return { data: Buffer.from(bytes), type: (req.headers['content-type'] ?? '').split(';')[0] };
+  const body = await new Request('http://127.0.0.1', { method: 'POST', headers: { 'content-type': req.headers['content-type'] }, body: bytes }).formData();
+  const file = [...body.values()].find((value) => typeof value !== 'string');
+  return { data: Buffer.from(await file.arrayBuffer()), type: file.type };
+}
+
+// "library": private, owner folder only. "profile-files": public reads; only the site owner (OWNER)
+// lists, adds or removes, and names have no folder.
+async function libraryStorage(url, req, bytes, json, owner, reply, res, event) {
+  const p = url.pathname;
+  const isOwner = owner === OWNER;
+  if (p === '/storage/v1/object/list/profile-files' && req.method === 'POST') {
+    if (!isOwner) return reply(200, []);
+    const { search = '', limit = 100 } = json();
+    return reply(200, [...library.public].filter(([name]) => name.startsWith(search)).slice(0, limit)
+      .map(([name, o]) => ({ name, id: o.id, created_at: o.created_at, updated_at: o.created_at, metadata: { size: o.bytes.length, mimetype: o.type } })));
+  }
+  if (p === '/storage/v1/object/profile-files' && req.method === 'DELETE') {
+    if (!isOwner) return reply(200, []);
+    const removed = [];
+    for (const name of json().prefixes ?? []) if (library.public.delete(name)) removed.push({ name });
+    return reply(200, removed);
+  }
+  if (p.startsWith('/storage/v1/object/profile-files/') && req.method === 'POST') {
+    const name = decodeURIComponent(p.slice('/storage/v1/object/profile-files/'.length));
+    const { data, type } = await uploadedBytes(req, bytes);
+    if (!isOwner || !/^[0-9a-f-]{36}\.(pdf|jpg|png|webp)$/.test(name)) return reply(403, { statusCode: '403', message: 'new row violates row-level security policy' });
+    if (!LIBRARY_TYPES[type]) return reply(415, { statusCode: '415', message: 'mime type not supported' });
+    if (library.public.has(name)) return reply(409, { statusCode: '409', message: 'The resource already exists' });
+    library.public.set(name, { id: randomUUID(), bytes: data, type, created_at: new Date().toISOString() });
+    return reply(200, { Key: `profile-files/${name}`, Id: randomUUID() });
+  }
+  if (p.startsWith('/storage/v1/object/library/')) {
+    const path = decodeURIComponent(p.slice('/storage/v1/object/library/'.length));
+    if (!path.startsWith(`${owner}/`)) return reply(403, { statusCode: '403', message: 'new row violates row-level security policy' });
+    if (req.method === 'POST') {
+      const { data, type } = await uploadedBytes(req, bytes);
+      if (!LIBRARY_TYPES[type]) return reply(415, { statusCode: '415', message: 'mime type not supported' });
+      if (data.length > 10 * 1024 * 1024) return reply(413, { statusCode: '413', message: 'The object exceeded the maximum allowed size' });
+      if (library.objects.has(path)) return reply(409, { statusCode: '409', message: 'The resource already exists' });
+      library.objects.set(path, { bytes: data, type });
+      return reply(200, { Key: `library/${path}`, Id: randomUUID() });
+    }
+    if (req.method === 'GET') {
+      const object = library.objects.get(path);
+      if (!object) return reply(400, { statusCode: '404', message: 'Object not found' });
+      event.status = 200; res.writeHead(200, { 'Content-Type': object.type }); return res.end(object.bytes);
+    }
+    return reply(404, { message: 'Unsupported fixture request' });
+  }
+  if (p === '/storage/v1/object/library' && req.method === 'DELETE') {
+    const removed = [];
+    for (const path of json().prefixes ?? []) if (path.startsWith(`${owner}/`) && library.objects.delete(path)) removed.push({ name: path });
+    return reply(200, removed);
+  }
+  const sign = (path) => { const token = randomUUID(); signed.set(token, `library/${path}`); return `/object/sign/library/${path}?token=${token}`; };
+  if (p === '/storage/v1/object/sign/library' && req.method === 'POST') {
+    return reply(200, (json().paths ?? []).map((path) => path.startsWith(`${owner}/`) && library.objects.has(path)
+      ? { path, error: null, signedURL: sign(path) } : { path, error: 'Not found', signedURL: null }));
+  }
+  if (p.startsWith('/storage/v1/object/sign/library/') && req.method === 'POST') {
+    const path = decodeURIComponent(p.slice('/storage/v1/object/sign/library/'.length));
+    if (!path.startsWith(`${owner}/`) || !library.objects.has(path)) return reply(400, { statusCode: '404', message: 'Object not found' });
+    return reply(200, { signedURL: sign(path) });
+  }
+  return reply(404, { message: 'Unsupported fixture request' });
 }
 
 server.listen(4317, '127.0.0.1', () => console.log('Synthetic API fixture on 127.0.0.1:4317'));

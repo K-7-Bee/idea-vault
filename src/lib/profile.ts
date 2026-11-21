@@ -30,6 +30,10 @@ export type TimelineEntry = {
 };
 export type Certificate = { name: string; issuer: string; when: string; href: string };
 export type ProfileLink = { label: string; href: string };
+// Phase 4C. In the draft and in history, file is a library file id (library_files, migration 015);
+// in the published row it is the name of the public copy in the "profile-files" bucket. Empty: none.
+export type ProfileResume = { file: string; name: string };
+export type ProfilePhoto = { file: string; alt: string };
 export type ProfileContent = {
   name: string;
   hero: { eyebrow: string; accent: string; headline: string; intro: string };
@@ -41,6 +45,8 @@ export type ProfileContent = {
   links: ProfileLink[];
   // Stored in two halves so the whole address never appears in page source (see EmailLink).
   contact: { heading: string; text: string; email: { user: string; domain: string } };
+  resume: ProfileResume;
+  photo: ProfilePhoto;
 };
 
 const entry = (kind: EntryKind, when: string, title: string, detail: string, where: string): TimelineEntry =>
@@ -95,6 +101,8 @@ export const SEED: ProfileContent = {
     text: "Open to engineering internship conversations and project collaboration.",
     email: { user: "koushikkamal6", domain: "gmail.com" },
   },
+  resume: { file: "", name: "" },
+  photo: { file: "", alt: "" },
 };
 
 // The editor's sections, in page order. Used for the "what changed" list before publishing.
@@ -106,12 +114,13 @@ export const SECTIONS = [
   { key: "certificates", label: "Certificates" },
   { key: "focus", label: "Current focus" },
   { key: "contact", label: "Contact and links" },
+  { key: "files", label: "Résumé and photo" },
 ] as const;
 type SectionKey = (typeof SECTIONS)[number]["key"];
 
 const sectionParts = (c: ProfileContent): Record<SectionKey, unknown> => ({
   hero: [c.name, c.hero], highlights: c.highlights, about: c.about, timeline: c.timeline,
-  certificates: c.certificates, focus: c.focus, contact: [c.contact, c.links],
+  certificates: c.certificates, focus: c.focus, contact: [c.contact, c.links], files: [c.resume, c.photo],
 });
 
 // Labels of the sections that differ between two versions.
@@ -129,6 +138,14 @@ const line = (v: unknown, max: number) => text(v, max).replace(/\s+/g, " ");
 const unique = (items: string[]) => items.filter((x, i) => items.findIndex((y) => y.toLowerCase() === x.toLowerCase()) === i);
 const list = (v: unknown, max: number, itemMax: number) =>
   (Array.isArray(v) ? v : []).map((x) => line(x, itemMax)).filter(Boolean).slice(0, max);
+
+// A library file id (draft) or a public copy's name (published), as checked by 015.
+export const LIBRARY_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+export const PUBLIC_NAME = /^[0-9a-f-]{36}\.(pdf|jpg|png|webp)$/;
+// The file name visitors' browsers save the résumé under.
+export const RESUME_NAME = /^[A-Za-z0-9][A-Za-z0-9 ._()-]{0,95}\.pdf$/;
+export const PHOTO_ALT_MAX = 200;
+const fileRef = (v: unknown) => { const s = typeof v === "string" ? v.trim() : ""; return LIBRARY_ID.test(s) || PUBLIC_NAME.test(s) ? s : ""; };
 
 export const EMAIL_USER = /^[A-Za-z0-9._%+-]{1,64}$/;
 export const EMAIL_DOMAIN = /^(?=.{3,190}$)[A-Za-z0-9-]+(\.[A-Za-z0-9-]+)+$/;
@@ -153,6 +170,8 @@ export function normalize(input: unknown): ProfileContent {
   const about = isObject(c.about) ? c.about : {};
   const contact = isObject(c.contact) ? c.contact : {};
   const email = isObject(contact.email) ? contact.email : {};
+  const resume = isObject(c.resume) ? c.resume : {};
+  const photo = isObject(c.photo) ? c.photo : {};
   const arr = (v: unknown) => (Array.isArray(v) ? v : []).filter(isObject);
   return {
     name: line(c.name, LIMITS.name),
@@ -188,7 +207,17 @@ export function normalize(input: unknown): ProfileContent {
       text: text(contact.text, LIMITS.text),
       email: { user: line(email.user, 64), domain: line(email.domain, 190).toLowerCase() },
     },
+    resume: { file: fileRef(resume.file), name: line(resume.name, 100) },
+    photo: { file: fileRef(photo.file), alt: line(photo.alt, PHOTO_ALT_MAX) },
   };
+}
+
+// The library files a draft uses, by role.
+export function filesUsed(c: ProfileContent): { part: "resume" | "photo"; id: string }[] {
+  return [
+    ...(c.resume.file ? [{ part: "resume" as const, id: c.resume.file }] : []),
+    ...(c.photo.file ? [{ part: "photo" as const, id: c.photo.file }] : []),
+  ];
 }
 
 // Everything that stops content from being published, in plain words. Empty means ready.
@@ -202,6 +231,8 @@ export function publishProblems(c: ProfileContent): string[] {
   }
   const { user, domain } = c.contact.email;
   if ((user || domain) && !(EMAIL_USER.test(user) && EMAIL_DOMAIN.test(domain))) problems.push("The contact email address isn't valid.");
+  if (c.resume.file && !RESUME_NAME.test(c.resume.name)) problems.push("Give the résumé a download name ending in .pdf, using letters, numbers, spaces, dots, dashes or brackets.");
+  if (c.photo.file && !c.photo.alt) problems.push("Describe the photo for people who can't see it.");
   if (strings(c).some((s) => HTML_LIKE.test(s))) problems.push("Remove the HTML tag from your text. Write plain text; the page adds its own formatting.");
   return problems;
 }

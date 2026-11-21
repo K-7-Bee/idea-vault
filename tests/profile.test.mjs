@@ -139,6 +139,8 @@ test('the homepage stays static and is refreshed only by publishing', () => {
 test('the preview renders the same component as the public homepage, behind the owner check', () => {
   const preview = read('src/app/vault/portfolio/profile/preview/page.tsx');
   assert.match(preview, /verifiedOwner\(supabase\)/);
-  assert.match(preview, /<HomeView content=\{d\.content\} \/>/);
-  assert.match(read('src/app/page.tsx'), /<HomeView content=\{published\?\.content \?\? SEED\} publishedAt=\{published\?\.published_at\} \/>/);
+  assert.match(preview, /<HomeView content=\{d\.content\} media=\{media\.links\} \/>/);
+  const home = read('src/app/page.tsx');
+  assert.match(home, /const content = published\?\.content \?\? SEED;/);
+  assert.match(home, /<HomeView content=\{content\} publishedAt=\{published\?\.published_at\} media=\{media\} \/>/);
 });

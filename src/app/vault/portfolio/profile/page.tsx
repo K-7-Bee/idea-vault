@@ -2,6 +2,7 @@ import { Suspense } from "react";
 import { createClient } from "@/lib/supabase/server";
 import { verifiedOwner } from "@/lib/vault-owner";
 import { DRAFT_COLUMNS, asDraft, normalize, type ProfileVersion } from "@/lib/profile";
+import { loadLibrary } from "@/lib/library-server";
 import VaultShell from "../../vault-shell";
 import ProfileEditor from "./profile-editor";
 
@@ -25,13 +26,14 @@ async function ProfileContent() {
   if (!owner) {
     return <section role="alert">Unable to verify your account. <a href="/login">Log in again</a></section>;
   }
-  const [draft, published, history] = await Promise.all([
+  const [draft, published, history, library] = await Promise.all([
     supabase.from("profile_drafts").select(DRAFT_COLUMNS).eq("user_id", owner.id).maybeSingle().then((r) => r, () => null),
     supabase.from("profile_published").select("content, version, published_at").limit(1).then((r) => r, () => null),
     supabase.from("profile_versions").select("version, content, published_at").eq("user_id", owner.id)
       .order("version", { ascending: false }).limit(HISTORY_LIMIT).then((r) => r, () => null),
+    loadLibrary(supabase, owner.id),
   ]);
-  if (!draft || draft.error || !published || published.error || !Array.isArray(published.data) || !history || history.error) {
+  if (!draft || draft.error || !published || published.error || !Array.isArray(published.data) || !history || history.error || !library) {
     return (
       <section className="rounded-2xl border border-line bg-card p-6">
         <div role="alert">
@@ -45,11 +47,15 @@ async function ProfileContent() {
   const live = published.data[0] as { content: unknown; version: number; published_at: string } | undefined;
   const versions = (history.data as { version: number; content: unknown; published_at: string }[])
     .map((v): ProfileVersion => ({ version: v.version, content: normalize(v.content), published_at: v.published_at }));
+  // Phase 4C: the public row names public file copies; history keeps the draft form (library ids),
+  // so the draft is compared with the history entry of the live version.
+  const liveContent = live ? (versions.find((v) => v.version === live.version)?.content ?? normalize(live.content)) : null;
   return (
     <ProfileEditor
       ownerId={owner.id}
       initialDraft={draft.data ? asDraft(draft.data as never) : null}
-      live={live ? { version: live.version, content: normalize(live.content), published_at: live.published_at } : null}
+      live={live && liveContent ? { version: live.version, content: liveContent, published_at: live.published_at } : null}
+      initialLibrary={library}
       initialVersions={versions}
       historyLimited={versions.length === HISTORY_LIMIT}
     />

@@ -1,7 +1,8 @@
 import type { NextRequest } from "next/server";
 import { revalidateTag } from "next/cache";
 import { denied, json, routeOwner, sameOrigin } from "@/lib/drive/route-helpers";
-import { DRAFT_COLUMNS, asDraft, publishProblems } from "@/lib/profile";
+import { DRAFT_COLUMNS, asDraft, filesUsed, publishProblems } from "@/lib/profile";
+import { PublicFileError, ensurePublicCopy, loadLibraryFiles } from "@/lib/public-files";
 import { PROFILE_TAG } from "@/lib/profile-public";
 
 // Publishes the owner's saved profile draft (Phase 4B). The owner confirmed exactly this draft
@@ -12,6 +13,11 @@ import { PROFILE_TAG } from "@/lib/profile-public";
 // ({ expire: 0 } served the build-time page instead; see tests/browser/profile.spec.ts). The tag is
 // applied once this response is sent, so the editor, not this route, then requests the homepage
 // until it shows publishedAt: its first request takes the previous page and starts the rebuild.
+//
+// Phase 4C: before publishing, each library file the draft uses (résumé, photo) gets a public copy
+// (images re-encoded without metadata); publish_profile puts the copy's name in the public row.
+// Copies the new version no longer uses are removed later by /api/profile/cleanup, once the
+// homepage has moved on, so no visitor gets a page pointing at a deleted file.
 export async function POST(request: NextRequest) {
   if (!sameOrigin(request)) return json({ error: "origin" }, 403);
   const session = await routeOwner();
@@ -25,14 +31,33 @@ export async function POST(request: NextRequest) {
   if (!draft.data || draft.data.version !== body.draftVersion) {
     return json({ error: "changed", message: "The profile changed since you checked it. Review it again before publishing." }, 409);
   }
-  const problems = publishProblems(asDraft(draft.data as never).content);
+  const content = asDraft(draft.data as never).content;
+  const problems = publishProblems(content);
   if (problems.length) return json({ error: "not_ready", message: problems[0], problems }, 409);
+
+  const used = filesUsed(content);
+  const library = await loadLibraryFiles(supabase, owner.id, used.map((u) => u.id));
+  if (!library) return json({ error: "unavailable", message: "Couldn't load your files library. Nothing changed on your public site. Try again." }, 503);
+  for (const { part, id } of used) {
+    const label = part === "resume" ? "résumé" : "photo";
+    const file = library.find((f) => f.id === id);
+    if (!file || file.kind !== (part === "resume" ? "pdf" : "image")) {
+      return json({ error: "file_missing", message: `The ${label} file is no longer in your library. Choose it again, save, and publish.` }, 409);
+    }
+    try {
+      await ensurePublicCopy(supabase, owner.id, file, label);
+    } catch (error) {
+      const known = error instanceof PublicFileError;
+      return json({ error: "file", message: `${known ? error.message : `Couldn't prepare the ${label}.`} Nothing changed on your public site.` }, known && error.status < 500 ? 409 : 502);
+    }
+  }
 
   const published = await supabase.rpc("publish_profile", { p_draft_version: body.draftVersion }).then((r) => r, () => null);
   if (!published || published.error || typeof published.data !== "number") {
     const code = published?.error?.code;
     if (code === "40001") return json({ error: "changed", message: "The profile changed since you checked it. Review it again before publishing." }, 409);
     if (code === "23514") return json({ error: "not_ready", message: published!.error!.message }, 409);
+    if (code === "55000") return json({ error: "file", message: `${published!.error!.message} Nothing changed on your public site.` }, 409);
     if (code === "42501") return json({ error: "not_site_owner", message: "This account isn't recorded as the site owner, so it can't publish the profile." }, 403);
     return json({ error: "failed", message: "Couldn't publish. Nothing changed on your public site. Try again." }, 502);
   }

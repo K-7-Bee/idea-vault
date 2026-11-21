@@ -631,3 +631,36 @@ Fast-forwarded `main` ac3e2f9 → 360ff75 (no force); Vercel `dpl_AF4A7YGHeqChTL
 - No runtime errors.
 
 Not yet verified live: a real save and publish by the owner, Vercel's handling of `revalidateTag('profile', 'max')` (the homepage refresh and the editor's "shows it now" check), and restore from history. Rollback: promote `dpl_FaNwUEEQ6arkJQuBvRsqK6bJknGM` (ac3e2f9), then `revoke select on public.profile_published from anon`; the tables can stay.
+
+## 2026-11-21 - Slice 4C plan proposal (résumé, photo, files library)
+
+Owner asked to plan the next phase. Drafted [PHASE_4C_PLAN.md](PHASE_4C_PLAN.md):
+- The parent plan's 4C is split. 4C becomes the résumé (stable `/resume`), an optional About photo, and a private files library with deduplication, copied into a public `profile-files` bucket at publish (migration `015_library.sql`). Journal moves to 4D.
+- Decisions V-025 to V-030 are proposed.
+
+Found from source: `copyImage` copies showcase images into the public bucket byte-for-byte, so camera metadata such as GPS location would be published. The `showcase` bucket held 0 objects at the 4B go-live check, so nothing is exposed now. 4C proposes re-encoding every public image without metadata (V-029).
+
+Documentation only; no code, SQL or deployment.
+
+## 2026-11-21 - Slice 4C built (résumé, photo, files library)
+
+Owner replied "approve 4C". Built:
+- A private files library (Vault → Portfolio → Files).
+- Résumé and photo fields in the profile editor.
+- A stable `/resume` address.
+- Public copies made at publish, and metadata removed from every public image, showcases included.
+
+Migration `015_library.sql` adds `library_files`, the `library` (private) and `profile-files` (public) buckets and `is_site_owner()`, and extends `profile_content_problem` and `publish_profile`. Differences from the plan are in [PHASE_4C_PLAN.md](PHASE_4C_PLAN.md) "As built" and [DECISIONS.md](DECISIONS.md).
+
+Verified locally:
+- **Unit tests:** 177, including 11 new in `tests/library.test.mjs`. Fixtures carrying EXIF with GPS, XMP, an ICC profile and an orientation tag come out with none of them and upright, in JPEG, PNG and WebP.
+- **Browser tests:** 65, including 5 new in `tests/browser/resume.spec.ts`:
+  - Upload, preview and publish; `/resume` serves the exact bytes under the chosen name; the page carries no library id or owner id.
+  - Uploading the same file twice stores one copy.
+  - The published photo has no metadata and is upright.
+  - Removing the résumé, then cleaning up and deleting the file; restoring an old version is blocked.
+  - The library is private to its owner.
+- **Database:** 015 applied twice after 002–014 in a disposable offline Postgres with a Storage stand-in. 52 checks in `tests/sql/phase4c-behaviour.sql` pass. The 4B (63), 4A (61), 3A–3D and grants suites still pass. The Phase 2 suite stops on the same missing seed idea as before.
+- **Static checks and build:** tsc, ESLint and the production build pass. `/` stays static. A build without database settings serves a homepage whose visible text, links and section ids are identical to the pre-4B baseline, and `/resume` answers 404.
+
+Not verified: real Supabase Storage (bucket limits, policies with `is_site_owner()`, `list` search, `?download=` naming), `sharp` running in a Vercel function, and a real upload and publish.

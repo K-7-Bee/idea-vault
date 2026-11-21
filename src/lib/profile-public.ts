@@ -1,6 +1,7 @@
 import { cacheLife, cacheTag } from "next/cache";
 import { createClient } from "@supabase/supabase-js";
-import { PUBLIC_COLUMNS, normalize, type PublishedProfile } from "./profile";
+import { PUBLIC_COLUMNS, PUBLIC_NAME, normalize, type PublishedProfile } from "./profile";
+import { PUBLIC_BUCKET } from "./library";
 
 // Server only. The published profile, read as an anonymous visitor would: the public key, no
 // session, and only the whitelisted columns (migration 014).
@@ -27,4 +28,12 @@ export async function getPublishedProfile(): Promise<PublishedProfile | null> {
   if (error || !Array.isArray(data)) throw new Error(`The published profile couldn't be read (${error?.code ?? "no data"}).`);
   const row = data[0] as { content?: unknown; published_at?: string } | undefined;
   return row ? { content: normalize(row.content), published_at: String(row.published_at ?? "") } : null;
+}
+
+// The public address of a published file copy (Phase 4C), or null if the name isn't one.
+export function publicFileUrl(name: string, download?: string): string | null {
+  const base = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  if (!base || !PUBLIC_NAME.test(name)) return null;
+  const url = `${base.replace(/\/$/, "")}/storage/v1/object/public/${PUBLIC_BUCKET}/${name}`;
+  return download ? `${url}?download=${encodeURIComponent(download)}` : url;
 }

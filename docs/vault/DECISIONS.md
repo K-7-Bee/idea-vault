@@ -69,3 +69,16 @@ Owner replied "approve 4B" to [PHASE_4B_PLAN.md](PHASE_4B_PLAN.md), accepting ev
 | V-022 | Validation | Plain text rendered as text; HTML-like tags refused; per-field length caps; links and certificate links `https:` only; email checked. Enforced in the app and again in `publish_profile`. No images. |
 | V-023 | Email exposure | Accepted. Stored as user and domain halves, readable through the public API; the page still never shows it whole in its source. |
 | V-024 | Case studies and Selected work | Unchanged. |
+
+## Phase 4C decisions (2026-11-21, in conversation)
+
+Owner replied "approve 4C" to [PHASE_4C_PLAN.md](PHASE_4C_PLAN.md), accepting every recommendation. Refinements made while building are in the plan's "As built" section.
+
+| ID | Question | Answer |
+| --- | --- | --- |
+| V-025 | Split the slice | 4C: résumé, photo, files library and image metadata removal. Journal moves to 4D, which needs its own approval. |
+| V-026 | Where files live before publishing | A private `library` bucket and an owner-only `library_files` table. At publish, a copy goes into a public `profile-files` bucket, named with a random id and no folder, so no owner id appears in the address. Only the site owner can add or remove copies there. Copies the published profile no longer uses are removed. |
+| V-027 | Résumé address | `/resume` is read at request time and is never cached. It redirects (307) to the current public copy with the chosen download name, and answers 404 when no résumé is published. |
+| V-028 | Profile photo | Optional, in the About section only, with a required description. Shown in a fixed 4:5 frame. |
+| V-029 | Image metadata | Every public image, profile and showcase, is re-encoded with `sharp`: turned upright, at most 2400 px on the long edge, quality 85, same format, and stripped of EXIF (including GPS), XMP, IPTC and the ICC profile. The original in the library or Drive is not changed. PDFs are published as uploaded, with a warning in the editor. |
+| V-030 | Upload path | Files go from the browser straight to the private bucket, with type and size checked there, by the bucket and by the table. The server checks the actual bytes again when publishing. Limits: 10 MB per file and at most 5 MB per re-encoded image. Uploading the same file again is matched by SHA-256 and reuses the stored copy. Import from Drive comes later. |

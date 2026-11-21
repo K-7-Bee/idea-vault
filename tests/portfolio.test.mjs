@@ -19,10 +19,14 @@ test('public homepage no longer mounts the retired demos', () => {
   }
 });
 
-test('homepage navigation has no empty Journal or unsupplied resume link', () => {
+test('homepage navigation has no empty Journal, and a résumé link only once one is published', () => {
   const home = homeSource();
   assert.ok(!/label: "Journal"/.test(home));
-  assert.ok(!/href=[^>]*r[eé]sum[eé]/i.test(home), 'no résumé has been supplied');
+  // Phase 4C: no hard-coded résumé address; the link exists only when the profile has a résumé file.
+  assert.ok(!/href=["'][^"']*r[eé]sum[eé]/i.test(home), 'no fixed résumé link in the markup');
+  const view = fs.readFileSync(path.join(root, 'src/app/portfolio/home-view.tsx'), 'utf8');
+  assert.ok(view.includes('const resumeHref = c.resume.file ? media.resumeHref : undefined;'));
+  assert.equal((view.match(/href=\{resumeHref\}/g) ?? []).length, (view.match(/\{resumeHref && \(/g) ?? []).length, 'every résumé link is guarded');
   for (const anchor of ['about', 'experience', 'projects', 'contact']) {
     assert.ok(home.includes(`href: "#${anchor}"`), `missing nav link ${anchor}`);
     assert.ok(home.includes(`id="${anchor}"`), `nav link ${anchor} has no target section`);
