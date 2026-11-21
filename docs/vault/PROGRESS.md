@@ -836,3 +836,36 @@ Verified locally:
 - **Static checks and build:** tsc, ESLint and the production build pass; `/api/ai/ask` is a request-time route and `/` is unchanged and static.
 
 Not verified: real Gemini (no key exists yet), real token counts against Google's billing, AI Studio logging settings, and 017 on real Supabase. Not committed, not applied, not deployed. Pending before go-live: the owner's confirmation of age 18+ (Gemini API terms) and the key setup.
+
+## 2026-11-21 - Phase 5A live, switched off
+
+Owner said "commit it and go live". Committed `8627786`.
+
+Read-only production pre-check: 1 Auth account; 2 ideas, 2 idea files, 2 projects, 4 project files, 1 Lab entry; 0 journal entries, library files or storage objects; no `ai_` tables.
+
+Applied `017_ai.sql` via Supabase CLI `db query --remote=<ref> --yes --file`.
+
+Read-only post-check:
+- **Tables:** RLS on all three `ai_` tables. Anon can read none of them.
+- **Writes:** authenticated can't insert, update or delete `ai_usage`, can't edit messages, and can't move a conversation to another project.
+- **Functions:** `record_ai_usage` is security definer and executable by authenticated only; `ai_usage_now` likewise authenticated only. The message trigger uses `clock_timestamp()`.
+- **Data:** 0 usage rows; data counts unchanged.
+
+Vercel environment checked by name only, no values read: there is no `GEMINI_API_KEY`, `AI_ENABLED` or other AI setting. So the assistant is off: no Assistant tab, and `/api/ai/ask` answers "off" to the owner.
+
+Fast-forwarded `main` 9021f83 → 8627786 (no force); Vercel `dpl_9KAtsJ1r4uft2Pj2g13h2pGFvqo1` READY.
+
+Smoke check:
+- `/` and `/projects` return 200. The homepage's visible text and section ids match the pre-4B baseline.
+- `/journal` is a soft 404 and `/resume` gives 404.
+- `/vault/settings` and `/vault/projects` redirect to `/login`.
+- `/api/ai/ask` gives 403 cross-origin and 401 without a session.
+- No runtime errors.
+
+Not yet done or verified:
+- The owner's confirmation of age 18+ (Gemini API terms).
+- The key setup: billing, a restricted key, AI Studio logging off or 7 days, a $5 budget alert, and `GEMINI_API_KEY` in Vercel.
+- Switching on with `AI_ENABLED=1` and a redeploy.
+- A real question and its cost checked against Google's usage.
+
+Rollback: promote `dpl_FKg1MKdoNHtcaScdjZ9AN8jPbuju` (9021f83). The 017 tables can stay; they're unused while the assistant is off.

@@ -1,4 +1,4 @@
-# Phase 5 plan: Gemini assistant (5A approved 2026-11-21; built locally, not deployed)
+# Phase 5 plan: Gemini assistant (5A approved 2026-11-21; live switched off 2026-11-21 as 8627786; switching on awaits the owner)
 
 ## 5A as built (2026-11-21, local only)
 
