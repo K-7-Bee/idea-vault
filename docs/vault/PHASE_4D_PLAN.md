@@ -1,4 +1,4 @@
-# Slice 4D plan: Journal (approved 2026-11-21 with all recommendations; built locally, not deployed)
+# Slice 4D plan: Journal (approved 2026-11-21 with all recommendations; live 2026-11-21 as 7bb3dc4)
 
 ## As built (2026-11-21, local only)
 

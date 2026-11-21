@@ -744,3 +744,44 @@ Verified locally:
 - **Static checks and build:** tsc, ESLint and the production build pass. `/` stays static. Without database settings the homepage's visible text, links and section ids match the pre-4B baseline, with `data-journal="0"`. `/journal` gives the soft 404.
 
 Not verified: real Supabase (016 not applied), the homepage Journal link refreshing on Vercel, and a real entry.
+
+## 2026-11-21 - Phase 4D live
+
+Owner said "commit it and go live". The full browser suite (69) passed on a clean run first, after the three test races above were fixed.
+
+Committed `7bb3dc4`.
+
+Read-only production pre-check:
+- Exactly 1 Auth account, recorded in `site_owner`.
+- 2 ideas, 2 idea files, 2 projects, 4 project files, 1 Lab entry; 0 showcases, profile rows, library files or storage objects.
+- No journal tables or functions; Postgres 17.11.
+
+Applied `016_journal.sql` via Supabase CLI `db query --remote=<ref> --yes --file`.
+
+Read-only post-check:
+- **Tables:** RLS on both journal tables. Anon can read neither table directly. Authenticated can't read the snapshot's `body` or `project_id` and can't insert into it, but can read `draft_version`. Both `journal_entries` triggers are present.
+- **Functions:**
+  - `journal_public` is executable by anon.
+  - `publish_journal_entry` and `unpublish_journal_entry` are executable by authenticated only.
+  - All three are security definer.
+  - `journal_slug_ok` is executable by authenticated, not anon; `journal_text_ok` by neither.
+  - The library in-use guard now checks journal drafts.
+- **Data:** 0 published entries; data counts unchanged.
+
+The read-only role can't execute `journal_public` (as intended), so the anonymous read path was confirmed by the Vercel build: its homepage prerender calls it with the publishable key, and a failure would have failed the build.
+
+Fast-forwarded `main` ac1eed8 → 7bb3dc4 (no force); Vercel `dpl_9hggWkKYpuESnBSms1PXXFteXBWn` READY.
+
+Smoke check:
+- `/` and `/projects` return 200. The homepage's visible text, links and section ids match the pre-4B baseline (apart from the favicon build hash), with `data-journal="0"` and no Journal link.
+- `/journal` and an unknown `/journal/<slug>` give soft 404s (200 with `noindex`). `/resume` gives 404.
+- `/vault/portfolio/journal` redirects to `/login`.
+- `/api/journal/publish` and `/api/journal/unpublish` give 403 cross-origin and 401 without a session.
+- No runtime errors.
+
+Not yet verified live: a real entry published and unpublished, the homepage Journal link refreshing on Vercel, image copies for an entry, and a linked project's name appearing and disappearing.
+
+Rollback:
+1. Unpublish every entry.
+2. Promote `dpl_6RJxxau1d6MZjrGdu1EkihWCTwKJ` (ac1eed8).
+3. `revoke execute on function public.journal_public(text) from anon`.
