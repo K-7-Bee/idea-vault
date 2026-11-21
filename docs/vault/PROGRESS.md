@@ -700,3 +700,47 @@ Rollback:
 1. Remove the résumé and photo in the editor and publish.
 2. Promote `dpl_FZCXsHbroanZ4nvZHU2n4gUJg4Qx` (8fd40d8).
 3. Set `profile-files` to non-public.
+
+## 2026-11-21 - Slice 4D plan proposal (Journal)
+
+Owner asked to plan the next phase. Drafted [PHASE_4D_PLAN.md](PHASE_4D_PLAN.md):
+- Private journal drafts and a public snapshot per entry, published and unpublished one by one through security-definer functions (migration `016_journal.sql`).
+- Public `/journal` and `/journal/<slug>`, read at request time.
+- A homepage Journal link only while an entry is published.
+- Project links shown only while the project is public.
+- Images from the 4C library.
+- An optional one-time "Start from a Lab entry" copy.
+- Decisions V-031 to V-037 are proposed.
+
+Documentation only; no code, SQL or deployment.
+
+## 2026-11-21 - Slice 4D built (Journal)
+
+Owner replied "approve 4D". Built:
+- The Journal in the Vault (Portfolio → Journal): entry list with status; editor with address, date, summary, plain-text body, an optional project or case study, a one-time copy from that project's Lab entries, and up to 4 library images with descriptions; preview, confirmed publish, unpublish, delete.
+- Public `/journal` and `/journal/<slug>`, read at request time.
+- A homepage Journal link only while an entry is published.
+
+Migration `016_journal.sql` adds `journal_entries`, `journal_published`, `journal_public()`, `publish_journal_entry` and `unpublish_journal_entry`, and widens the library in-use trigger. Differences from the plan are in [PHASE_4D_PLAN.md](PHASE_4D_PLAN.md) "As built" and [DECISIONS.md](DECISIONS.md).
+
+Found by tests and fixed:
+- Revoking the slug and image helper functions made every draft write fail, because they run inside check constraints.
+- Accented letters became dashes in suggested addresses and résumé file names.
+- Three browser-test timing races, none of them product bugs:
+  - A 4C clean-up check passed vacuously while the page was still loading.
+  - A 4B text comparison ran before the email link was joined.
+  - A Files-page upload happened before hydration.
+
+  The tests now wait for a positive signal.
+
+Verified locally:
+- **Unit tests:** 183, including 6 new in `tests/journal.test.mjs`.
+- **Browser tests:** 69 on a clean full run, including 4 new in `tests/browser/vault-journal.spec.ts`:
+  - Publish, then `/journal`, the entry page (same text as the preview) and the homepage link; unpublishing removes all three.
+  - A private project is never named, is named under its public title while its showcase is live, and is unnamed again after.
+  - Images are published without metadata and kept while in use.
+  - A published entry keeps its address and can't be deleted; drafts and routes are private.
+- **Database:** 016 applied twice after 002–015 in a disposable offline Postgres; 54 checks in `tests/sql/phase4d-behaviour.sql` pass. 4C (52), 4B (63), 4A (61), 3A–3D and grants still pass. The Phase 2 suite stops on the same missing seed idea as before.
+- **Static checks and build:** tsc, ESLint and the production build pass. `/` stays static. Without database settings the homepage's visible text, links and section ids match the pre-4B baseline, with `data-journal="0"`. `/journal` gives the soft 404.
+
+Not verified: real Supabase (016 not applied), the homepage Journal link refreshing on Vercel, and a real entry.

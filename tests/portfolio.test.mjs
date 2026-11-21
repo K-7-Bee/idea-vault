@@ -19,9 +19,11 @@ test('public homepage no longer mounts the retired demos', () => {
   }
 });
 
-test('homepage navigation has no empty Journal, and a résumé link only once one is published', () => {
+test('homepage navigation shows Journal and résumé links only once something is published', () => {
   const home = homeSource();
-  assert.ok(!/label: "Journal"/.test(home));
+  // Phase 4D: the Journal link exists only while at least one entry is published.
+  assert.ok(home.includes('const journalLink = journalCount > 0 ? [{ label: "Journal", href: "/journal" }] : [];'));
+  assert.equal((home.match(/label: "Journal"/g) ?? []).length, 1, 'no other, unconditional Journal link');
   // Phase 4C: no hard-coded résumé address; the link exists only when the profile has a résumé file.
   assert.ok(!/href=["'][^"']*r[eé]sum[eé]/i.test(home), 'no fixed résumé link in the markup');
   const view = fs.readFileSync(path.join(root, 'src/app/portfolio/home-view.tsx'), 'utf8');

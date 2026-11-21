@@ -82,3 +82,17 @@ Owner replied "approve 4C" to [PHASE_4C_PLAN.md](PHASE_4C_PLAN.md), accepting ev
 | V-028 | Profile photo | Optional, in the About section only, with a required description. Shown in a fixed 4:5 frame. |
 | V-029 | Image metadata | Every public image, profile and showcase, is re-encoded with `sharp`: turned upright, at most 2400 px on the long edge, quality 85, same format, and stripped of EXIF (including GPS), XMP, IPTC and the ICC profile. The original in the library or Drive is not changed. PDFs are published as uploaded, with a warning in the editor. |
 | V-030 | Upload path | Files go from the browser straight to the private bucket, with type and size checked there, by the bucket and by the table. The server checks the actual bytes again when publishing. Limits: 10 MB per file and at most 5 MB per re-encoded image. Uploading the same file again is matched by SHA-256 and reuses the stored copy. Import from Drive comes later. |
+
+## Phase 4D decisions (2026-11-21, in conversation)
+
+Owner replied "approve 4D" to [PHASE_4D_PLAN.md](PHASE_4D_PLAN.md), accepting every recommendation. Refinements made while building are in the plan's "As built" section.
+
+| ID | Question | Answer |
+| --- | --- | --- |
+| V-031 | Storage shape | Private `journal_entries`. A public `journal_published` snapshot per entry, written only by the security-definer `publish_journal_entry` and `unpublish_journal_entry`, site owner only. Visitors read only through `journal_public()`, which returns public fields with no ids. The owner can read only status columns of the snapshot. |
+| V-032 | History | None per entry. Republishing replaces the public copy. The Vault shows "Published, with unpublished changes" when the draft has moved on. |
+| V-033 | Freshness | `/journal` and the entry pages read at request time. The homepage stays static, and its Journal link is refreshed by tag from the publish and unpublish routes (`'max'`); the editor confirms it through `data-journal`. A published entry can't be deleted until it is unpublished. |
+| V-034 | Project links | Your own projects or the three case studies. A project is named only while its showcase is live; a case study always. Private project names and ids never reach the public. |
+| V-035 | Images | Up to 4 images from the 4C library, each needing a description. Public copies have no metadata. Clean-up keeps any copy the profile or a published entry uses, and the database refuses deleting a library file that a journal draft uses. |
+| V-036 | Start from a Lab entry | Included, as a one-time copy into the draft. Built inside the entry editor: once a project is chosen, its Lab entries are listed with "Copy into this entry". |
+| V-037 | Addresses | `/journal/<slug>`, 3 to 60 lowercase letters, digits and single dashes, suggested from the title. The database refuses changing the address of a published entry; unpublish first. Two published entries can't share an address. |

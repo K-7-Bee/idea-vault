@@ -38,6 +38,7 @@ const group = (page: Page, name: string | RegExp) => page.getByRole("group", { n
 async function openEditor(page: Page) {
   await page.goto("/vault/portfolio/profile");
   await expect(page.getByRole("heading", { name: "Profile", level: 2 })).toBeVisible();
+  await page.waitForLoadState("networkidle"); // hydrated before the file picker is used
 }
 async function saveDraft(page: Page) {
   await page.getByRole("button", { name: "Save draft" }).click();
@@ -140,6 +141,7 @@ test("résumé: upload privately, preview, publish; the homepage and /resume ser
 test("the same file uploaded twice is stored once; a second publish reuses the public copy", async ({ page, request }) => {
   await publishResume(page, request);
   await page.goto("/vault/portfolio/files");
+  await page.waitForLoadState("networkidle"); // hydrated: the page's own clean-up request has run
   await page.getByLabel("Upload from this device").setInputFiles({ name: "copy of CV.pdf", mimeType: "application/pdf", buffer: PDF });
   await expect(status(page, /already in your library; nothing was stored twice/)).toBeVisible();
   await expect(page.getByRole("list", { name: "Library files" }).getByRole("listitem").filter({ hasText: "My CV.pdf" })).toHaveCount(1);
@@ -200,6 +202,7 @@ test("taking the résumé off: /resume stops, the public copy is removed, then t
 
   // The copy was made seconds ago, so it is kept a few minutes for a publish in progress elsewhere.
   await page.goto("/vault/portfolio/files");
+  await page.waitForLoadState("networkidle"); // hydrated: the page's own clean-up request has run
   const item = page.getByRole("list", { name: "Library files" }).getByRole("listitem").filter({ hasText: "My CV.pdf" });
   await expect(item.getByRole("listitem").filter({ hasText: "On your public site" })).toBeVisible();
   await expect(item.getByRole("button", { name: /Delete/ })).toHaveCount(0);
@@ -207,6 +210,9 @@ test("taking the résumé off: /resume stops, the public copy is removed, then t
 
   await control(request, { publicFileAge: 10 * 60_000 });
   await page.reload();
+  // Wait for a positive sign that the clean-up ran and the list refreshed (a "count 0" check alone
+  // passes while the page is still loading).
+  await expect(item.getByRole("button", { name: "Delete My CV.pdf" })).toBeVisible();
   await expect(item.getByRole("listitem").filter({ hasText: "On your public site" })).toHaveCount(0);
   let s = await state(request);
   expect(s.library.public, "the unused public copy is gone").toHaveLength(0);
@@ -234,6 +240,7 @@ test("a file the draft uses can't be deleted, and the library is private to its 
   await chooseUpload(page, "Résumé", { name: "Draft CV.pdf", mimeType: "application/pdf", buffer: Buffer.concat([PDF, Buffer.from("draft")]) });
   await saveDraft(page);
   await page.goto("/vault/portfolio/files");
+  await page.waitForLoadState("networkidle"); // hydrated: the page's own clean-up request has run
   const item = page.getByRole("list", { name: "Library files" }).getByRole("listitem").filter({ hasText: "Draft CV.pdf" });
   await expect(item.getByText("Résumé in the draft")).toBeVisible();
   await expect(item.getByText("Remove it from the draft to delete it.")).toBeVisible();

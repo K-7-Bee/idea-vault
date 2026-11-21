@@ -73,7 +73,7 @@ const fromForm = (f: Form): ProfileContent => normalize({
   photo: f.photo,
 });
 // A suggested download name from the owner's name, e.g. "MD-Kaushik-Kamal-Resume.pdf".
-const resumeName = (name: string) => `${name.normalize("NFKD").replace(/[^A-Za-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 80) || "My"}-Resume.pdf`;
+const resumeName = (name: string) => `${name.normalize("NFKD").replace(/[̀-ͯ]/g, "").replace(/[^A-Za-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 80) || "My"}-Resume.pdf`;
 const same = (a: ProfileContent, b: ProfileContent) => JSON.stringify(a) === JSON.stringify(b);
 const when = (iso: string) => new Date(iso).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
 

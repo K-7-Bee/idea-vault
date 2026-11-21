@@ -75,18 +75,22 @@ export async function loadLibraryFiles(supabase: SupabaseClient, ownerId: string
   return result && !result.error && Array.isArray(result.data) ? result.data as LibraryFile[] : null;
 }
 
-// Removes public copies the published profile no longer uses, and forgets them in the library so
-// the files can be deleted. Copies younger than a few minutes are left for a publish in progress.
+// Removes public copies that neither the published profile nor any published journal entry
+// (Phase 4D) uses, and forgets them in the library so the files can be deleted. Copies younger
+// than a few minutes are left for a publish in progress.
 export async function removeUnusedPublicFiles(supabase: SupabaseClient, ownerId: string, now = Date.now()): Promise<{ removed: number } | null> {
   try {
-    const [listed, live, linked] = await Promise.all([
+    const [listed, live, linked, journal] = await Promise.all([
       supabase.storage.from(PUBLIC_BUCKET).list("", { limit: 1000, sortBy: { column: "created_at", order: "asc" } }),
       supabase.from("profile_published").select("content").limit(1),
       supabase.from("library_files").select("id, public_path").eq("user_id", ownerId).not("public_path", "is", null),
+      supabase.from("journal_published").select("images").limit(1000),
     ]);
-    if (listed.error || live.error || linked.error || !Array.isArray(listed.data) || !Array.isArray(live.data) || !Array.isArray(linked.data)) return null;
+    if (listed.error || live.error || linked.error || journal.error || !Array.isArray(listed.data) || !Array.isArray(live.data)
+      || !Array.isArray(linked.data) || !Array.isArray(journal.data)) return null;
     const content = (live.data[0] as { content?: { resume?: { file?: unknown }; photo?: { file?: unknown } } } | undefined)?.content;
-    const used = new Set([content?.resume?.file, content?.photo?.file].filter((v): v is string => typeof v === "string" && v !== ""));
+    const journalFiles = (journal.data as { images?: { file?: unknown }[] }[]).flatMap((r) => (r.images ?? []).map((i) => i.file));
+    const used = new Set([content?.resume?.file, content?.photo?.file, ...journalFiles].filter((v): v is string => typeof v === "string" && v !== ""));
     const present = new Set(listed.data.map((o) => o.name));
     const stale = listed.data
       .filter((o) => o.name && PUBLIC_NAME.test(o.name) && !used.has(o.name))

@@ -119,6 +119,8 @@ test("edit, save, preview, confirm and publish: the very next homepage request s
   await expect(preview.getByText("Preview of the saved profile draft (version 1)")).toBeVisible();
   await expect(preview.getByText("Robotics")).toBeVisible();
   await expect(preview.getByRole("heading", { name: "Certificates" })).toBeVisible();
+  // The email link is joined in the browser after load; compare only once it has been.
+  await expect(preview.locator("main").getByRole("link", { name: "koushikkamal6@gmail.com" })).toBeVisible();
   const previewMain = await preview.locator("main").innerText();
   await preview.close();
 
@@ -136,6 +138,7 @@ test("edit, save, preview, confirm and publish: the very next homepage request s
   await expect(v.getByText("Training centre · 2024")).toBeVisible();
   await expect(v.getByRole("list", { name: "Tools" }).getByRole("listitem")).toHaveText(["Multimeter", "AutoCAD"]);
   await expect(v.getByText("Logged faults")).toBeVisible();
+  await expect(v.locator("main").getByRole("link", { name: "koushikkamal6@gmail.com" })).toBeVisible();
   expect(await v.locator("main").innerText()).toBe(previewMain);
   await anon.close();
   const html = await homeHtml(request);

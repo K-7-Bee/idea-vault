@@ -86,24 +86,30 @@ const paragraphs = (value: string) => value.split(/\n{2,}/).map((p) => p.trim())
 // the homepage, private signed links in the preview). Without it, neither is shown.
 export type HomeMedia = { resumeHref?: string; photoSrc?: string };
 
-export default function HomeView({ content: c, publishedAt, media = {} }: { content: ProfileContent; publishedAt?: string; media?: HomeMedia }) {
+// Phase 4D: journalCount is the number of published journal entries; the Journal link shows only
+// when it is above 0. The root element carries it so the Vault can confirm the page has refreshed.
+export default function HomeView({ content: c, publishedAt, media = {}, journalCount = 0 }: {
+  content: ProfileContent; publishedAt?: string; media?: HomeMedia; journalCount?: number;
+}) {
   const photo = media.photoSrc && c.photo.alt ? { src: media.photoSrc, alt: c.photo.alt } : null;
   const resumeHref = c.resume.file ? media.resumeHref : undefined;
   const hasAbout = Boolean(c.about.heading || c.about.paragraphs.length || photo);
   const hasExperience = Boolean(c.timeline.length || c.focus.length || c.certificates.length);
   const hasEmail = Boolean(c.contact.email.user && c.contact.email.domain);
   // Journal is part of the planned navigation; it stays hidden until a real entry is published.
+  const journalLink = journalCount > 0 ? [{ label: "Journal", href: "/journal" }] : [];
   const nav = [
     { label: "Home", href: "#top" },
     ...(hasAbout ? [{ label: "About", href: "#about" }] : []),
     ...(hasExperience ? [{ label: "Experience", href: "#experience" }] : []),
     { label: "Projects", href: "#projects" },
+    ...journalLink,
     { label: "Contact", href: "#contact" },
   ];
   const intro = paragraphs(c.hero.intro);
 
   return (
-    <div id="top" data-published={publishedAt || undefined} className={`${portfolioFonts} portfolio font-body relative min-h-screen overflow-x-clip bg-pf-bg text-pf-ink`}>
+    <div id="top" data-published={publishedAt || undefined} data-journal={journalCount} className={`${portfolioFonts} portfolio font-body relative min-h-screen overflow-x-clip bg-pf-bg text-pf-ink`}>
       {/* Hero */}
       <section aria-label="Introduction" className="relative isolate flex min-h-[640px] flex-col overflow-hidden text-white sm:min-h-[min(92svh,860px)]">
         <Image

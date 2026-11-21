@@ -142,5 +142,5 @@ test('the preview renders the same component as the public homepage, behind the 
   assert.match(preview, /<HomeView content=\{d\.content\} media=\{media\.links\} \/>/);
   const home = read('src/app/page.tsx');
   assert.match(home, /const content = published\?\.content \?\? SEED;/);
-  assert.match(home, /<HomeView content=\{content\} publishedAt=\{published\?\.published_at\} media=\{media\} \/>/);
+  assert.match(home, /<HomeView content=\{content\} publishedAt=\{published\?\.published_at\} media=\{media\} journalCount=\{journalCount\} \/>/);
 });

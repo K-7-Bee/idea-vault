@@ -8,7 +8,7 @@ const OTHER = '22222222-2222-4222-8222-222222222222';
 const IDEA = '33333333-3333-4333-8333-333333333333';
 const FILE = '44444444-4444-4444-8444-444444444444';
 const sessions = new Map(), signed = new Map();
-let ideas, files, objects, rules, events, work, drive, google, simple, showcase, profile, library;
+let ideas, files, objects, rules, events, work, drive, google, simple, showcase, profile, library, journal;
 // Phase 3A: a synthetic Google (OAuth + the few Drive calls the app makes). Not Google.
 const DRIVE_SCOPE = 'https://www.googleapis.com/auth/drive.file';
 const FOLDER_MIME = 'application/vnd.google-apps.folder';
@@ -56,6 +56,8 @@ function reset() {
   profile = { drafts: [], published: null, versions: [] };
   // Phase 4C (migration 015): library rows, the private "library" bucket and public "profile-files".
   library = { rows: [], objects: new Map(), public: new Map() };
+  // Phase 4D (migration 016).
+  journal = { entries: [], published: [] };
   work = Object.fromEntries(WORK_TABLES.map((t) => [t, []]));
   const created_at = '2026-11-15T00:00:00.000Z';
   ideas = [{ id: IDEA, user_id: OWNER, title: null, content: 'Fixture original #test', original_content: 'Fixture original #test',
@@ -129,13 +131,21 @@ const server = http.createServer(async (req, res) => {
         if (body.googleFile) Object.assign(google.files.get(body.googleFile.id), body.googleFile.changes);
         if (body.edit) Object.assign(ideas.find((idea) => idea.id === body.edit.id), body.edit);
         if (body.googleBytes) google.files.get(body.googleBytes.id).bytes = Buffer.from(body.googleBytes.text);
+        // Phase 4D: seed projects, Lab entries and live showcases directly (test-only).
+        if (body.seed) {
+          for (const row of body.seed.projects ?? []) work.projects.push({ user_id: OWNER, archived_at: null, stage: 'building', publication_status: 'private',
+            project_type: 'engineering', created_at: new Date().toISOString(), updated_at: new Date().toISOString(), version: 1, ...row });
+          for (const row of body.seed.project_entries ?? []) work.project_entries.push({ user_id: OWNER, created_at: new Date().toISOString(), updated_at: new Date().toISOString(), version: 1, ...row });
+          for (const row of body.seed.showcases ?? []) showcase.live.push({ user_id: OWNER, category: '', summary: 'x', technologies: [], sections: [], links: [], images: [], published_at: new Date().toISOString(), ...row });
+        }
+        if (body.unpublishShowcase) showcase.live = showcase.live.filter((l) => l.project_id !== body.unpublishShowcase);
         if (body.publicFileAge) for (const o of library.public.values()) o.created_at = new Date(Date.now() - body.publicFileAge).toISOString();
         if (body.showcaseObjectAge) for (const o of showcase.objects.values()) o.created_at = new Date(Date.now() - body.showcaseObjectAge).toISOString();
         if (body.editRow) { const row = work[body.editRow.table].find((r) => r.id === body.editRow.id); Object.assign(row, body.editRow.changes); touch(row); }
         return reply(200, {});
       }
       if (url.pathname === '/_test/state') return reply(200, { ideas, files, work, drive: [...drive.values()],
-        simple, profile, library: { rows: library.rows, objects: [...library.objects].map(([path, o]) => ({ path, size: o.bytes.length, type: o.type })),
+        simple, profile, journal, library: { rows: library.rows, objects: [...library.objects].map(([path, o]) => ({ path, size: o.bytes.length, type: o.type })),
           public: [...library.public].map(([name, o]) => ({ name, size: o.bytes.length, type: o.type, sha: createHash('sha256').update(o.bytes).digest('hex') })) },
         showcase: { drafts: showcase.drafts, live: showcase.live, objects: [...showcase.objects].map(([path, o]) => ({ path, size: o.bytes.length, type: o.type })) },
         google: { revoked: google.revoked, calls: google.calls, files: [...google.files].map(([id, { bytes, ...f }]) => ({ id, ...f, stored: bytes ? bytes.length : 0 })) },
@@ -197,8 +207,14 @@ const server = http.createServer(async (req, res) => {
       event.status = 200; res.writeHead(200, { 'Content-Type': object.type }); return res.end(object.bytes);
     }
     if (url.pathname === '/storage/v1/object/list/profile-files' && req.method === 'POST' && !identity) return reply(200, []);
+    // Phase 4D: visitors read the journal only through journal_public().
+    if (url.pathname === '/rest/v1/rpc/journal_public' && ['POST', 'GET'].includes(req.method)) return journalPublic(req.method === 'POST' ? json() : {}, reply);
     if (!identity) return reply(401, { message: 'Fixture authentication required' });
     if (url.pathname === '/rest/v1/library_files') return libraryRows(url, req, json, identity.id, reply);
+    if (url.pathname === '/rest/v1/journal_entries') return journalRows(url, req, json, identity.id, reply);
+    if (url.pathname === '/rest/v1/journal_published') return journalPublishedRows(url, req, identity.id, reply);
+    if (url.pathname === '/rest/v1/rpc/publish_journal_entry' && req.method === 'POST') return publishJournal(json(), identity.id, reply);
+    if (url.pathname === '/rest/v1/rpc/unpublish_journal_entry' && req.method === 'POST') return unpublishJournal(json(), identity.id, reply);
     if (/^\/storage\/v1\/object\/(sign\/|list\/)?(library|profile-files)(\/|$)/.test(url.pathname)) return libraryStorage(url, req, bytes, json, identity.id, reply, res, event);
     if (url.pathname === '/rest/v1/profile_drafts') return profileDraftRows(url, req, json, identity.id, reply);
     if (url.pathname === '/rest/v1/profile_versions') {
@@ -856,6 +872,110 @@ async function libraryStorage(url, req, bytes, json, owner, reply, res, event) {
     return reply(200, { signedURL: sign(path) });
   }
   return reply(404, { message: 'Unsupported fixture request' });
+}
+
+// ---------- Phase 4D: journal (imitates migration 016; not PostgreSQL) ----------
+
+const JOURNAL_COLUMNS = ['id', 'slug', 'title', 'summary', 'body', 'entry_date', 'project_id', 'case_study', 'images', 'created_at', 'updated_at', 'version'];
+const JOURNAL_STATE = ['entry_id', 'slug', 'images', 'draft_version', 'published_at', 'updated_at'];
+const CASE_STUDY_SLUGS = ['waste-to-energy-lighting', 'cha-restaurant', 'idea-vault'];
+const journalSlugOk = (slug) => /^[a-z0-9]+(-[a-z0-9]+)*$/.test(slug) && slug.length >= 3 && slug.length <= 60;
+const pick = (row, columns) => Object.fromEntries(columns.map((c) => [c, row[c]]));
+
+function journalRows(url, req, json, owner, reply) {
+  const found = () => journal.entries.filter((e) => e.user_id === owner && matches(e, url.searchParams));
+  const checks = (row) => {
+    if (row.slug && !journalSlugOk(row.slug)) return 'slug';
+    if (row.case_study && !CASE_STUDY_SLUGS.includes(row.case_study)) return 'case_study';
+    if (row.case_study && row.project_id) return 'both';
+    if (!Array.isArray(row.images) || row.images.length > 4) return 'images';
+    return null;
+  };
+  if (req.method === 'GET') {
+    const rows = found().sort((a, b) => b.updated_at.localeCompare(a.updated_at)).map((e) => pick(e, JOURNAL_COLUMNS));
+    return respondRows(req, reply, rows);
+  }
+  if (req.method === 'POST') {
+    const body = json();
+    if (body.user_id !== owner) return reply(403, { code: '42501', message: 'row-level security' });
+    const now = new Date().toISOString();
+    const row = { slug: '', title: '', summary: '', body: '', entry_date: '', project_id: null, case_study: '', images: [], ...body, created_at: now, updated_at: now, version: 1 };
+    if (checks(row)) return reply(400, { code: '23514', message: `journal_entries check (${checks(row)})` });
+    journal.entries.push(row);
+    return respondRows(req, reply, [pick(row, JOURNAL_COLUMNS)]);
+  }
+  if (req.method === 'PATCH') {
+    const body = json();
+    const targets = found();
+    for (const row of targets) {
+      const next = { ...row, ...body };
+      if (checks(next)) return reply(400, { code: '23514', message: `journal_entries check (${checks(next)})` });
+      const live = journal.published.find((p) => p.entry_id === row.id);
+      if (live && next.slug !== live.slug) return reply(400, { code: '23514', message: 'This entry is published at its current address. Unpublish it before changing the address.' });
+      if (next.project_id && !work.projects.some((p) => p.id === next.project_id && p.user_id === owner)) return reply(409, { code: '23503', message: 'journal_entries_project_id_user_id_fkey' });
+    }
+    for (const row of targets) { Object.assign(row, body); touch(row); }
+    return respondRows(req, reply, targets.map((e) => pick(e, JOURNAL_COLUMNS)));
+  }
+  if (req.method === 'DELETE') {
+    const targets = found();
+    if (targets.some((e) => journal.published.some((p) => p.entry_id === e.id))) return reply(409, { code: '23503', message: 'This entry is published. Unpublish it before deleting it.' });
+    journal.entries = journal.entries.filter((e) => !targets.includes(e));
+    return respondRows(req, reply, targets.map((e) => pick(e, JOURNAL_COLUMNS)));
+  }
+  return reply(405, {});
+}
+
+function journalPublishedRows(url, req, owner, reply) {
+  if (req.method !== 'GET') return reply(401, { code: '42501', message: 'permission denied for table journal_published' });
+  const select = (url.searchParams.get('select') ?? '*').split(',').map((c) => c.trim());
+  if (select.some((c) => !JOURNAL_STATE.includes(c))) return reply(401, { code: '42501', message: 'permission denied for table journal_published' });
+  const rows = journal.published.filter((p) => p.user_id === owner && matches(p, url.searchParams)).map((p) => pick(p, select));
+  return respondRows(req, reply, rows);
+}
+
+// journal_public(): public fields only; a project is named only while its showcase is live.
+function journalPublic({ p_slug } = {}, reply) {
+  const rows = journal.published.filter((p) => !p_slug || p.slug === p_slug)
+    .sort((a, b) => b.published_at.localeCompare(a.published_at))
+    .map((p) => {
+      const live = p.project_id ? showcase.live.find((s) => s.project_id === p.project_id) : null;
+      return { slug: p.slug, title: p.title, summary: p.summary, body: p.body, entry_date: p.entry_date, images: p.images,
+        project_slug: live ? live.slug : (p.case_study || null), project_title: live ? live.title : null,
+        published_at: p.published_at, updated_at: p.updated_at };
+    });
+  return reply(200, rows);
+}
+
+function publishJournal({ p_entry, p_draft_version }, owner, reply) {
+  if (owner !== OWNER) return reply(403, { code: '42501', message: 'Only the site owner can publish journal entries.' });
+  const e = journal.entries.find((x) => x.id === p_entry && x.user_id === owner);
+  if (!e || e.version !== p_draft_version) return reply(400, { code: '40001', message: 'The entry changed since you checked it. Review it again before publishing.' });
+  if (!journalSlugOk(e.slug) || !e.title.trim() || !e.body.trim() || /<[A-Za-z/!]/.test([e.title, e.summary, e.body, e.entry_date].join(' '))) {
+    return reply(400, { code: '23514', message: 'An entry needs an address, a title and some text, in plain text without HTML tags.' });
+  }
+  if (journal.published.some((p) => p.slug === e.slug && p.entry_id !== e.id)) return reply(409, { code: '23505', message: 'Another published entry already uses this address.' });
+  const images = [];
+  for (const img of e.images) {
+    if (!img.alt.trim()) return reply(400, { code: '23514', message: 'Describe every image.' });
+    const row = library.rows.find((r) => r.id === img.file && r.user_id === owner && r.kind === 'image');
+    if (!row?.public_path || !library.public.has(row.public_path)) return reply(400, { code: '55000', message: 'An image is not ready to publish. Choose it again and retry.' });
+    images.push({ file: row.public_path, alt: img.alt.trim() });
+  }
+  const now = new Date().toISOString();
+  const existing = journal.published.find((p) => p.entry_id === e.id);
+  const snapshot = { entry_id: e.id, user_id: owner, slug: e.slug, title: e.title.trim(), summary: e.summary.trim(), body: e.body.trim(),
+    entry_date: e.entry_date.trim(), project_id: e.project_id, case_study: e.case_study, images, draft_version: e.version,
+    published_at: existing?.published_at ?? now, updated_at: now };
+  journal.published = [...journal.published.filter((p) => p.entry_id !== e.id), snapshot];
+  return reply(200, now);
+}
+
+function unpublishJournal({ p_entry }, owner, reply) {
+  if (owner !== OWNER) return reply(403, { code: '42501', message: 'Only the site owner can unpublish journal entries.' });
+  const before = journal.published.length;
+  journal.published = journal.published.filter((p) => !(p.entry_id === p_entry && p.user_id === owner));
+  return reply(200, journal.published.length < before);
 }
 
 server.listen(4317, '127.0.0.1', () => console.log('Synthetic API fixture on 127.0.0.1:4317'));
