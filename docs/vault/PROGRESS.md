@@ -907,3 +907,24 @@ Verified:
 - **Unit tests:** 197, including 7 new in `tests/export.test.mjs`: encryption round trip, wrong passphrase and tamper refused, fingerprints, the catalog comparison, the outside-repo rule, read-only queries, the export covering every table, and no Drive tokens.
 - **Browser tests:** 75, including the new `tests/browser/export.spec.ts`: download from Settings, contents, no secrets, nothing changed, cross-site and anonymous requests refused.
 - **Static checks and build:** tsc, ESLint and the build pass.
+
+## 2026-11-21 - Phase 6A live; 6B plan proposal
+
+Owner said "commit it and go live". Committed `e4b73c1` (no migration). Fast-forwarded `main` 511bee2 → e4b73c1; Vercel `dpl_HpvRsaeRy6R7GeTacXjaKZJzkBt3` READY.
+
+Smoke check:
+- `/` and `/projects` return 200; the homepage's visible text and section ids match the pre-4B baseline.
+- `/journal` is a soft 404 and `/resume` gives 404.
+- `/vault/settings` redirects to `/login`.
+- `/api/export` gives 401 anonymous and 403 cross-site, with `Cache-Control: no-store`.
+- No runtime errors.
+
+Not yet done: a backup with your own passphrase (the drill run used a one-time passphrase, and that archive was deleted). Rollback: promote `dpl_EcqBKbGuqK6vpEAS7Capapdne3Kt` (511bee2).
+
+Owner then asked to plan the next phase. Drafted the 6B section of [PHASE_6_PLAN.md](PHASE_6_PLAN.md): five enforced headers, a CSP in report-only mode (enforced in local browser tests) with a report endpoint, enforcement after a week of clean use, and turning sign-ups off. Decisions V-050 to V-053 are proposed.
+
+Read-only checks for it:
+- Only HSTS is sent live.
+- The git history (83 commits) holds no secrets.
+- `rls_auto_enable()` is Supabase's protective event trigger and isn't callable through the API.
+- The sign-up setting couldn't be read automatically and is left to the owner's dashboard check.

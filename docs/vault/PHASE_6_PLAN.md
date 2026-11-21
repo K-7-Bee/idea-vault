@@ -1,4 +1,4 @@
-# Phase 6 plan: Hardening and launch (6A approved 2026-11-21; built locally, not deployed)
+# Phase 6 plan: Hardening and launch (6A live 2026-11-21 as e4b73c1; 6B proposed below, not approved)
 
 ## 6A as built (2026-11-21, local only)
 
@@ -115,3 +115,70 @@ Master prompt, Phase F: "End-to-end tests, permissions, migrations, performance,
 ## Not in 6A
 
 Security headers and sign-up check (6B), CI, accessibility, performance and runbook (6C), scheduled cloud backups, one-click import, and backing up Drive contents.
+
+## 6B plan: security hardening (proposal 2026-11-21; not approved)
+
+### Checked before planning (2026-11-21, read-only)
+
+- **Headers on the live site:** only Vercel's HSTS. There is no X-Frame-Options or `frame-ancestors`, so any site can frame the Vault and the homepage. There is also no CSP, X-Content-Type-Options, Referrer-Policy or Permissions-Policy.
+- **Secrets in git history:** none. All 83 commits were scanned for Supabase secret and service keys, JWTs, Google API keys and client secrets, private keys, and OpenAI-style keys. The only env-style file ever committed is `.env.example`.
+- **`rls_auto_enable()`** (flagged by the 6A drill): Supabase's event-trigger function that turns on row security for every new public table. It is protective, and as an `event_trigger` function it can't be called through the API, so the execute grant exposes nothing. No change.
+- **Sign-ups:** not checked automatically. The public key wasn't found in the login page's scripts, and fetching keys through the CLI would also print the service-role key, so I didn't. **You check:** Supabase Dashboard → Authentication → Sign In / Providers → "Allow new users to sign up" should be **off**. Another account couldn't read your data (row security, the email allowlist, `site_owner`), but it could create rows of its own.
+- **What the pages need from outside:**
+  - The Supabase project (data, Storage images, signed links).
+  - Google (`apis.google.com` Picker script, the `docs.google.com` Picker frame, `www.googleapis.com` for resumable Drive uploads from the browser).
+  - The microphone for the voice recorder.
+  - Fonts are served from this site.
+  - Next's inline bootstrap scripts.
+
+### Scope
+
+1. **Headers on every response,** enforced at once:
+   - `X-Frame-Options: DENY` (no framing anywhere).
+   - `X-Content-Type-Options: nosniff`.
+   - `Referrer-Policy: strict-origin-when-cross-origin`.
+   - `Permissions-Policy: microphone=(self), camera=(), geolocation=(), payment=(), usb=(), browsing-topics=()`.
+   - `Cross-Origin-Opener-Policy: same-origin-allow-popups`.
+2. **A Content-Security-Policy, in report-only mode first:**
+   - `default-src 'self'`; `object-src 'none'`; `base-uri 'self'`; `form-action 'self'`; `frame-ancestors 'none'`.
+   - `img-src 'self' data: blob: <supabase>`; `media-src 'self' blob:`; `font-src 'self'`.
+   - `connect-src 'self' <supabase> https://www.googleapis.com`; `frame-src https://docs.google.com`.
+   - `script-src 'self' 'unsafe-inline' https://apis.google.com`; `style-src 'self' 'unsafe-inline'`.
+   - `worker-src 'self'`; `upgrade-insecure-requests`.
+3. **A violation report endpoint** (`/api/csp-report`): logs one short line per report (directive and blocked origin only; no page query strings, no personal data) to Vercel's runtime logs, capped per request.
+4. **Browser tests enforce the CSP locally.** The fixture build serves the same policy enforced rather than report-only, and every browser test fails if the page raises a `securitypolicyviolation`. So the whole suite checks the policy from day one.
+5. **Enforcing on the live site** is a one-line switch, done as a short follow-up after about a week of normal use (Picker, uploads, recorder, assistant) with no unexplained reports.
+
+### Decisions needed
+
+| ID | Question | Recommendation |
+| --- | --- | --- |
+| V-050 | Headers to enforce now | The five in Scope 1. `same-origin-allow-popups` keeps Google's popups and the Picker working. |
+| V-051 | How strict the CSP is on scripts | `'self' 'unsafe-inline'` plus Google's Picker host, without nonces. This Next version can only add nonces to pages rendered per request, which would make the homepage and every static page dynamic (slower, and more Vercel work). The policy still blocks scripts from any other site, plugins, framing, base-tag tricks and form posts elsewhere. The app has no `dangerouslySetInnerHTML`, and all text is rendered as text. |
+| V-052 | Rollout | Report-only on the live site plus enforced in the local browser tests, then enforce live after a week of clean reports (a separate small go-live). The alternative, enforcing at once, risks breaking the Picker or uploads in ways the fixture can't show. |
+| V-053 | Sign-ups | You turn off "Allow new users to sign up" in the Supabase dashboard. I then confirm it from the public Auth settings once the key is available from the deployed page. |
+
+### Files (expected)
+
+| Kind | Files |
+| --- | --- |
+| Changed | `next.config.ts` (`headers()` for all routes; CSP built from `NEXT_PUBLIC_SUPABASE_URL`; report-only or enforced through `CSP_ENFORCE`), `tests/browser/app-server.mjs` (`CSP_ENFORCE=1` for tests), the browser specs' shared setup (fail on CSP violations) |
+| New | `src/lib/security-headers.ts` (builds the header list; unit-tested), `src/app/api/csp-report/route.ts`, `tests/security-headers.test.mjs` |
+
+### Risks
+
+- **Breaking a feature with a missed origin.** Report-only on the live site; enforced and watched in all 75+ browser tests. The Google Picker and Drive uploads can only be fully proven live, which is why enforcement waits for real use.
+- **Report endpoint abuse.** It accepts small JSON bodies only (8 KB cap), logs two short fields, and stores nothing.
+- **`'unsafe-inline'` scripts** leave inline-script XSS less contained than nonces would. That is accepted while pages are static; revisit if any feature ever renders HTML.
+
+### Acceptance tests
+
+1. Every live response carries the five headers, and `/`, `/vault/*` and `/api/*` all refuse framing.
+2. Every browser test passes with the CSP enforced and no violations.
+3. The live site serves the CSP report-only and the report endpoint logs a test report.
+4. Homepage, projects, journal and the Vault still work; `/` stays static.
+5. Sign-ups are off (owner screenshot or public settings check).
+
+### Rollback
+
+Promote the previous deployment; headers live only in `next.config.ts`. No database change.
