@@ -1,4 +1,4 @@
-# Slice 4B plan: Portfolio Manager — profile (approved 2026-11-21 with all recommendations; built locally, not deployed)
+# Slice 4B plan: Portfolio Manager — profile (approved 2026-11-21 with all recommendations; live 2026-11-21 as 360ff75)
 
 ## As built (2026-11-21, local only)
 

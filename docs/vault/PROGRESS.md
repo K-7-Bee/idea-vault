@@ -610,3 +610,24 @@ Verified locally:
 - **Static checks:** `/` is still prerendered (○, revalidate 30d) in the build output; tsc, ESLint and `git diff --check` pass.
 
 Not verified: real Supabase (014 not applied), Vercel's handling of `revalidateTag(..., 'max')` and its CDN purge for `/`, the editor's live confirmation against the real site, and a build against the real database. Not committed, not applied, not deployed. Deploy order: apply 014, then deploy; a deploy before 014 fails its build because `/` reads `profile_published` while prerendering.
+
+## 2026-11-21 - Phase 4B live
+
+Owner said "commit it and go live". Re-ran tsc, ESLint and the unit tests (166 pass), then committed `360ff75`. Read-only production pre-check: exactly 1 Auth account; 2 ideas, 2 idea files, 2 projects, 4 project files, 0 showcases, 0 storage objects; no 4B tables or functions. Applied `014_profile.sql` via Supabase CLI `db query --remote=<ref> --yes --file`.
+
+Read-only post-check:
+- `site_owner` has 1 row, and it is the one Auth account.
+- RLS is on for all four new tables.
+- Anon may select only `content` and `published_at` on `profile_published` (not `user_id` or `version`), and nothing on drafts, history or `site_owner`; authenticated has no access to `site_owner`.
+- Nobody has insert or update on `profile_published` or `profile_versions`.
+- `publish_profile` is security definer and executable by authenticated only; `profile_content_problem` is not executable by authenticated.
+- The draft touch trigger is present; 0 published rows; data counts unchanged.
+
+Fast-forwarded `main` ac3e2f9 → 360ff75 (no force); Vercel `dpl_AF4A7YGHeqChTLaYVFiM32423Jpf` READY in `icn1`. Smoke check:
+- `/` and `/projects` return 200.
+- `/` serves the seed, with no `data-published` attribute and the title unchanged. Its visible text, links and section ids match the pre-4B local baseline; the only difference is the favicon build hash.
+- `/vault/portfolio`, the profile editor and the preview redirect to `/login`.
+- `/api/profile/publish` gives 403 cross-origin and 401 without a session.
+- No runtime errors.
+
+Not yet verified live: a real save and publish by the owner, Vercel's handling of `revalidateTag('profile', 'max')` (the homepage refresh and the editor's "shows it now" check), and restore from history. Rollback: promote `dpl_FaNwUEEQ6arkJQuBvRsqK6bJknGM` (ac3e2f9), then `revoke select on public.profile_published from anon`; the tables can stay.
