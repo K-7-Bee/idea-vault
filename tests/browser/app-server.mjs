@@ -12,7 +12,10 @@ const env = { ...process.env, VAULT_E2E: '1', NEXT_TELEMETRY_DISABLED: '1',
   DRIVE_GOOGLE_ACCOUNT: '',
   // Phase 5A: the assistant on, against the fixture's fake Gemini (never the real one).
   AI_ENABLED: '1', GEMINI_API_KEY: 'fixture-gemini-key-never-in-the-browser', GEMINI_TEST_BASE: 'http://127.0.0.1:4317/gemini',
-  GEMINI_MODEL: '', AI_MONTHLY_USD: '5', AI_DAILY_REQUESTS: '40', NEXT_PUBLIC_GOOGLE_PICKER_API_KEY: 'fixture-picker-key', NEXT_PUBLIC_GOOGLE_APP_ID: '1', DRIVE_UPLOADS_ENABLED: '1' };
+  GEMINI_MODEL: '', AI_MONTHLY_USD: '5', AI_DAILY_REQUESTS: '40',
+  // Phase 6B: the Content-Security-Policy enforced (not report-only); violations go to the fixture,
+  // and tests/browser/zz-csp.spec.ts fails the run if any test caused one.
+  CSP_ENFORCE: '1', CSP_REPORT_URI: 'http://127.0.0.1:4317/_csp-report', NEXT_PUBLIC_GOOGLE_PICKER_API_KEY: 'fixture-picker-key', NEXT_PUBLIC_GOOGLE_APP_ID: '1', DRIVE_UPLOADS_ENABLED: '1' };
 let child;
 const run = (args) => new Promise((resolve, reject) => {
   child = spawn(process.execPath, ['node_modules/next/dist/bin/next', ...args], { env, stdio: 'inherit', windowsHide: true });

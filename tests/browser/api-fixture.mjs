@@ -8,6 +8,8 @@ const OTHER = '22222222-2222-4222-8222-222222222222';
 const IDEA = '33333333-3333-4333-8333-333333333333';
 const FILE = '44444444-4444-4444-8444-444444444444';
 const sessions = new Map(), signed = new Map();
+// Phase 6B: CSP violation reports from the app; kept for the whole run (never reset).
+const cspReports = [];
 let ideas, files, objects, rules, events, work, drive, google, simple, showcase, profile, library, journal, ai;
 // Phase 3A: a synthetic Google (OAuth + the few Drive calls the app makes). Not Google.
 const DRIVE_SCOPE = 'https://www.googleapis.com/auth/drive.file';
@@ -122,6 +124,10 @@ const server = http.createServer(async (req, res) => {
     const chunks = []; for await (const chunk of req) chunks.push(chunk);
     const bytes = Buffer.concat(chunks);
     const json = () => bytes.length ? JSON.parse(bytes.toString()) : {};
+    if (url.pathname === '/_csp-report' && req.method === 'POST') {
+      try { const body = json(); cspReports.push(body['csp-report'] ?? body); } catch { cspReports.push({ unparsed: bytes.toString().slice(0, 200) }); }
+      return reply(204);
+    }
     if (url.pathname.startsWith('/_test/')) {
       if (req.headers['x-fixture-key'] !== 'local-synthetic-test-control') return reply(403, {});
       if (url.pathname === '/_test/reset') { reset(); return reply(200, {}); }
@@ -154,7 +160,7 @@ const server = http.createServer(async (req, res) => {
         return reply(200, {});
       }
       if (url.pathname === '/_test/state') return reply(200, { ideas, files, work, drive: [...drive.values()],
-        simple, profile, journal, ai, library: { rows: library.rows, objects: [...library.objects].map(([path, o]) => ({ path, size: o.bytes.length, type: o.type })),
+        csp: cspReports, simple, profile, journal, ai, library: { rows: library.rows, objects: [...library.objects].map(([path, o]) => ({ path, size: o.bytes.length, type: o.type })),
           public: [...library.public].map(([name, o]) => ({ name, size: o.bytes.length, type: o.type, sha: createHash('sha256').update(o.bytes).digest('hex') })) },
         showcase: { drafts: showcase.drafts, live: showcase.live, objects: [...showcase.objects].map(([path, o]) => ({ path, size: o.bytes.length, type: o.type })) },
         google: { revoked: google.revoked, calls: google.calls, files: [...google.files].map(([id, { bytes, ...f }]) => ({ id, ...f, stored: bytes ? bytes.length : 0 })) },

@@ -122,3 +122,14 @@ Owner replied "approve 6A" to [PHASE_6_PLAN.md](PHASE_6_PLAN.md), accepting ever
 | V-047 | Frequency | Before every migration or go-live (now step 1 of each), and weekly by the owner's own reminder. |
 | V-048 | Supabase plan | Not needed. The owner checks Billing to know whether Supabase also keeps its own daily backups. |
 | V-049 | Download my data | Settings → Download my data: `GET /api/export`, owner-only, read-only, `no-store`, cross-site requests refused. A JSON of every table the account can read, with file names, sizes and paths but no bytes, and no Drive tokens. No import. |
+
+## Phase 6B decisions (2026-11-21, in conversation)
+
+Owner replied "approve 6B" to the 6B section of [PHASE_6_PLAN.md](PHASE_6_PLAN.md), accepting every recommendation.
+
+| ID | Question | Answer |
+| --- | --- | --- |
+| V-050 | Headers enforced now | `X-Frame-Options: DENY`, `X-Content-Type-Options: nosniff`, `Referrer-Policy: strict-origin-when-cross-origin`, `Permissions-Policy` (microphone for this site only; camera, location, payment, USB and topics off), `Cross-Origin-Opener-Policy: same-origin-allow-popups`. On every response, from `next.config.ts`. |
+| V-051 | CSP strictness | Scripts allowed from `'self'` with `'unsafe-inline'` plus `https://apis.google.com`, without nonces, so pages stay static. Everything else is limited to this site, the Supabase project and Google's Picker and upload hosts. No framing, plugins or foreign form targets. |
+| V-052 | Rollout | Report-only on the live site (`Content-Security-Policy-Report-Only`, reports to `/api/csp-report`, which logs only the directive and blocked origin). Enforced in the local browser build, where any violation fails the run. Enforce live with `CSP_ENFORCE=1` after about a week of clean reports. |
+| V-053 | Sign-ups | The owner turns off "Allow new users to sign up" in the Supabase dashboard; confirmation pending. |

@@ -1,4 +1,11 @@
 import type { NextConfig } from "next";
+import { securityHeaders } from "./src/lib/security-headers";
+
+// Phase 6B: the protective headers go on every response. The site CSP goes everywhere except
+// /api/drive/file/*, which serves Drive files with its own stricter "default-src 'none'; sandbox"
+// policy that must not be replaced (the Drive browser test caught this).
+const headers = securityHeaders();
+const isCsp = (h: { key: string }) => h.key.startsWith("Content-Security-Policy");
 
 const nextConfig: NextConfig = {
   // Browser acceptance builds must never replace the deployable production output.
@@ -7,6 +14,8 @@ const nextConfig: NextConfig = {
   partialPrefetching: true,
   async headers() {
     return [
+      { source: "/:path*", headers: headers.filter((h) => !isCsp(h)) },
+      { source: "/((?!api/drive/file/).*)", headers: headers.filter(isCsp) },
       {
         // Browsers must always re-check the service worker so updates arrive.
         source: "/sw.js",

@@ -111,6 +111,9 @@ test("write, preview and publish an entry: /journal and the homepage link appear
   await expect(v).toHaveURL(/\/journal\/why-my-fuse-blew$/);
   await expect(v.getByText("The inrush current was not.")).toBeVisible();
   await v.reload(); // a fresh load, so the list page's <main> is gone before comparing
+  // Wait until the streamed entry has replaced the loading placeholder (also a <main>).
+  await expect(v.locator("main")).toHaveCount(1);
+  await expect(v.locator("main")).toContainText("The inrush current was not.");
   expect(await v.locator("main").innerText()).toBe(previewMain);
 
   await page.getByRole("button", { name: "Unpublish", exact: true }).click();

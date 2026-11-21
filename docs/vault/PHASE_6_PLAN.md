@@ -1,4 +1,4 @@
-# Phase 6 plan: Hardening and launch (6A live 2026-11-21 as e4b73c1; 6B proposed below, not approved)
+# Phase 6 plan: Hardening and launch (6A live 2026-11-21 as e4b73c1; 6B approved 2026-11-21, built locally)
 
 ## 6A as built (2026-11-21, local only)
 
@@ -182,3 +182,18 @@ Security headers and sign-up check (6B), CI, accessibility, performance and runb
 ### Rollback
 
 Promote the previous deployment; headers live only in `next.config.ts`. No database change.
+
+### 6B as built (2026-11-21, local only)
+
+Built as planned, with these differences:
+
+- **The Drive file route keeps its own policy.** `/api/drive/file/*` already served Drive files with `Content-Security-Policy: default-src 'none'; sandbox`, so a served file can't run scripts. The first site-wide header replaced it; the existing Drive browser test caught that. The site CSP now applies to every route except that one. The five protective headers still apply everywhere, and a test checks the route keeps its sandbox.
+- **Proof that "no violations" means something.** The final spec (`tests/browser/zz-csp.spec.ts`) first asserts the whole suite produced no reports. It then injects a blocked image and confirms the report arrives, so a silent reporting pipeline can't pass for a clean one.
+- **Development builds** add `'unsafe-eval'` and `ws:` (Next's hot reload needs them). Production and test builds don't. `upgrade-insecure-requests` is added only when the Supabase URL is https, so local http test builds still work.
+- **A timing race** in the journal browser test (the loading placeholder briefly coexisting with the content) is fixed by waiting for the content. It was not caused by the CSP.
+
+Files:
+- **New:** `src/lib/security-headers.ts`, `src/app/api/csp-report/route.ts`, `tests/security-headers.test.mjs`, `tests/browser/zz-csp.spec.ts`.
+- **Changed:** `next.config.ts`, `tests/browser/app-server.mjs` (enforced CSP; reports to the fixture), `tests/browser/api-fixture.mjs` (collects reports for the whole run), `tests/browser/vault-journal.spec.ts`.
+
+**Enforcing later:** in Vercel, add `CSP_ENFORCE=1` (Production) and redeploy. **Rollback:** promote the previous deployment, or remove `CSP_ENFORCE`.

@@ -928,3 +928,21 @@ Read-only checks for it:
 - The git history (83 commits) holds no secrets.
 - `rls_auto_enable()` is Supabase's protective event trigger and isn't callable through the API.
 - The sign-up setting couldn't be read automatically and is left to the owner's dashboard check.
+
+## 2026-11-21 - Slice 6B built locally (security headers, CSP)
+
+Owner replied "approve 6B". Built:
+- Five protective headers on every response.
+- A Content-Security-Policy: report-only on the live site, enforced in the local browser build.
+- `/api/csp-report`, which logs only the directive and the blocked origin.
+
+Details are in [PHASE_6_PLAN.md](PHASE_6_PLAN.md) "6B as built" and [DECISIONS.md](DECISIONS.md).
+
+Found by tests and fixed: the site-wide CSP replaced the Drive file route's own `default-src 'none'; sandbox` policy; the existing Drive browser test caught it. The site CSP now skips `/api/drive/file/*`, and a test checks that route keeps its sandbox. Also fixed a timing race in the journal browser test (not caused by the CSP).
+
+Verified locally:
+- **Browser tests:** 80, with the CSP enforced on every page. The suite produced zero violation reports, and a deliberate violation is blocked and reported, so the reporting works. Headers are checked on `/`, `/projects`, `/journal`, `/login`, `/vault`, `/api/export` and `/sw.js`.
+- **Unit tests:** 202, including 5 in `tests/security-headers.test.mjs`.
+- **Static checks and build:** tsc, ESLint and the build pass, and `/` stays static.
+
+Not verified: the live Google Picker, Drive uploads from the browser, and the recorder under the policy (live reports will show them); the sign-up setting (owner). Not committed, not deployed.
