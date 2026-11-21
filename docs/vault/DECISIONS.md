@@ -96,3 +96,17 @@ Owner replied "approve 4D" to [PHASE_4D_PLAN.md](PHASE_4D_PLAN.md), accepting ev
 | V-035 | Images | Up to 4 images from the 4C library, each needing a description. Public copies have no metadata. Clean-up keeps any copy the profile or a published entry uses, and the database refuses deleting a library file that a journal draft uses. |
 | V-036 | Start from a Lab entry | Included, as a one-time copy into the draft. Built inside the entry editor: once a project is chosen, its Lab entries are listed with "Copy into this entry". |
 | V-037 | Addresses | `/journal/<slug>`, 3 to 60 lowercase letters, digits and single dashes, suggested from the title. The database refuses changing the address of a published entry; unpublish first. Two published entries can't share an address. |
+
+## Phase 5A decisions (2026-11-21, in conversation)
+
+Owner replied "approve 5A" to [PHASE_5_PLAN.md](PHASE_5_PLAN.md), accepting every recommendation. V-044's age confirmation (18 or older, per the Gemini API terms) was not stated explicitly; it is asked for before go-live. Refinements made while building are in the plan's "As built" section.
+
+| ID | Question | Answer |
+| --- | --- | --- |
+| V-038 | Tier | Paid tier only: a billing-enabled Google Cloud project. On the free tier, Google uses prompts to improve products and human reviewers may read them. |
+| V-039 | Model | `gemini-3.8-flash` (stable) by default, overridable with `GEMINI_MODEL`. A model with no known price is refused. |
+| V-040 | Limits | $5 per UTC calendar month and 40 questions per UTC day, from the `ai_usage` ledger, which the owner can't edit. The worst case (estimated input plus the 2,048-token answer cap plus a 4,096-token thinking allowance) is checked before each call. A timed-out request counts at its worst case; other failures count as zero. Plus a Google Cloud budget alert, set by the owner. |
+| V-041 | Context | Only records ticked in one project's Assistant tab. The server reads them again from the database, so the browser sends ids only. Records only: no files or Drive content. At most about 30k tokens. |
+| V-042 | Conversations | Kept privately per project and deletable singly or all at once. Records are stored as labels and ids, not their text. Usage stays after deletion because it is the cap's record. |
+| V-043 | Read-only | Yes. No tools or function calling; the route writes only the conversation and the ledger. |
+| V-044 | Terms and key | The owner creates the key and adds it to Vercel; it is never pasted in chat or committed. The age confirmation is pending. |

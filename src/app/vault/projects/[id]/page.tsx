@@ -7,7 +7,9 @@ import { driveUploadsEnabled } from "@/lib/drive/files";
 import { PROJECT_FILE_COLUMNS } from "@/lib/drive/targets";
 import type { ProjectFile } from "@/lib/project-files";
 import { DRAFT_COLUMNS, type LiveShowcase, type ShowcaseDraft } from "@/lib/showcase";
+import { aiSettings } from "@/lib/ai/limits";
 import VaultShell from "../../vault-shell";
+import type { AssistantConfig } from "./assistant-panel";
 import ProjectWorkspace from "./project-workspace";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -71,6 +73,22 @@ async function ProjectContent({ id }: { id: string }) {
   if (lists.some((r) => !r || r.error || !r.data) || !projectFiles || projectFiles.error || !projectFiles.data
     || !showcaseDraft || showcaseDraft.error || !liveShowcase || liveShowcase.error) return <LoadError id={id} />;
 
+  // Phase 5A: the assistant's limits and this project's saved conversations, when it is switched on.
+  const ai = aiSettings();
+  let assistant: AssistantConfig | null = null;
+  if (ai.enabled) {
+    const [usage, convos] = await Promise.all([
+      supabase.rpc("ai_usage_now").then((r) => r, () => null),
+      supabase.from("ai_conversations").select("id, mode, title, updated_at").eq("project_id", id).eq("user_id", owner.id)
+        .order("updated_at", { ascending: false }).limit(50).then((r) => r, () => null),
+    ]);
+    const now = usage && !usage.error && Array.isArray(usage.data) ? usage.data[0] as { month_usd: number | string; today_requests: number } | undefined : undefined;
+    if (now && convos && !convos.error && Array.isArray(convos.data)) {
+      assistant = { model: ai.model, monthlyUsd: ai.monthlyUsd, dailyRequests: ai.dailyRequests, monthUsd: Number(now.month_usd),
+        todayRequests: now.today_requests, conversations: convos.data as AssistantConfig["conversations"] };
+    }
+  }
+
   const records = Object.fromEntries(ALL_TABLES.map((table, i) => [table, lists[i]!.data as Row[]])) as Record<TableName, Row[]>;
   const truncated = ALL_TABLES.filter((table) => records[table].length >= RECORD_LIMIT);
   const idea = sourceIdea && !sourceIdea.error && sourceIdea.data
@@ -81,6 +99,7 @@ async function ProjectContent({ id }: { id: string }) {
     <ProjectWorkspace ownerId={owner.id} initialProject={data} initialRecords={records} sourceIdea={idea} truncated={truncated}
       initialFiles={projectFiles.data as unknown as ProjectFile[]} driveUploads={driveUploadsEnabled()}
       showcase={{ draft: (showcaseDraft.data as unknown as ShowcaseDraft | null) ?? null, live: (liveShowcase.data as LiveShowcase | null) ?? null }}
-      picker={{ apiKey: process.env.NEXT_PUBLIC_GOOGLE_PICKER_API_KEY ?? "", appId: process.env.NEXT_PUBLIC_GOOGLE_APP_ID ?? "" }} />
+      picker={{ apiKey: process.env.NEXT_PUBLIC_GOOGLE_PICKER_API_KEY ?? "", appId: process.env.NEXT_PUBLIC_GOOGLE_APP_ID ?? "" }}
+      assistant={assistant} />
   );
 }

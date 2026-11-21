@@ -6,6 +6,8 @@ import { verifiedOwner } from "@/lib/vault-owner";
 import SessionBoundary from "../session-boundary";
 import VaultShell from "../vault-shell";
 import DriveSettings from "./drive-settings";
+import AiSettings from "./ai-settings";
+import { aiSettings } from "@/lib/ai/limits";
 
 type Search = Promise<Record<string, string | string[] | undefined>>;
 
@@ -25,7 +27,17 @@ async function SettingsContent({ result }: { result: string | string[] | undefin
   if (!owner) {
     return <section role="alert">Unable to verify your account. <a href="/login">Log in again</a></section>;
   }
-  const status = await currentDriveStatus(supabase, owner.id);
+  const [status, usage, convos] = await Promise.all([
+    currentDriveStatus(supabase, owner.id),
+    // Phase 5A: assistant usage this month and saved conversations (both owner-only).
+    supabase.rpc("ai_usage_now").then((r) => r, () => null),
+    supabase.from("ai_conversations").select("id", { count: "exact", head: true }).eq("user_id", owner.id).then((r) => r, () => null),
+  ]);
+  const ai = aiSettings();
+  const now = usage && !usage.error && Array.isArray(usage.data) ? usage.data[0] as { month_usd: number | string; today_requests: number } | undefined : undefined;
+  const monthUsd = now ? Number(now.month_usd) : null;
+  const todayRequests = now ? now.today_requests : null;
+  const aiState = !ai.enabled ? "off" : (todayRequests !== null && todayRequests >= ai.dailyRequests) || (monthUsd !== null && monthUsd >= ai.monthlyUsd) ? "paused" : "on";
   const known = typeof result === "string" && (CALLBACK_RESULTS as readonly string[]).includes(result)
     ? (result as CallbackResult) : null;
   return (
@@ -41,6 +53,10 @@ async function SettingsContent({ result }: { result: string | string[] | undefin
             appId: process.env.NEXT_PUBLIC_GOOGLE_APP_ID ?? "",
           }}
         />
+        <AiSettings ownerId={owner.id} status={{
+          state: aiState, reason: ai.reason, model: ai.model, monthlyUsd: ai.monthlyUsd, dailyRequests: ai.dailyRequests,
+          monthUsd, todayRequests, conversations: convos && !convos.error ? convos.count ?? 0 : null,
+        }} />
       </section>
     </SessionBoundary>
   );

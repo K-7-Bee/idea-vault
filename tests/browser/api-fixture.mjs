@@ -8,7 +8,7 @@ const OTHER = '22222222-2222-4222-8222-222222222222';
 const IDEA = '33333333-3333-4333-8333-333333333333';
 const FILE = '44444444-4444-4444-8444-444444444444';
 const sessions = new Map(), signed = new Map();
-let ideas, files, objects, rules, events, work, drive, google, simple, showcase, profile, library, journal;
+let ideas, files, objects, rules, events, work, drive, google, simple, showcase, profile, library, journal, ai;
 // Phase 3A: a synthetic Google (OAuth + the few Drive calls the app makes). Not Google.
 const DRIVE_SCOPE = 'https://www.googleapis.com/auth/drive.file';
 const FOLDER_MIME = 'application/vnd.google-apps.folder';
@@ -58,6 +58,8 @@ function reset() {
   library = { rows: [], objects: new Map(), public: new Map() };
   // Phase 4D (migration 016).
   journal = { entries: [], published: [] };
+  // Phase 5A (migration 017) and the fake Gemini.
+  ai = { conversations: [], messages: [], usage: [], requests: [], reply: {} };
   work = Object.fromEntries(WORK_TABLES.map((t) => [t, []]));
   const created_at = '2026-11-15T00:00:00.000Z';
   ideas = [{ id: IDEA, user_id: OWNER, title: null, content: 'Fixture original #test', original_content: 'Fixture original #test',
@@ -134,10 +136,17 @@ const server = http.createServer(async (req, res) => {
         // Phase 4D: seed projects, Lab entries and live showcases directly (test-only).
         if (body.seed) {
           for (const row of body.seed.projects ?? []) work.projects.push({ user_id: OWNER, archived_at: null, stage: 'building', publication_status: 'private',
-            project_type: 'engineering', created_at: new Date().toISOString(), updated_at: new Date().toISOString(), version: 1, ...row });
+            project_type: 'engineering', summary: '', goals: '', source_idea_id: null, next_action: null,
+            created_at: new Date().toISOString(), updated_at: new Date().toISOString(), version: 1, ...row });
+          // Phase 5A: any other project table too.
+          for (const table of WORK_TABLES.filter((t) => !['projects', 'project_entries'].includes(t))) {
+            for (const row of body.seed[table] ?? []) work[table].push({ user_id: OWNER, created_at: new Date().toISOString(), updated_at: new Date().toISOString(), version: 1, ...row });
+          }
           for (const row of body.seed.project_entries ?? []) work.project_entries.push({ user_id: OWNER, created_at: new Date().toISOString(), updated_at: new Date().toISOString(), version: 1, ...row });
           for (const row of body.seed.showcases ?? []) showcase.live.push({ user_id: OWNER, category: '', summary: 'x', technologies: [], sections: [], links: [], images: [], published_at: new Date().toISOString(), ...row });
         }
+        if (body.gemini) ai.reply = body.gemini;
+        if (body.aiUsage) ai.usage.push({ user_id: OWNER, model: 'gemini-3.8-flash', input_tokens: 0, output_tokens: 0, outcome: 'ok', created_at: new Date().toISOString(), ...body.aiUsage });
         if (body.unpublishShowcase) showcase.live = showcase.live.filter((l) => l.project_id !== body.unpublishShowcase);
         if (body.publicFileAge) for (const o of library.public.values()) o.created_at = new Date(Date.now() - body.publicFileAge).toISOString();
         if (body.showcaseObjectAge) for (const o of showcase.objects.values()) o.created_at = new Date(Date.now() - body.showcaseObjectAge).toISOString();
@@ -145,7 +154,7 @@ const server = http.createServer(async (req, res) => {
         return reply(200, {});
       }
       if (url.pathname === '/_test/state') return reply(200, { ideas, files, work, drive: [...drive.values()],
-        simple, profile, journal, library: { rows: library.rows, objects: [...library.objects].map(([path, o]) => ({ path, size: o.bytes.length, type: o.type })),
+        simple, profile, journal, ai, library: { rows: library.rows, objects: [...library.objects].map(([path, o]) => ({ path, size: o.bytes.length, type: o.type })),
           public: [...library.public].map(([name, o]) => ({ name, size: o.bytes.length, type: o.type, sha: createHash('sha256').update(o.bytes).digest('hex') })) },
         showcase: { drafts: showcase.drafts, live: showcase.live, objects: [...showcase.objects].map(([path, o]) => ({ path, size: o.bytes.length, type: o.type })) },
         google: { revoked: google.revoked, calls: google.calls, files: [...google.files].map(([id, { bytes, ...f }]) => ({ id, ...f, stored: bytes ? bytes.length : 0 })) },
@@ -161,6 +170,7 @@ const server = http.createServer(async (req, res) => {
       drop = rule.mode === 'drop-after';
     }
     if (url.pathname.startsWith('/google/')) return googleRequest(url, req, bytes, reply, res, event);
+    if (url.pathname.startsWith('/gemini/')) return fakeGemini(url, req, json, reply);
     const token = req.headers.authorization?.replace(/^Bearer /i, '');
     const identity = sessions.get(token);
     if (url.pathname === '/auth/v1/token') {
@@ -212,6 +222,11 @@ const server = http.createServer(async (req, res) => {
     if (!identity) return reply(401, { message: 'Fixture authentication required' });
     if (url.pathname === '/rest/v1/library_files') return libraryRows(url, req, json, identity.id, reply);
     if (url.pathname === '/rest/v1/journal_entries') return journalRows(url, req, json, identity.id, reply);
+    if (url.pathname === '/rest/v1/ai_conversations') return aiConversationRows(url, req, json, identity.id, reply, res, event);
+    if (url.pathname === '/rest/v1/ai_messages') return aiMessageRows(url, req, json, identity.id, reply);
+    if (url.pathname === '/rest/v1/ai_usage') return reply(200, ai.usage.filter((u) => u.user_id === identity.id));
+    if (url.pathname === '/rest/v1/rpc/ai_usage_now') return aiUsageNow(identity.id, reply);
+    if (url.pathname === '/rest/v1/rpc/record_ai_usage' && req.method === 'POST') return recordAiUsage(json(), identity.id, reply);
     if (url.pathname === '/rest/v1/journal_published') return journalPublishedRows(url, req, identity.id, reply);
     if (url.pathname === '/rest/v1/rpc/publish_journal_entry' && req.method === 'POST') return publishJournal(json(), identity.id, reply);
     if (url.pathname === '/rest/v1/rpc/unpublish_journal_entry' && req.method === 'POST') return unpublishJournal(json(), identity.id, reply);
@@ -976,6 +991,104 @@ function unpublishJournal({ p_entry }, owner, reply) {
   const before = journal.published.length;
   journal.published = journal.published.filter((p) => !(p.entry_id === p_entry && p.user_id === owner));
   return reply(200, journal.published.length < before);
+}
+
+// ---------- Phase 5A: assistant (imitates migration 017 and Gemini's generateContent; not real) ----------
+
+const AI_KEY = 'fixture-gemini-key-never-in-the-browser';
+
+// A fake Gemini: records exactly what it was sent, and answers citing the first record label it was
+// given (or a reply the test chose). Usage counts are derived from the request size.
+async function fakeGemini(url, req, json, reply) {
+  const match = url.pathname.match(/^\/gemini\/v1beta\/models\/([^/:]+):generateContent$/);
+  if (!match || req.method !== 'POST') return reply(404, { error: { message: 'not found' } });
+  const body = json();
+  ai.requests.push({ model: decodeURIComponent(match[1]), key: req.headers['x-goog-api-key'] ?? null, query: url.search, body });
+  if (req.headers['x-goog-api-key'] !== AI_KEY) return reply(403, { error: { code: 403, message: 'API key not valid' } });
+  if (ai.reply.delay) await new Promise((resolve) => setTimeout(resolve, ai.reply.delay));
+  if (ai.reply.status) return reply(ai.reply.status, { error: { code: ai.reply.status, message: 'Synthetic failure' } });
+  const last = body.contents?.at(-1)?.parts?.[0]?.text ?? '';
+  const first = last.match(/^\[([A-Z]{1,2}\d+)\]/m)?.[1] ?? 'P1';
+  const text = ai.reply.text ?? `According to the records, this comes from [${first}].`;
+  const prompt = JSON.stringify(body).length;
+  return reply(200, {
+    candidates: [{ content: { role: 'model', parts: [{ text }] }, finishReason: ai.reply.finish ?? 'STOP' }],
+    usageMetadata: { promptTokenCount: Math.ceil(prompt / 4), candidatesTokenCount: 100, thoughtsTokenCount: 20, totalTokenCount: Math.ceil(prompt / 4) + 120 },
+  });
+}
+
+function aiConversationRows(url, req, json, owner, reply, res, event) {
+  const found = () => ai.conversations.filter((c) => c.user_id === owner && matches(c, url.searchParams));
+  const cols = (c) => ({ id: c.id, project_id: c.project_id, mode: c.mode, title: c.title, updated_at: c.updated_at });
+  if (req.method === 'HEAD' || (req.method === 'GET' && req.headers.prefer?.includes('count=exact'))) {
+    const n = found().length;
+    event.status = 200;
+    res.writeHead(200, { 'Content-Type': 'application/json', 'Content-Range': `0-${Math.max(0, n - 1)}/${n}` });
+    return res.end(req.method === 'HEAD' ? undefined : JSON.stringify(found().map(cols)));
+  }
+  if (req.method === 'GET') return respondRows(req, reply, found().sort((a, b) => b.updated_at.localeCompare(a.updated_at)).map(cols));
+  if (req.method === 'POST') {
+    const body = json();
+    if (body.user_id !== owner) return reply(403, { code: '42501', message: 'row-level security' });
+    if (!['engineering', 'story', 'planning'].includes(body.mode)) return reply(400, { code: '23514', message: 'mode' });
+    if (!work.projects.some((p) => p.id === body.project_id && p.user_id === owner)) return reply(409, { code: '23503', message: 'project' });
+    const now = new Date().toISOString();
+    const row = { id: randomUUID(), title: '', ...body, created_at: now, updated_at: now };
+    ai.conversations.push(row);
+    return respondRows(req, reply, [cols(row)]);
+  }
+  if (req.method === 'PATCH') {
+    const body = json();
+    if (Object.keys(body).some((k) => !['title', 'updated_at'].includes(k))) return reply(401, { code: '42501', message: 'permission denied' });
+    const targets = found(); for (const c of targets) Object.assign(c, body);
+    return respondRows(req, reply, targets.map(cols));
+  }
+  if (req.method === 'DELETE') {
+    const targets = found();
+    ai.conversations = ai.conversations.filter((c) => !targets.includes(c));
+    ai.messages = ai.messages.filter((m) => !targets.some((c) => c.id === m.conversation_id));
+    return respondRows(req, reply, targets.map(cols));
+  }
+  return reply(405, {});
+}
+
+let messageClock = 0;
+function aiMessageRows(url, req, json, owner, reply) {
+  const found = () => ai.messages.filter((m) => m.user_id === owner && matches(m, url.searchParams));
+  if (req.method === 'GET') {
+    const ascending = (url.searchParams.get('order') ?? '').includes('.asc');
+    const rows = found().sort((a, b) => (ascending ? 1 : -1) * (a.seq - b.seq));
+    const limit = Number(url.searchParams.get('limit') ?? 1000);
+    const select = (url.searchParams.get('select') ?? '*').split(',').map((c) => c.trim());
+    return respondRows(req, reply, rows.slice(0, limit).map((m) => Object.fromEntries(select.map((c) => [c, m[c]]))));
+  }
+  if (req.method === 'POST') {
+    const body = json();
+    const rows = Array.isArray(body) ? body : [body];
+    for (const m of rows) {
+      if (m.user_id !== owner || !ai.conversations.some((c) => c.id === m.conversation_id && c.user_id === owner)) return reply(409, { code: '23503', message: 'Conversation not found.' });
+    }
+    for (const m of rows) ai.messages.push({ sources: [], model: '', input_tokens: 0, output_tokens: 0, cost_usd: 0, ...m, id: randomUUID(), seq: ++messageClock, created_at: new Date().toISOString() });
+    return reply(201, undefined);
+  }
+  return reply(405, {});
+}
+
+function aiUsageNow(owner, reply) {
+  const now = new Date();
+  const month = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1);
+  const day = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
+  const mine = ai.usage.filter((u) => u.user_id === owner);
+  const month_usd = mine.filter((u) => Date.parse(u.created_at) >= month).reduce((s, u) => s + u.cost_usd, 0);
+  const today_requests = mine.filter((u) => Date.parse(u.created_at) >= day).length;
+  return reply(200, [{ month_usd, today_requests }]);
+}
+
+function recordAiUsage(body, owner, reply) {
+  const { p_model, p_input, p_output, p_cost, p_outcome } = body;
+  if (p_cost < 0 || p_input < 0 || p_output < 0) return reply(400, { code: '23514', message: 'check' });
+  ai.usage.push({ user_id: owner, model: p_model, input_tokens: p_input, output_tokens: p_output, cost_usd: Number(p_cost), outcome: p_outcome, created_at: new Date().toISOString() });
+  return reply(200, null);
 }
 
 server.listen(4317, '127.0.0.1', () => console.log('Synthetic API fixture on 127.0.0.1:4317'));

@@ -785,3 +785,54 @@ Rollback:
 1. Unpublish every entry.
 2. Promote `dpl_6RJxxau1d6MZjrGdu1EkihWCTwKJ` (ac1eed8).
 3. `revoke execute on function public.journal_public(text) from anon`.
+
+## 2026-11-21 - Phase 5 plan proposal (Gemini assistant)
+
+Owner asked to plan the next phase. Drafted [PHASE_5_PLAN.md](PHASE_5_PLAN.md): 5A is a read-only, per-project assistant with modes for engineering review, story memory and planning.
+- You choose which records to send; the token and cost estimate is shown first.
+- Citations are checked against what was sent.
+- Private, deletable conversations.
+- An app-enforced monthly ceiling and daily cap.
+- Off by default behind a kill switch.
+
+5B (proposals with Accept and Reject) and 5C (file text) are outlined for later approval. Decisions V-038 to V-044 are proposed.
+
+Checked on aistudio.google.com on 2026-11-21:
+- Free-tier prompts and responses may be used to improve Google's products and read by human reviewers; paid-tier ones are not.
+- Gemini 3.8 Flash costs $0.75 / $3.75 per 1M tokens until 31 Dec 2026, then $1.50 / $7.50.
+- Image models aren't on the free tier.
+- The API requires users aged 18 or over.
+- South Korea and Bangladesh are available regions.
+
+`IDEA_VAULT_3_CODEX_MASTER_GUIDE.md` is still absent from the tree and git, so the plan follows the final master prompt, the roadmap and SECURITY.md.
+
+Documentation only; no code, SQL, keys or deployment.
+
+## 2026-11-21 - Slice 5A built locally (read-only Gemini assistant)
+
+Owner replied "approve 5A". Built:
+- An Assistant tab on each project, shown only when switched on. Modes: Engineering review, Story memory and Planning. A checklist of the project's records, nothing ticked by default, with a size and cost estimate before sending. Answers show each citation as a link to its record and flag citations of anything not sent. Saved, deletable conversations with follow-ups.
+- An Assistant section in Settings: status, this month's spend, today's questions, delete all.
+- Migration `017_ai.sql`: `ai_conversations`, `ai_messages`, the `ai_usage` ledger (rows added only through `record_ai_usage`), `ai_usage_now()`.
+- The route `/api/ai/ask` and a REST adapter for Gemini's `generateContent` (key in the `x-goog-api-key` header; no tools; thinking set to low; 60-second timeout).
+
+Differences from the plan are in [PHASE_5_PLAN.md](PHASE_5_PLAN.md) "5A as built" and [DECISIONS.md](DECISIONS.md).
+
+Found while building:
+- A question and its answer, inserted together, got the same `now()` timestamp, so their order was unreliable. The trigger now uses `clock_timestamp()`, checked by the SQL suite.
+- AI Studio logs requests by default (up to 55 days) in new projects. This is added to the owner's setup.
+
+Verified locally:
+- **Unit tests:** 190, including 7 new in `tests/ai.test.mjs`: labels, sending only the selection, citation checks, prices including the 1 Jan 2027 change, caps, the off switch, and that the key stays on the server in a header with no tools.
+- **Browser tests:** 74, including 5 new in `tests/browser/assistant.spec.ts`, against a fake Gemini that records its requests:
+  - Exactly the ticked record is sent (no other record, owner or project id, or email); the key is in the header and absent from every script and page.
+  - The cited answer links to its record; the conversation is saved and reopens; a follow-up carries earlier turns; no project table changed.
+  - An invented citation is flagged and HTML stays text.
+  - The monthly ceiling and daily cap refuse before any call, and Settings shows Paused.
+  - A Gemini failure saves nothing and costs 0.
+  - Visitors and other sites are refused, and records from another mode are refused.
+  - Delete all keeps usage.
+- **Database:** 017 applied twice after 002–016 in a disposable offline Postgres; 25 checks in `tests/sql/phase5a-behaviour.sql` pass. All earlier suites still pass, except the Phase 2 suite, which stops on the same missing seed idea as before.
+- **Static checks and build:** tsc, ESLint and the production build pass; `/api/ai/ask` is a request-time route and `/` is unchanged and static.
+
+Not verified: real Gemini (no key exists yet), real token counts against Google's billing, AI Studio logging settings, and 017 on real Supabase. Not committed, not applied, not deployed. Pending before go-live: the owner's confirmation of age 18+ (Gemini API terms) and the key setup.

@@ -28,10 +28,11 @@ import type { PickerConfig } from "@/lib/drive/picker";
 import type { LiveShowcase, ShowcaseDraft } from "@/lib/showcase";
 import ShowcaseEditor from "./showcase-editor";
 import { requestImageCleanup } from "../../portfolio/orphan-cleanup";
+import AssistantPanel, { type AssistantConfig } from "./assistant-panel";
 
 type Tab = { id: string; label: string; tables: TableName[] };
 
-function tabsFor(type: string): Tab[] {
+function tabsFor(type: string, assistant = false): Tab[] {
   const tabs: Tab[] = [{ id: "overview", label: "Overview", tables: [] }];
   if (hasEngineering(type)) {
     tabs.push(
@@ -51,6 +52,8 @@ function tabsFor(type: string): Tab[] {
     );
   }
   tabs.push({ id: "links", label: hasEngineering(type) ? "Code & links" : "References", tables: ["project_links"] });
+  // Phase 5A: only when the assistant is switched on.
+  if (assistant) tabs.push({ id: "assistant", label: "Assistant", tables: [] });
   tabs.push({ id: "files", label: "Files", tables: [] });
   tabs.push({ id: "showcase", label: "Showcase", tables: [] });
   return tabs;
@@ -70,13 +73,15 @@ function when(value: string) {
   return new Date(value).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
 }
 
-export default function ProjectWorkspace({ ownerId, initialProject, initialRecords, sourceIdea, truncated, initialFiles = [], driveUploads = false, picker = { apiKey: "", appId: "" }, showcase = { draft: null, live: null } }: {
+export default function ProjectWorkspace({ ownerId, initialProject, initialRecords, sourceIdea, truncated, initialFiles = [], driveUploads = false, picker = { apiKey: "", appId: "" }, showcase = { draft: null, live: null }, assistant = null }: {
   ownerId: string; initialProject: Project; initialRecords: Records;
   sourceIdea: { id: string; label: string } | null; truncated: TableName[];
   // Phase 3C: files in Google Drive, the upload switch and the Picker configuration.
   initialFiles?: ProjectFile[]; driveUploads?: boolean; picker?: PickerConfig;
   // Phase 4A: the private showcase draft and what is live on the public site.
   showcase?: { draft: ShowcaseDraft | null; live: LiveShowcase | null };
+  // Phase 5A: the assistant's settings and saved conversations; null while it is switched off.
+  assistant?: AssistantConfig | null;
 }) {
   const [project, setProject] = useState(initialProject);
   const [records, setRecords] = useState(initialRecords);
@@ -92,7 +97,7 @@ export default function ProjectWorkspace({ ownerId, initialProject, initialRecor
   // Phase 3C/3D: one set of file actions shared by the Files tab and story image cards.
   const fileActions = useFileActions({ ownerId, projectId: initialProject.id, writer, picker, setFiles });
   const media = { files, actions: fileActions, canAdd: driveUploads };
-  const tabs = tabsFor(project.project_type);
+  const tabs = tabsFor(project.project_type, assistant !== null);
   const current = tabs.find((t) => t.id === tab) ?? tabs[0];
   const archived = project.archived_at !== null;
 
@@ -320,6 +325,8 @@ export default function ProjectWorkspace({ ownerId, initialProject, initialRecor
             <ShowcaseEditor ownerId={ownerId} project={project} files={files} writer={writer}
               onProject={(change) => setProject((p) => ({ ...p, ...change }))}
               saved={showcaseDraft} setSaved={setShowcaseDraft} liveShowcase={liveShowcase} setLive={setLiveShowcase} />
+          ) : current.id === "assistant" && assistant ? (
+            <AssistantPanel project={project} records={records} config={assistant} writer={writer} />
           ) : current.id === "files" ? (
             <ProjectFiles files={files}
               entries={hasEngineering(project.project_type) ? records.project_entries : []}
