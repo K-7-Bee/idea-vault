@@ -581,3 +581,32 @@ Open: the character "kihsuok" main picture (`8A4F7556-….jpg`, linked by the Pi
 Live: `750c012` deployed as `dpl_BvT2v4UoQPUCr3MPRS2UKwhkYgLs` (icn1). Smoke check: public pages and case studies 200; Vault pages redirect to login; the remove route gives 403 cross-origin and 401 without a session; no runtime errors. Rollback: promote `dpl_B1RzP4ZQfi2ruiWP2pDdom4dJ1P1` (559e453). Not verified live: the new buttons and messages while signed in.
 
 Resolved: Check files reported the "kihsuok" main picture (`8A4F7556-….jpg`) as in the Drive trash. Not a Vault defect; owner can restore it in Drive and run Check files again, or Remove it.
+
+## 2026-11-21 - Slice 4B plan proposal (Portfolio Manager: profile)
+
+Owner asked to plan the next phase. Read the 4A record, the final master prompt and the homepage source: every public profile fact is a constant in `src/app/page.tsx` and `/` is static. Drafted [PHASE_4B_PLAN.md](PHASE_4B_PLAN.md): private draft, public published row and append-only history (`014_profile.sql`, security-definer `publish_profile`); homepage stays in the static shell and is refreshed by `revalidateTag('profile', { expire: 0 })` from the publish route; a code seed identical to today's text is shown until the first publish; decisions V-019 to V-024 proposed. Documentation only; no code, SQL or deployment. Unverified: whether a throwing cached function keeps serving the last good page in this Next version (V-021).
+
+## 2026-11-21 - Slice 4B built locally (Portfolio Manager: profile)
+
+Owner replied "approve 4B". Built the profile editor (`/vault/portfolio/profile`: introduction, highlights, about, experience and education with optional tools, responsibilities and outcomes, certificates, current focus, contact and links), save/preview/confirm/publish, history with Restore to draft, a Profile entry on the Portfolio page, and the homepage drawn from the published profile. The seed is today's text, moved unchanged. Migration `014_profile.sql` adds `site_owner`, `profile_drafts`, `profile_published` (anon: `content`, `published_at` only), `profile_versions` and `publish_profile`. Differences from the plan, including the V-020 change from `{ expire: 0 }` to `'max'`, are in [PHASE_4B_PLAN.md](PHASE_4B_PLAN.md) "As built" and [DECISIONS.md](DECISIONS.md).
+
+Found by tests and fixed: the shared touch trigger broke every draft update (missing `project_id`); a certificate name over 40 characters blocked publishing; a failed rebuild under `{ expire: 0 }` served the build-time page (the seed) instead of the last good one.
+
+Verified locally:
+- **Unit tests:** 166 (8 new in `tests/profile.test.mjs`; `tests/portfolio.test.mjs` now reads the moved markup and seed).
+- **Browser tests:** 60 (7 new in `tests/browser/profile.spec.ts`):
+  - The untouched homepage, and the editor starting from it.
+  - Edit → save → preview → confirm → publish, with the public page matching the preview's main text exactly.
+  - Rollback through history (versions 1–3).
+  - Refusals: `javascript:` link, HTML in text, stale or malformed draft version, with the public copy unchanged.
+  - A database failure during the rebuild keeps the last good page and never the seed, then catches up.
+  - Anonymous, other-account and cross-origin denial.
+  - 320–1280 px for the homepage, editor, preview and Portfolio page.
+- **Migrations:** 014 applied twice after the stand-in, schema and 002–013 in a disposable offline `supabase/postgres:17.11.0.018` container (no network).
+  - 63 checks in `tests/sql/phase4b-behaviour.sql` pass: owner draft and version checks; site owner only; no owner guessed when there are several accounts; history append-only; direct writes refused; 18 bad-content refusals; anon reads only two columns; another account can't publish or read history.
+  - 4A (61), 3A (17), 3B (15), 3C (26), 3D (25) and grants (11) still pass. Phase 2 stops on its known missing seed idea.
+  - Container removed.
+- **Day one:** a production build of HEAD before 4B and of the 4B tree, both without database settings, give identical homepage visible text, links and section ids.
+- **Static checks:** `/` is still prerendered (○, revalidate 30d) in the build output; tsc, ESLint and `git diff --check` pass.
+
+Not verified: real Supabase (014 not applied), Vercel's handling of `revalidateTag(..., 'max')` and its CDN purge for `/`, the editor's live confirmation against the real site, and a build against the real database. Not committed, not applied, not deployed. Deploy order: apply 014, then deploy; a deploy before 014 fails its build because `/` reads `profile_published` while prerendering.

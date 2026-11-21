@@ -56,3 +56,16 @@ Owner replied "approve 4A" to [PHASE_4_PLAN.md](PHASE_4_PLAN.md), accepting ever
 | V-016 | The three hand-written case studies | Unchanged; published projects are listed alongside them. |
 | V-017 | How fast unpublishing takes effect | Immediately: public project pages read the database on every request, and triggers drop the snapshot when a project leaves Completed + Published + active. |
 | V-018 | Public address | `/projects/<slug>`, chosen in the editor; the three existing slugs are reserved. |
+
+## Phase 4B decisions (2026-11-21, in conversation)
+
+Owner replied "approve 4B" to [PHASE_4B_PLAN.md](PHASE_4B_PLAN.md), accepting every recommendation. Two were refined while building; see the plan's "As built" section.
+
+| ID | Question | Answer |
+| --- | --- | --- |
+| V-019 | Storage shape | Private `profile_drafts`, one public `profile_published` row (anon may read `content` and `published_at` only), private append-only `profile_versions`. Writes to the public row and history only through `publish_profile(expected_version)`, security definer. **Added while building:** a `site_owner` table names the one account allowed to publish, filled by 014 when exactly one Auth account exists. Without it, any other signed-in account could have replaced the homepage through the API. |
+| V-020 | How fresh is the homepage | `/` stays static (`'use cache'`, `cacheTag('profile')`, `cacheLife('max')`). **Changed while building:** the publish route calls `revalidateTag('profile', 'max')`, not `{ expire: 0 }`. The editor then requests `/` until it shows the new publish time, so the editor, not a visitor, absorbs the one stale view. It reports "shows it now" only when confirmed. |
+| V-021 | Database unreadable | Build fails (live deployment unaffected). A failed rebuild keeps the last good page; never the seed after a publish. With `{ expire: 0 }` a failed rebuild served the build-time page instead (found by test), which is why V-020 changed. |
+| V-022 | Validation | Plain text rendered as text; HTML-like tags refused; per-field length caps; links and certificate links `https:` only; email checked. Enforced in the app and again in `publish_profile`. No images. |
+| V-023 | Email exposure | Accepted. Stored as user and domain halves, readable through the public API; the page still never shows it whole in its source. |
+| V-024 | Case studies and Selected work | Unchanged. |

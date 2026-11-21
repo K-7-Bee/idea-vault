@@ -1,4 +1,4 @@
-# Phase 4 plan: Portfolio publishing (4A approved and built locally 2026-11-21; 4B/4C not approved)
+# Phase 4 plan: Portfolio publishing (4A live 2026-11-21; 4B approved and built locally 2026-11-21, see [PHASE_4B_PLAN.md](PHASE_4B_PLAN.md); 4C not approved)
 
 ## 4A as built (2026-11-21, local only)
 

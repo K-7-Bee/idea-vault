@@ -6,8 +6,11 @@ import path from 'node:path';
 const root = path.join(import.meta.dirname, '..');
 const read = (file) => fs.readFileSync(path.join(root, file), 'utf8');
 
+// Phase 4B: the homepage markup lives in home-view.tsx and its text in the profile seed.
+const homeSource = () => read('src/app/page.tsx') + read('src/app/portfolio/home-view.tsx');
+
 test('public homepage no longer mounts the retired demos', () => {
-  const home = read('src/app/page.tsx');
+  const home = homeSource();
   for (const retired of ['./portfolio/companion"', './portfolio/motor-explorer"', './portfolio/ohm-lab"', './portfolio/hero"', '"three"']) {
     assert.ok(!home.includes(retired), `homepage still imports ${retired}`);
   }
@@ -17,7 +20,7 @@ test('public homepage no longer mounts the retired demos', () => {
 });
 
 test('homepage navigation has no empty Journal or unsupplied resume link', () => {
-  const home = read('src/app/page.tsx');
+  const home = homeSource();
   assert.ok(!/label: "Journal"/.test(home));
   assert.ok(!/href=[^>]*r[eé]sum[eé]/i.test(home), 'no résumé has been supplied');
   for (const anchor of ['about', 'experience', 'projects', 'contact']) {
@@ -27,7 +30,7 @@ test('homepage navigation has no empty Journal or unsupplied resume link', () =>
 });
 
 test('public pages do not link to removed sections', () => {
-  for (const file of ['src/app/page.tsx', 'src/app/projects/layout.tsx', 'src/app/projects/page.tsx', 'src/app/projects/[slug]/page.tsx']) {
+  for (const file of ['src/app/page.tsx', 'src/app/portfolio/home-view.tsx', 'src/lib/profile.ts', 'src/app/projects/layout.tsx', 'src/app/projects/page.tsx', 'src/app/projects/[slug]/page.tsx']) {
     assert.ok(!read(file).includes('#lab'), `${file} links to the removed lab section`);
   }
 });
@@ -37,7 +40,8 @@ test('public case study does not claim the private vault page is cached offline'
 });
 
 test('the contact email never appears whole in public source, and three is gone with the motor demo', () => {
-  for (const file of ['src/app/page.tsx', 'src/app/portfolio/email-link.tsx', 'src/lib/projects.ts']) {
+  for (const file of ['src/app/page.tsx', 'src/app/portfolio/home-view.tsx', 'src/lib/profile.ts', 'src/app/portfolio/email-link.tsx', 'src/lib/projects.ts',
+    'src/app/vault/portfolio/profile/profile-editor.tsx', 'supabase/014_profile.sql']) {
     assert.ok(!/[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+\.[A-Za-z]{2,}/.test(read(file)), `${file} contains a full email address`);
   }
   const pkg = JSON.parse(read('package.json'));

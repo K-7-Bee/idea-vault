@@ -8,7 +8,7 @@ const OTHER = '22222222-2222-4222-8222-222222222222';
 const IDEA = '33333333-3333-4333-8333-333333333333';
 const FILE = '44444444-4444-4444-8444-444444444444';
 const sessions = new Map(), signed = new Map();
-let ideas, files, objects, rules, events, work, drive, google, simple, showcase;
+let ideas, files, objects, rules, events, work, drive, google, simple, showcase, profile;
 // Phase 3A: a synthetic Google (OAuth + the few Drive calls the app makes). Not Google.
 const DRIVE_SCOPE = 'https://www.googleapis.com/auth/drive.file';
 const FOLDER_MIME = 'application/vnd.google-apps.folder';
@@ -52,6 +52,8 @@ function reset() {
       ['fixture-img-000002', { name: 'forest.png', mimeType: 'image/png', granted: true, bytes: PNG }]]) };
   simple = { project_files: [], drive_folders: [] };
   showcase = { drafts: [], live: [], objects: new Map() };
+  // Phase 4B (migration 014). The fixture's owner is the recorded site owner.
+  profile = { drafts: [], published: null, versions: [] };
   work = Object.fromEntries(WORK_TABLES.map((t) => [t, []]));
   const created_at = '2026-11-15T00:00:00.000Z';
   ideas = [{ id: IDEA, user_id: OWNER, title: null, content: 'Fixture original #test', original_content: 'Fixture original #test',
@@ -130,7 +132,7 @@ const server = http.createServer(async (req, res) => {
         return reply(200, {});
       }
       if (url.pathname === '/_test/state') return reply(200, { ideas, files, work, drive: [...drive.values()],
-        simple, showcase: { drafts: showcase.drafts, live: showcase.live, objects: [...showcase.objects].map(([path, o]) => ({ path, size: o.bytes.length, type: o.type })) },
+        simple, profile, showcase: { drafts: showcase.drafts, live: showcase.live, objects: [...showcase.objects].map(([path, o]) => ({ path, size: o.bytes.length, type: o.type })) },
         google: { revoked: google.revoked, calls: google.calls, files: [...google.files].map(([id, { bytes, ...f }]) => ({ id, ...f, stored: bytes ? bytes.length : 0 })) },
         objects: [...objects].map(([path, data]) => ({ path, size: data.length })), events });
       return reply(404, {});
@@ -171,7 +173,16 @@ const server = http.createServer(async (req, res) => {
       if (!object) return reply(400, { statusCode: '404', error: 'not_found', message: 'Object not found' });
       event.status = 200; res.writeHead(200, { 'Content-Type': object.type, 'Cache-Control': 'max-age=60' }); return res.end(object.bytes);
     }
+    // Phase 4B: the published profile is readable without a session (two columns only).
+    if (url.pathname === '/rest/v1/profile_published') return profilePublishedRows(url, req, identity, reply);
     if (!identity) return reply(401, { message: 'Fixture authentication required' });
+    if (url.pathname === '/rest/v1/profile_drafts') return profileDraftRows(url, req, json, identity.id, reply);
+    if (url.pathname === '/rest/v1/profile_versions') {
+      if (req.method !== 'GET') return reply(401, { code: '42501', message: 'permission denied for table profile_versions' });
+      return respondRows(req, reply, profile.versions.filter((v) => v.user_id === identity.id && matches(v, url.searchParams))
+        .sort((a, b) => b.version - a.version).map(({ version, content, published_at }) => ({ version, content, published_at })));
+    }
+    if (url.pathname === '/rest/v1/rpc/publish_profile' && req.method === 'POST') return publishProfile(json(), identity.id, reply);
     if (url.pathname === '/rest/v1/project_showcases') return draftRows(url, req, json, identity.id, reply);
     if (url.pathname === '/rest/v1/rpc/publish_showcase' && req.method === 'POST') return publishShowcase(json(), identity.id, reply);
     if (url.pathname === '/rest/v1/rpc/unpublish_showcase' && req.method === 'POST') return unpublishShowcase(json(), identity.id, reply);
@@ -637,6 +648,64 @@ function showcaseStorage(url, req, bytes, json, owner, reply) {
     return reply(200, { Key: 'showcase/' + path, Id: randomUUID() });
   }
   return reply(404, { message: 'Unsupported fixture request' });
+}
+
+// ---------- Phase 4B: profile (imitates migration 014; not PostgreSQL) ----------
+
+function profilePublishedRows(url, req, identity, reply) {
+  if (req.method !== 'GET') return reply(401, { code: '42501', message: 'permission denied for table profile_published' });
+  const select = (url.searchParams.get('select') ?? '*').split(',').map((c) => c.trim());
+  const allowed = identity ? ['content', 'version', 'published_at'] : ['content', 'published_at'];
+  if (select.some((c) => !allowed.includes(c))) return reply(401, { code: '42501', message: 'permission denied for table profile_published' });
+  const rows = profile.published ? [Object.fromEntries(select.map((c) => [c, profile.published[c]]))] : [];
+  return respondRows(req, reply, rows);
+}
+
+function profileDraftRows(url, req, json, owner, reply) {
+  const columns = (row) => ({ id: row.id, content: row.content, version: row.version, updated_at: row.updated_at });
+  const found = () => profile.drafts.filter((d) => d.user_id === owner && matches(d, url.searchParams));
+  const objectOk = (content) => content && typeof content === 'object' && !Array.isArray(content) && JSON.stringify(content).length <= 100000;
+  if (req.method === 'GET') return respondRows(req, reply, found().map(columns));
+  if (req.method === 'POST') {
+    const body = json();
+    if (body.user_id !== owner) return reply(403, { code: '42501', message: 'row-level security' });
+    if (profile.drafts.some((d) => d.user_id === owner)) return reply(409, { code: '23505', message: 'profile_drafts_user_id_key' });
+    if (!objectOk(body.content)) return reply(400, { code: '23514', message: 'profile_drafts_content_check' });
+    const now = new Date().toISOString();
+    const row = { id: body.id ?? randomUUID(), user_id: owner, content: body.content, version: 1, created_at: now, updated_at: now };
+    profile.drafts.push(row);
+    return respondRows(req, reply, [columns(row)]);
+  }
+  if (req.method === 'PATCH') {
+    const body = json();
+    if (!objectOk(body.content)) return reply(400, { code: '23514', message: 'profile_drafts_content_check' });
+    const targets = found();
+    for (const row of targets) { row.content = body.content; touch(row); }
+    return respondRows(req, reply, targets.map(columns));
+  }
+  return reply(405, {});
+}
+
+// A few of profile_content_problem's checks: enough to prove the app reports a refusal.
+function profileProblem(c) {
+  if (!c || typeof c !== 'object' || typeof c.name !== 'string' || !c.name.trim()) return 'Add your name (up to 80 characters).';
+  const links = [...(c.links ?? []).map((l) => l.href), ...(c.certificates ?? []).map((x) => x.href).filter(Boolean)];
+  if (links.some((h) => !/^https:\/\/[^\s<>"]+$/.test(h))) return 'Links: up to 8, each with a label and an https address.';
+  if (/<[A-Za-z/!]/.test(JSON.stringify(c))) return 'The profile has a field that is too long or not allowed.';
+  return null;
+}
+
+function publishProfile({ p_draft_version }, owner, reply) {
+  if (owner !== OWNER) return reply(403, { code: '42501', message: 'Only the site owner can publish the profile.' });
+  const d = profile.drafts.find((x) => x.user_id === owner);
+  if (!d || d.version !== p_draft_version) return reply(400, { code: '40001', message: 'The profile changed since you checked it. Review it again before publishing.' });
+  const problem = profileProblem(d.content);
+  if (problem) return reply(400, { code: '23514', message: problem });
+  const version = Math.max(0, ...profile.versions.map((v) => v.version)) + 1;
+  const published_at = new Date().toISOString();
+  profile.versions.push({ user_id: owner, version, content: structuredClone(d.content), published_at });
+  profile.published = { user_id: owner, content: structuredClone(d.content), version, published_at };
+  return reply(200, version);
 }
 
 server.listen(4317, '127.0.0.1', () => console.log('Synthetic API fixture on 127.0.0.1:4317'));

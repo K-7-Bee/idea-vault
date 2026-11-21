@@ -11,7 +11,7 @@ import OrphanCleanup from "./orphan-cleanup";
 
 // Phase 4A: the Portfolio page. Which projects are on the public site, which are ready to
 // showcase, and which could be once they are completed. Publishing happens on each project's
-// Showcase tab; nothing here changes the public site.
+// Showcase tab; nothing here changes the public site. Phase 4B adds the Profile (homepage text) entry.
 export default function PortfolioPage() {
   return (
     <VaultShell>
@@ -33,9 +33,12 @@ async function PortfolioContent() {
       .in("publication_status", ["ready", "published"]).order("updated_at", { ascending: false }).limit(500).then((r) => r, () => null),
     supabase.from("showcases").select("project_id, slug, published_at").limit(500).then((r) => r, () => null),
   ]);
-  const completed = await supabase.from("projects").select("id, title, stage, publication_status").eq("user_id", owner.id)
-    .is("archived_at", null).eq("stage", "completed").eq("publication_status", "private").limit(500).then((r) => r, () => null);
-  if (!projects || projects.error || !live || live.error || !completed || completed.error) {
+  const [completed, profile] = await Promise.all([
+    supabase.from("projects").select("id, title, stage, publication_status").eq("user_id", owner.id)
+      .is("archived_at", null).eq("stage", "completed").eq("publication_status", "private").limit(500).then((r) => r, () => null),
+    supabase.from("profile_published").select("version, published_at").limit(1).then((r) => r, () => null),
+  ]);
+  if (!projects || projects.error || !live || live.error || !completed || completed.error || !profile || profile.error || !Array.isArray(profile.data)) {
     return (
       <section className="rounded-2xl border border-line bg-card p-6">
         <div role="alert">
@@ -52,6 +55,7 @@ async function PortfolioContent() {
   const ready = all.filter((p) => p.publication_status === "ready" && p.stage === "completed");
   const waiting = all.filter((p) => p.publication_status === "ready" && p.stage !== "completed");
   const privateDone = completed.data as Pick<Project, "id" | "title" | "stage">[];
+  const liveProfile = profile.data[0] as { version: number; published_at: string } | undefined;
 
   return (
     <SessionBoundary ownerId={owner.id}>
@@ -64,6 +68,18 @@ async function PortfolioContent() {
             Moving it out of Completed, archiving it or unpublishing it takes it down immediately.
           </p>
         </div>
+
+        <section aria-label="Profile">
+          <h3 className="text-sm font-semibold uppercase tracking-wider text-muted">Profile</h3>
+          <Link href="/vault/portfolio/profile" className="mt-2 block rounded-2xl border border-line bg-card p-4 shadow-sm hover:bg-background">
+            <span className="font-semibold underline-offset-4">Homepage text</span>
+            <span className="mt-1 block text-sm text-muted">
+              {liveProfile
+                ? `Version ${liveProfile.version} is on your homepage. Edit your introduction, experience, certificates and contact details.`
+                : "Not edited here yet; your homepage shows its original text. Edit your introduction, experience, certificates and contact details."}
+            </span>
+          </Link>
+        </section>
 
         <Group title="On your public site" empty="Nothing published yet. Your three hand-written case studies are still shown.">
           {published.map((p) => (
