@@ -53,6 +53,15 @@ async function SettingsContent({ result }: { result: string | string[] | undefin
             appId: process.env.NEXT_PUBLIC_GOOGLE_APP_ID ?? "",
           }}
         />
+        <section aria-labelledby="data-heading" className="mt-8 rounded-2xl border border-line bg-card p-5">
+          <h3 id="data-heading" className="text-lg font-semibold">Your data</h3>
+          <p className="mt-2 text-sm text-muted">
+            Download everything your account holds in the Vault as one JSON file: ideas, projects and their records, story, profile, journal,
+            library entries and assistant conversations. File contents aren&apos;t included (they&apos;re listed by name and size), and Drive tokens
+            never are. Keep the file somewhere private.
+          </p>
+          <a href="/api/export" download className="mt-3 inline-block rounded-xl border border-line px-4 py-2 text-sm font-medium hover:bg-background">Download my data</a>
+        </section>
         <AiSettings ownerId={owner.id} status={{
           state: aiState, reason: ai.reason, model: ai.model, monthlyUsd: ai.monthlyUsd, dailyRequests: ai.dailyRequests,
           monthUsd, todayRequests, conversations: convos && !convos.error ? convos.count ?? 0 : null,

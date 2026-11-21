@@ -869,3 +869,41 @@ Not yet done or verified:
 - A real question and its cost checked against Google's usage.
 
 Rollback: promote `dpl_FKg1MKdoNHtcaScdjZ9AN8jPbuju` (9021f83). The 017 tables can stay; they're unused while the assistant is off.
+
+## 2026-11-21 - Phase 6 plan proposal (hardening and launch)
+
+Owner asked to plan the next phase. 5B was deferred because 5A isn't switched on or tried with a real key yet.
+
+Checked:
+- No backup covers current data. The only snapshot predates the 16 Nov reset and the 4A–5A tables. `scripts/vault/` exports a fixed list of old tables and no Storage bytes.
+- The live site sends only Vercel's HSTS header; there is no CSP or framing protection.
+- There is no CI.
+- `npm audit --omit=dev` reports 0 vulnerabilities.
+- The service worker never caches private pages (the old audit item is resolved).
+- Whether Supabase Auth sign-ups are disabled is unverified.
+- The Drive OAuth app is still in Testing mode.
+
+Drafted [PHASE_6_PLAN.md](PHASE_6_PLAN.md):
+- **6A:** a one-command encrypted backup of the whole database and all Storage bytes, a restore drill into a disposable database, and Download my data. Asked for approval first.
+- **6B:** security headers and the sign-up check.
+- **6C:** CI, accessibility and performance checks, the runbook, and the Drive OAuth app to Production.
+- Decisions V-045 to V-049 are proposed.
+
+Documentation only; no code, SQL or deployment.
+
+## 2026-11-21 - Slice 6A built (backups, restore drill, Download my data)
+
+Owner replied "approve 6A". Built:
+- `scripts/vault/backup-live.mjs`: a read-only, encrypted backup of the live Vault (every public table found at run time, accounts without secrets, Storage settings, objects and bytes, the security catalog).
+- `scripts/vault/restore-drill.mjs`: restores into a disposable offline Postgres and compares per-table fingerprints, file hashes and the catalog.
+- `scripts/vault/live-archive.mjs`: the archive format and helpers.
+- Settings → Your data → Download my data (`GET /api/export`).
+- `.gitignore` guards backups and exports; the README section describes how to back up and restore today's data.
+
+Verified:
+- **First production backup (read-only, one-time passphrase):** 30 tables, 1 account, 0 stored files, about 2.5 minutes.
+- **Drill:** all 30 tables restored identical to production. The security catalog matched apart from the legacy `timevault_state` table (rebuilt from its columns) and a production-only `rls_auto_enable()` function (security definer, executable by anon and authenticated; to check in 6B). A wrong passphrase was refused. The test archive and passphrase were deleted afterwards.
+- **Storage:** listing via the CLI works. Downloading real bytes is untested because production has 0 objects; the code checks every object's presence and size.
+- **Unit tests:** 197, including 7 new in `tests/export.test.mjs`: encryption round trip, wrong passphrase and tamper refused, fingerprints, the catalog comparison, the outside-repo rule, read-only queries, the export covering every table, and no Drive tokens.
+- **Browser tests:** 75, including the new `tests/browser/export.spec.ts`: download from Settings, contents, no secrets, nothing changed, cross-site and anonymous requests refused.
+- **Static checks and build:** tsc, ESLint and the build pass.

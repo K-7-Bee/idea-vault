@@ -1,4 +1,43 @@
-# Phase 0 preservation tools
+# Vault backup and preservation tools
+
+## Backing up today's Vault (Phase 6A)
+
+Use these two commands for the live site. The older "Phase 0" sections further down describe the tools used before the 16 Nov 2026 reset; those tools only know the original ideas tables.
+
+**What a backup holds:** every table in `public`, found at run time, so new tables are included automatically. Also the account list (ids, emails and timestamps; no password hashes or tokens), Storage bucket settings and the object list, the security catalog (RLS, policies, grants, functions, triggers), and the bytes of every Storage object with a SHA-256. Files in your Google Drive are not copied; they stay in Drive. Drive OAuth tokens are inside the database rows, still encrypted with `DRIVE_TOKEN_KEY`; that key is not in the backup, so keep it in your password manager too.
+
+**When:** before every migration or go-live, and weekly otherwise. Avoid editing in the Vault while a backup runs, because each table is read separately.
+
+**How (PowerShell, from the repository folder).** The CLI is the Supabase CLI install that is already logged in, and the folder must be outside this repository:
+
+```powershell
+$secret = Read-Host 'Backup passphrase (16+ characters, from your password manager)' -AsSecureString
+$env:VAULT_BACKUP_PASSPHRASE = [System.Net.NetworkCredential]::new('', $secret).Password
+try {
+  node scripts/vault/backup-live.mjs --cli 'S:\Road to Storm K7\codex test\idea-vault-preservation\tools\node_modules\supabase\dist\supabase.js' `
+    --ref kpeyjktueihyxtsfnsyr --out 'D:\PrivateVaultBackups'
+  # Prove the backup restores: a throwaway offline database in Docker, removed afterwards.
+  node scripts/vault/restore-drill.mjs 'D:\PrivateVaultBackups\vault-live-<ref>-<time>.vaultlive' 'D:\PrivateVaultBackups\drills'
+} finally {
+  Remove-Item Env:VAULT_BACKUP_PASSPHRASE; $secret = $null
+}
+```
+
+**What you get:**
+- `vault-live-<ref>-<time>.vaultlive`: encrypted (AES-256-GCM; key from your passphrase with PBKDF2-SHA256, 600,000 iterations). Without the passphrase it is unreadable, so it's safe to copy to a USB drive or cloud folder. Losing the passphrase loses the backup.
+- `<same>.manifest.json`: counts and SHA-256 fingerprints only, no content, so you can see what a backup holds without opening it.
+- The drill writes a report (JSON) saying, per table, whether the restored rows are identical to production. It also checks file hashes and lists any security-catalog differences.
+
+**Limits:**
+- Each table is read whole: up to 20,000 rows per table and 256 MiB per archive. Beyond that the tool stops and says so.
+- The drill proves rows, permissions and file bytes. It does not prove Supabase Auth logins, the Storage API, Vercel or the running app.
+- Restoring into production is a separate, deliberate procedure that needs its own approval. These tools never write to production.
+
+**First run (2026-11-21):** 30 tables, 1 account, 0 stored files. The drill restored all 30 tables identical to production. The catalog matched apart from the legacy `timevault_state` table (not created by any migration) and a production-only `rls_auto_enable()` function.
+
+---
+
+## Phase 0 preservation tools (historical)
 
 These are local tools, not application features. They do not connect to Supabase, replay browser queues, change schema or restore into a live database. Node built-ins only; no new dependencies. A successful archive check does **not** prove a complete production export or a successful database restore.
 

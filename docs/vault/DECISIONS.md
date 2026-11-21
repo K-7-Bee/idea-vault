@@ -110,3 +110,15 @@ Owner replied "approve 5A" to [PHASE_5_PLAN.md](PHASE_5_PLAN.md), accepting ever
 | V-042 | Conversations | Kept privately per project and deletable singly or all at once. Records are stored as labels and ids, not their text. Usage stays after deletion because it is the cap's record. |
 | V-043 | Read-only | Yes. No tools or function calling; the route writes only the conversation and the ledger. |
 | V-044 | Terms and key | The owner creates the key and adds it to Vercel; it is never pasted in chat or committed. The age confirmation is pending. |
+
+## Phase 6A decisions (2026-11-21, in conversation)
+
+Owner replied "approve 6A" to [PHASE_6_PLAN.md](PHASE_6_PLAN.md), accepting every recommendation.
+
+| ID | Question | Answer |
+| --- | --- | --- |
+| V-045 | Backup scope | Every `public` table, found at run time. Also accounts (no secrets), the Storage settings and object list, the security catalog, and the bytes of every object in all four buckets. Google Drive files stay in Drive. |
+| V-046 | Where and how | `scripts/vault/backup-live.mjs` runs on the owner's PC through the existing Supabase CLI login (read-only queries; `storage cp --experimental` for bytes, with credentials handled by the CLI and never seen by the tool). The archive is AES-256-GCM with a PBKDF2-SHA256 passphrase, written outside the repository and never overwritten. `restore-drill.mjs` proves it in a disposable offline Postgres. |
+| V-047 | Frequency | Before every migration or go-live (now step 1 of each), and weekly by the owner's own reminder. |
+| V-048 | Supabase plan | Not needed. The owner checks Billing to know whether Supabase also keeps its own daily backups. |
+| V-049 | Download my data | Settings → Download my data: `GET /api/export`, owner-only, read-only, `no-store`, cross-site requests refused. A JSON of every table the account can read, with file names, sizes and paths but no bytes, and no Drive tokens. No import. |

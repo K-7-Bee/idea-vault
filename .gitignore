@@ -53,3 +53,8 @@ next-env.d.ts
 
 # Supabase CLI local metadata
 /supabase/.temp/
+
+# Phase 6A: live backups and exports must never be committed
+*.vaultlive
+*.vaultlive.manifest.json
+idea-vault-export-*.json
