@@ -1003,3 +1003,51 @@ Not verified:
 **Next:** after about a week with no unexplained `csp-violation` lines in Vercel's runtime logs, add `CSP_ENFORCE=1` (Production) and redeploy.
 
 **Rollback:** promote the previous production deployment (fa269ca, the same app as e4b73c1, `dpl_HpvRsaeRy6R7GeTacXjaKZJzkBt3`). No database change.
+
+## 2026-11-23 - Slice 6C built (CI, SQL runner, accessibility, homepage budget, runbook)
+
+Owner replied "approve 6C" (decisions V-054 to V-059 recorded). Details are in [PHASE_6_PLAN.md](PHASE_6_PLAN.md) "6C as built".
+
+Built:
+- **GitHub Actions CI** with no secrets, in three parallel jobs:
+  - checks: typegen, tsc, ESLint, unit tests, `npm audit --omit=dev --audit-level=high`;
+  - database suites;
+  - build and browser tests.
+- **`npm run test:sql`:** a disposable offline Postgres, every migration applied, then 004–017 again, then every suite.
+- **Phase 2 SQL suite:** creates its own seed rows.
+- **Browser specs:** axe on 5 public pages and 9 Vault screens at 320, 768 and 1280 px, with a canary proving axe reports violations; a homepage byte budget.
+- **`docs/RUNBOOK.md`**, and the README now points to it.
+
+Verified:
+- **This PC:**
+  - `npm run test:sql`: 11/11 suites, 377 checks, about 18 s. Phase 2 alone on a fresh database: 28/28.
+  - Browser: the accessibility, budget and canary specs pass. The full suite ran twice: 84 tests in all, with only the since-fixed intermittent projects test and my first accessibility waits failing.
+  - Type check, lint and unit tests (202) also pass.
+- **Clean checkout (temporary worktree):** typegen and tsc pass, and the 202 unit tests pass.
+- **Unit tests in a Linux container:** reproduced the CI failure, a shallow-history issue.
+- **CI run `45091939858` on `f42f615`:** all three jobs green.
+  - Database suites: 36 s.
+  - Checks: 60 s.
+  - Build and browser tests: 84 passed, 6.6 min.
+- **Deliberately broken throwaway branch `ci-canary-6c` (run `45092731189`):**
+  - the failing unit test failed the checks job;
+  - the failing SQL file failed the database job, with a file annotation;
+  - an unlabeled button on `/login` failed the public accessibility test (`button-name`, critical);
+  - a 160 KB script on `/` failed the budget (scripts 311,859 B against 159,558 B).
+
+  The other 82 browser tests passed. The branch was deleted locally and on GitHub.
+- **No secrets anywhere in CI:**
+  - The workflow holds no secrets and uses `permissions: contents: read`.
+  - The fixture uses dummy values and a random token key per run.
+  - Uploaded failure artifacts hold synthetic data only.
+- **Runbook coverage:** every variable in `.env.example` and the full migration range (`schema.sql`, 002–017).
+
+Not done or not verified:
+- **Drive OAuth to Production:** waits on the owner. It needs a privacy policy page and domain verification (see "6C as built").
+- **Colour contrast:** not machine-checked (gradient backgrounds).
+- **404 pages:** they have no `main` landmark (owner decision).
+- **Vercel preview of the throwaway branch:** probably built, and harmless. It can be deleted in Vercel → Deployments; not checked here, since there was no Vercel access.
+- **Lint:** an existing warning (an unused `page` in `tests/browser/vault-journal.spec.ts`).
+- **Audit:** 7 moderate dev-only advisories (`minimatch` under the ESLint tooling), already there before this work. CI gates production dependencies at high.
+
+Nothing deployed and no `src/` change. The commits are on the working branch (`ecfda75`, `43b9537`, `f42f615`), and `main` is unchanged.

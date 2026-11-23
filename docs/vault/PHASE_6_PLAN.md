@@ -1,4 +1,4 @@
-# Phase 6 plan: Hardening and launch (6A live 2026-11-21 as e4b73c1; 6B live 2026-11-23 as f04bc47, CSP report-only; 6C proposed 2026-11-23)
+# Phase 6 plan: Hardening and launch (6A live 2026-11-21 as e4b73c1; 6B live 2026-11-23 as f04bc47, CSP report-only; 6C approved and built 2026-11-23, CI only)
 
 ## 6A as built (2026-11-21, local only)
 
@@ -198,7 +198,7 @@ Files:
 
 **Enforcing later:** in Vercel, add `CSP_ENFORCE=1` (Production) and redeploy. **Rollback:** promote the previous deployment, or remove `CSP_ENFORCE`.
 
-## 6C plan: quality gates and runbook (proposal 2026-11-23; not approved)
+## 6C plan: quality gates and runbook (proposal 2026-11-23; approved 2026-11-23)
 
 ### Checked before planning (2026-11-23, read-only)
 
@@ -280,3 +280,42 @@ Files:
 ### Not in 6C
 
 Enforcing the CSP live (the 6B follow-up after a week of reports), scheduled cloud backups, Dependabot or automatic dependency updates, uptime monitoring or error alerting, cross-browser runs (Firefox, WebKit), and 5B.
+
+### 6C as built (2026-11-23)
+
+Built as planned, with these differences:
+
+- **One build, not two.** CI's production build is the browser job's fixture build (`next build` against the fake Supabase). A second build against a dummy Supabase address would fail, because the homepage fetches published content at build time, and nothing real may be used in CI.
+- **"Applied twice" means 004 onwards.** `schema.sql`, 002 and 003 were never re-runnable; every migration since 004 is. The runner applies everything once, then 004–017 again.
+- **Suites share one database, in name order.** A fresh database per suite isn't possible: Supabase's background workers (`pg_net`, `pg_cron`) block `create database … template`. So every suite must create its own rows. The Phase 2 suite now does, and passes alone on a fresh database.
+- **CI needed three fixes for a fresh Linux checkout:**
+  - `next typegen` before the type check (`next-env.d.ts` and `LayoutProps` are generated, not committed).
+  - Full git history for the checks job (`tests/profile.test.mjs` reads commit `ac3e2f9`).
+  - A wait in one projects browser test, which read the fixture before the save landed. It failed once on this PC and once on CI, and now polls.
+- **Failures are readable without signing in.** GitHub shows job logs only to signed-in users, even for public repos. Browser failures (Playwright's `github` reporter) and SQL failures (`::error::`) therefore also appear as check annotations.
+- **Actions are pinned to commits:** checkout v7.0.1, setup-node v7.1.0, upload-artifact v7.0.2. Node 24, the same as this PC.
+- **A canary test proves axe runs.** It plants an unlabeled button and an image without alt text and checks axe reports both. The wait before each check is capped at 5 s, because the Portfolio screen keeps checking the homepage and never goes quiet.
+- **Homepage baseline (fixture build, encoded bytes):** document 9,910; scripts 145,052; styles 16,085; fonts 136,516; images 135,634. Two runs matched, give or take 1 byte. The limit is +10% each.
+
+**Limitations found:**
+- **Colour contrast is not checked automatically.** Most text sits on gradient backgrounds, which axe can't measure. It marks them "incomplete" rather than violations (72 elements on `/`, 41 on `/vault`). Contrast needs a manual check or a custom check.
+- **404 pages** (including `/journal` while nothing is published) are Next's built-in page. It has no `main` landmark, so the site's "Skip to main content" link points at nothing there. axe's WCAG rules don't flag this; the skip-link rule is "best practice". Fixing it means a custom 404 page, a visible public change, so it's listed for the owner.
+- **Drive OAuth to Production** (V-059) needs brand verification. Google's docs list `drive.file` as non-sensitive (no scope review). But a published External app that shows its name needs:
+  - a public homepage that describes the app and links to a privacy policy;
+  - that privacy policy on the same domain;
+  - ownership of `kaushik-kamal.vercel.app` proven in Google Search Console.
+
+  The site has no privacy policy page, so this waits for the owner's decision.
+
+Files:
+- **New:** `.github/workflows/ci.yml`, `scripts/vault/run-sql-suites.mjs`, `tests/browser/a11y.spec.ts`, `tests/browser/performance.spec.ts`, `docs/RUNBOOK.md`.
+- **Changed:**
+  - `tests/sql/phase2-behaviour.sql` (seed rows);
+  - `tests/browser/projects.spec.ts` (wait for the saved row);
+  - `playwright.config.ts` (`github` reporter in CI);
+  - `package.json` and `package-lock.json` (`@axe-core/playwright` 4.14.0, exact; `test:sql`);
+  - `README.md` (points to the runbook);
+  - `docs/vault/DECISIONS.md` (V-054 to V-059).
+- **No `src/` change.** axe found no violations, so nothing deploys with 6C.
+
+**Rollback:** delete or disable the workflow. No production or database change.
