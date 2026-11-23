@@ -68,6 +68,8 @@ try {
     const ok = (output.match(/NOTICE: {2}OK /g) || []).length;
     results.push({ suite, ok, passed: r.status === 0 });
     log(`${r.status === 0 ? 'PASS' : 'FAIL'}  ${suite}  (${ok} checks)`);
+    // In GitHub Actions, a failing suite also becomes an annotation readable without signing in.
+    if (r.status !== 0 && process.env.GITHUB_ACTIONS) log(`::error file=tests/sql/${suite}::${(output.match(/ERROR: .*/) || ['failed'])[0]}`);
     if (r.status !== 0) log(output.split('\n').filter((l) => /ERROR|FAIL|DETAIL|CONTEXT/.test(l)).slice(0, 6).map((l) => `      ${l}`).join('\n'));
   }
   const failed = results.filter((r) => !r.passed);

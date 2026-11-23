@@ -32,6 +32,10 @@ jobs:
           node-version: 24
           cache: npm
       - run: npm ci
+      # next-env.d.ts and the route helper types (LayoutProps, PageProps) are generated, not
+      # committed; a fresh checkout needs them before the type check.
+      - name: Generate Next types
+        run: npx next typegen
       - name: Type check
         run: npx tsc --noEmit
       - name: Lint

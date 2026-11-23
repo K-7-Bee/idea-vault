@@ -8,7 +8,8 @@ export default defineConfig({
   retries: 0,
   timeout: 45_000,
   expect: { timeout: 12_000 },
-  reporter: [["list"], ["json", { outputFile: "test-results/browser-results.json" }]],
+  // In CI, the github reporter turns failures into annotations readable without signing in.
+  reporter: [["list"], ["json", { outputFile: "test-results/browser-results.json" }], ...(process.env.CI ? [["github"] as const] : [])],
   use: {
     baseURL: "http://127.0.0.1:4318",
     viewport: { width: 1280, height: 900 },
