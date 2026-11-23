@@ -1095,8 +1095,8 @@ Verified on this PC:
 - **Browser, first full run:** 86 passed and 3 failed (the old 404 wording). After the fix, the affected showcase and journal specs pass (10/10), and the accessibility, contrast, budget and portfolio specs pass (10/10).
 - Before and after screenshots taken (live site against the fixture build).
 
-Not verified, not committed or not live:
+Not verified or not live:
 - The owner's approval of the privacy wording and the screenshots.
-- CI on the new commit (pushed next).
+- CI on `1b6d85b`: green (run `45099064955`: browser 9.6 min, database 38 s, checks 34 s).
 - Live go-live.
 - Item 4 (Drive Production) waits for the domain; item 5 (CSP) waits for 2026-11-30.
