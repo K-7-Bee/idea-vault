@@ -1128,3 +1128,13 @@ Not verified:
 - Logged-in smoke check: owner.
 
 Still open: Drive OAuth to Production (waits for `kaushikkamal.com`), enforcing the CSP (on or after 2026-11-30), the sign-ups check, an owner-passphrase backup, a live unpublish test, and the real-device pass.
+
+## 2026-11-23: Phase 6E proposed (keep it running)
+
+Plan in [PHASE_6_PLAN.md](PHASE_6_PLAN.md), "Phase 6E plan":
+- a 6-hourly live health check;
+- Dependabot;
+- a weekly DPAPI-sealed scheduled backup on the owner's PC, with a monthly restore drill and a freshness check;
+- a Firefox and WebKit sample in CI.
+
+No code, no deploy. Awaiting owner approval and decisions D1–D3.

@@ -440,3 +440,94 @@ The visible public changes:
 - the new `/privacy`.
 
 The homepage's visible text changes only by "Privacy". The byte budget still passes: the HTML grew by 259 B.
+
+## Phase 6E plan: keep it running (proposed 2026-11-23, awaiting owner approval)
+
+6A–6D are live. The roadmap's Phase 6 also promises monitoring and scheduled backups, and neither exists yet. Today you'd learn the site was down only by visiting it, and a backup happens only when you remember to run one. 6E closes those gaps. It changes no `src/` code and no database.
+
+### Scope
+
+1. **Live health check every 6 hours** (`.github/workflows/live-check.yml`, scheduled plus a manual run button).
+   - Uses only public, logged-out requests, the same checks as the go-live smoke check:
+     - pages give 200 and an unknown address gives 404;
+     - `/vault` redirects to `/login`;
+     - the private APIs give 401, or 403 for a cross-site request;
+     - the security headers are present;
+     - the homepage still contains its section ids.
+   - No secrets. If a check fails, the run fails and GitHub emails you.
+   - Script: `scripts/vault/live-check.mjs` (also runnable by hand: `npm run check:live`).
+2. **Dependency updates** (`.github/dependabot.yml`).
+   - Weekly pull requests for npm packages and the pinned GitHub Actions, grouped so you get a few PRs rather than dozens.
+   - Never merged automatically: CI runs on each PR, and I review and merge only with your OK.
+   - Security fixes arrive as soon as they're published.
+3. **Scheduled weekly backup on this PC** (Windows Task Scheduler).
+   - `scripts/vault/backup-scheduled.ps1` runs the existing `backup-live.mjs` into your private backup folder outside the repository.
+   - The passphrase is sealed with Windows DPAPI for this Windows account, the same protection as the pre-reset snapshot key, so the job runs without a prompt. You type the passphrase once at setup; it's never stored in plain text or in the repository.
+   - Keeps the newest 8 weekly archives, and never deletes older ones it didn't create (the `run-20261116T002012Z` snapshot is protected by name).
+   - It runs only when the PC is on; if it misses a week, it runs at the next login.
+   - Writes `last-backup.json` (time, tables, objects, size, hash).
+4. **Monthly restore drill**, run by the same task once a month: `restore-drill.mjs` restores the newest archive into a disposable offline Postgres (Docker) and compares it table by table. A failure is written to the log, and a Windows notification appears.
+5. **Backup freshness check:** `npm run check:backup` reports the age of the newest archive and of the last good drill. It warns at 10 days for a backup and 40 days for a drill.
+6. **Cross-browser sample in CI:** Firefox and WebKit run the public-page specs (layout, 404, privacy, accessibility) on pushes to `main` and once a week. Chromium still runs everything on every push.
+7. **Docs:** runbook sections (health check, dependency PRs, scheduled backup, what each alert means), plus PROGRESS and DECISIONS entries.
+
+### Decisions needed
+
+- **D1, passphrase storage:** DPAPI-sealed on this PC (recommended; anyone signed in to this Windows account could read the backups, the same as the existing snapshot key). The alternative is no scheduling: a weekly reminder instead, and you type it each time.
+- **D2, backup folder:** confirm the private folder you used in 6A, or name another (it must be outside the repository; a OneDrive-synced folder gives an off-PC copy of the already-encrypted archives).
+- **D3, health-check frequency:** every 6 hours (recommended). GitHub disables scheduled workflows after 60 days without repository activity; Dependabot PRs keep it active.
+
+### Files (expected)
+
+New:
+- `.github/workflows/live-check.yml`
+- `.github/dependabot.yml`
+- `scripts/vault/live-check.mjs`
+- `scripts/vault/backup-scheduled.ps1`
+- `scripts/vault/backup-status.mjs`
+- unit tests for the check script and the retention rule
+
+Changed:
+- `.github/workflows/ci.yml` (cross-browser job)
+- `playwright.config.ts` (Firefox and WebKit projects, used only by that job)
+- `package.json` (`check:live`, `check:backup`)
+- `docs/RUNBOOK.md`, `scripts/vault/README.md`, PROGRESS, DECISIONS
+
+### Risks
+
+- **False alarms** from a Vercel or GitHub hiccup: each check is retried once, and a single failure fails the run.
+- **The health check's log is public:** it contains only public URLs and status codes. It never logs response bodies.
+- **The backup task uses your logged-in Supabase CLI:** if that login expires, the task fails and says so. It is read-only by design; `backup-live.mjs` never writes to production.
+- **Retention deleting the wrong file:** it deletes only files matching its own name pattern in the chosen folder. A test covers this, and the protected snapshot is excluded by name.
+- **Dependabot noise:** grouping keeps it to a few PRs a week, and major-version bumps are separate so they can be declined.
+- **WebKit on Linux** differs from Safari on an iPhone. It narrows the gap but doesn't replace the real-device pass.
+
+### Acceptance tests
+
+1. `npm run check:live` passes against the live site; pointed at a wrong address, it fails with a clear message.
+2. The scheduled workflow runs green from GitHub, and a manual run works.
+3. Dependabot opens its first PRs, and CI runs on them.
+4. The scheduled task runs once on demand:
+   - it produces an archive;
+   - `restore-drill` passes on it;
+   - `last-backup.json` is written;
+   - the passphrase appears nowhere in plain text: not in the task's settings, the logs or the repository.
+5. A retention test with dummy files keeps the newest 8, leaves unrelated files and the protected snapshot untouched.
+6. `npm run check:backup` reports a fresh backup and drill.
+7. The Firefox and WebKit jobs pass on the public specs.
+8. CI is green; no `src/` change, so production is unaffected.
+
+### Rollback
+
+- Delete the workflows or `dependabot.yml`.
+- Delete the scheduled task (`schtasks /Delete`) and the sealed passphrase file.
+- Archives already made stay, and remain valid.
+- Nothing in production depends on any of this.
+
+### Not in 6E
+
+- Enforcing the CSP (on or after 2026-11-30).
+- The domain and Drive Production (waiting on you).
+- Paid uptime services or error tracking such as Sentry (needs a third-party account and a privacy-page update).
+- Cloud-hosted backups (they would put a database credential in a cloud service).
+- 5B and 5C.
