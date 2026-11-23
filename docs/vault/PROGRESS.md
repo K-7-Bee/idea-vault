@@ -946,3 +946,60 @@ Verified locally:
 - **Static checks and build:** tsc, ESLint and the build pass, and `/` stays static.
 
 Not verified: the live Google Picker, Drive uploads from the browser, and the recorder under the policy (live reports will show them); the sign-up setting (owner). Not committed, not deployed.
+
+## 2026-11-23 - Phase 6C plan proposal (quality gates and runbook)
+
+Owner asked for the next phase. 6B is committed (`f04bc47`) but not live; `main` is still `fa269ca`.
+
+Read-only checks for 6C:
+- There is no CI and no `.github/` folder.
+- The 11 SQL suites have no runner and have been run by hand.
+- The Phase 2 suite never creates the two ideas its project checks use.
+- There are no automated accessibility or performance checks.
+- The README lists 3 of 18 SQL files and 3 of about 15 settings.
+- The Drive OAuth app is still in Testing.
+- The repo's visibility (which decides the Actions minutes) couldn't be read, because `gh` isn't signed in.
+
+Drafted the 6C section of [PHASE_6_PLAN.md](PHASE_6_PLAN.md):
+- GitHub Actions CI with no secrets: types, lint, unit, build, the SQL suites through a new runner, browser tests, and an audit.
+- axe accessibility checks at 320, 768 and 1280 px.
+- A byte budget for `/`.
+- The Phase 2 seed fix.
+- `docs/RUNBOOK.md`.
+- The Drive OAuth app moved to Production.
+
+Decisions V-054 to V-059 are proposed.
+
+Documentation only; no code, SQL or deployment.
+
+## 2026-11-23 - Phase 6B live (headers enforced, CSP report-only)
+
+Owner said "6B go live". No migration.
+
+Re-checked `f04bc47` locally: 202 unit tests, tsc, ESLint and the build pass, `/` stays static, and `npm audit --omit=dev` finds 0 vulnerabilities. The 80 browser tests had passed on this code before the commit.
+
+**No backup was taken (V-047 step 1).** The backup needs the owner's own passphrase, and 6B changes no data or schema.
+
+Before go-live, the live site sent only HSTS on `/`, `/vault` and `/api/export`. Fast-forwarded `main` fa269ca → f04bc47 (no force). The new headers were served about 50 seconds later.
+
+Smoke check (logged out):
+- **Headers:** all five protective headers and `Content-Security-Policy-Report-Only` on `/`, `/projects`, `/journal`, `/resume`, `/login`, `/vault`, `/vault/settings`, `/api/export`, `/api/ai/ask`, `/sw.js` and `/api/csp-report`.
+- **CSP:** names the Supabase project, `apis.google.com`, `www.googleapis.com` and `docs.google.com`, and reports to `/api/csp-report`.
+- **Status codes unchanged:**
+  - `/`, `/projects`, `/login` 200.
+  - `/journal` is still a soft 404 (status 200) and `/resume` gives 404.
+  - `/vault` and `/vault/settings` redirect to `/login`.
+  - `/api/export` gives 401, and 403 cross-site.
+  - `/api/ai/ask` gives 401 without a session and 403 cross-site.
+  - `/api/drive/file/*` gives 401 without the site CSP; its own sandbox policy applies to real file responses.
+- **Homepage:** visible text and section ids identical to just before the go-live.
+- **Report endpoint:** a test report was accepted (204).
+
+Not verified:
+- **Vercel's records:** the test report's log line, the deployment id and runtime errors. No Vercel CLI or connector was available in this session.
+- **Under the policy, live:** the Google Picker, browser Drive uploads, the recorder and the assistant. Real use over the next week will show any reports.
+- **Sign-ups:** whether new sign-ups are off (owner dashboard check, V-053).
+
+**Next:** after about a week with no unexplained `csp-violation` lines in Vercel's runtime logs, add `CSP_ENFORCE=1` (Production) and redeploy.
+
+**Rollback:** promote the previous production deployment (fa269ca, the same app as e4b73c1, `dpl_HpvRsaeRy6R7GeTacXjaKZJzkBt3`). No database change.

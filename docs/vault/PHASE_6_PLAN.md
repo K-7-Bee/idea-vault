@@ -1,4 +1,4 @@
-# Phase 6 plan: Hardening and launch (6A live 2026-11-21 as e4b73c1; 6B approved 2026-11-21, built locally)
+# Phase 6 plan: Hardening and launch (6A live 2026-11-21 as e4b73c1; 6B live 2026-11-23 as f04bc47, CSP report-only; 6C proposed 2026-11-23)
 
 ## 6A as built (2026-11-21, local only)
 
@@ -197,3 +197,86 @@ Files:
 - **Changed:** `next.config.ts`, `tests/browser/app-server.mjs` (enforced CSP; reports to the fixture), `tests/browser/api-fixture.mjs` (collects reports for the whole run), `tests/browser/vault-journal.spec.ts`.
 
 **Enforcing later:** in Vercel, add `CSP_ENFORCE=1` (Production) and redeploy. **Rollback:** promote the previous deployment, or remove `CSP_ENFORCE`.
+
+## 6C plan: quality gates and runbook (proposal 2026-11-23; not approved)
+
+### Checked before planning (2026-11-23, read-only)
+
+- **6B is committed (`f04bc47`) but not live.** `main` is still `fa269ca`. 6C doesn't depend on it, but 6B should go live first so the week of CSP reports can run while 6C is built.
+- **No CI.** There's no `.github/` folder. Every check runs only on this PC. The GitHub repo's visibility couldn't be read (`gh` isn't signed in). If it's private, the free plan gives 2,000 Actions minutes a month.
+- **SQL suites have no runner.** All 11 suites in `tests/sql/` were run by hand in a disposable offline `supabase/postgres:17.11.0.018` container. The Phase 2 suite stops on its first project insert because the ideas it references (`a…0001`, `a…0003`) are never created. With them added by hand it passed 28/28 (PROGRESS, 4A).
+- **No accessibility tooling.** The browser suite checks some ARIA states by hand. It has no automated rule checks.
+- **No performance budget.** `/` is static and nothing measures how much it ships.
+- **Docs are out of date.** The README's Database section lists 3 of the 18 SQL files, and Deploy lists 3 of about 15 settings. Deploy, migration, rollback and switch steps are spread across PROGRESS entries.
+- **Google Drive** OAuth app is still in Testing, so the Drive connection expires every 7 days.
+
+### Scope
+
+1. **One SQL runner** (`scripts/vault/run-sql-suites.mjs`). It starts a disposable container with no network, applies `schema.sql`, the Storage stand-in and 002–017 **twice** (to prove they're re-runnable), runs every suite in `tests/sql/`, prints each suite's pass count and removes the container. The same script runs here and in CI.
+2. **Phase 2 suite fixed:** it creates the two ideas it uses at the top. The 28 checks themselves don't change.
+3. **GitHub Actions CI** (`.github/workflows/ci.yml`) on every push and pull request:
+   - `npm ci`, then type check, ESLint, unit tests, production build.
+   - The SQL runner.
+   - Browser tests against the existing fake Supabase and Google fixture (Chromium only). The CSP is enforced there, as locally.
+   - `npm audit --omit=dev --audit-level=high`.
+   - **No secrets in GitHub.** CI uses only the fixture and dummy values. It never reaches Supabase, Google, Gemini or Vercel.
+   - Failure screenshots and traces kept as run artifacts for 7 days. The fixture contains only made-up data.
+4. **Accessibility checks** with `@axe-core/playwright` (one new dev dependency). They run on `/`, `/projects`, `/journal`, a project story page, `/login`, and the Vault's main screens (ideas, an idea, projects, a project, Settings) at 320, 768 and 1280 px, against WCAG 2.2 A and AA rules. Any violation fails. I'll fix what they find in this slice if it's small (labels, contrast, landmarks). I'll list anything larger for you before changing it, since it would change how the public pages look.
+5. **Homepage performance budget.** A browser test loads `/` and measures the JavaScript, CSS, fonts and images it downloads. CI fails if any of them grows more than 10% over today's measured size (recorded in the test). Lighthouse scores are left out because they vary between runs.
+6. **`docs/RUNBOOK.md`:**
+   - Every environment variable, where it lives and what turns each feature on.
+   - Migration order and how to apply one with the CLI.
+   - Go-live steps: backup, migration, fast-forward `main`, Vercel check, smoke checks.
+   - Rollback: promote a deployment, and when a migration can stay.
+   - Backup and restore drill.
+   - Switches: `CSP_ENFORCE`, `AI_ENABLED`, `DRIVE_UPLOADS_ENABLED`.
+   - What to do if a key leaks or someone else logs in.
+   The README's Database and Deploy sections then point to it.
+7. **Drive OAuth app to Production** (your step in Google Cloud Console, with my checklist). The app asks only for `drive.file`, which I believe is not a sensitive scope, so it shouldn't need Google's full review. Google may still ask for brand details (app name, homepage, privacy policy link). I'll confirm against Google's current docs before you start.
+
+### Decisions needed
+
+| ID | Question | Recommendation |
+| --- | --- | --- |
+| V-054 | What CI runs | Everything in Scope 3 on every push and pull request. Each push to `main` is a production deploy, so the full suite should be green there. |
+| V-055 | Secrets in CI | None. Fixture and dummy values only. Anything that needs real Supabase or Google stays a local or live check. |
+| V-056 | How CI gates a go-live | The go-live rule gets a new first step: CI is green on the commit before `main` is fast-forwarded. No branch-protection change (you deploy by fast-forwarding from this PC). |
+| V-057 | Accessibility standard | WCAG 2.2 A and AA via axe, every listed page at three widths, any violation fails. Larger fixes come back to you first. |
+| V-058 | Performance budget | Bytes downloaded by `/`, by type, at most 10% over today's measurement. Raising it is a deliberate one-line change in the test. |
+| V-059 | Drive OAuth to Production | Yes, after I confirm Google's current requirements. If it needs a public privacy policy page, that's a separate small change to the public site and I'll ask first. |
+
+### Files (expected)
+
+| Kind | Files |
+| --- | --- |
+| New | `.github/workflows/ci.yml`, `scripts/vault/run-sql-suites.mjs`, `tests/browser/a11y.spec.ts`, `tests/browser/performance.spec.ts`, `docs/RUNBOOK.md` |
+| Changed | `tests/sql/phase2-behaviour.sql` (seed ideas), `package.json` and `package-lock.json` (`@axe-core/playwright`; `test:sql` script), `README.md` (point to the runbook), `.gitignore` if needed. Plus small accessibility fixes in `src/` if axe finds any (each listed in the report). |
+
+### Risks
+
+- **CI differs from this PC** (Linux, fonts, timing). The browser suite runs one worker with no retries. A test that's only flaky in CI gets fixed, not retried.
+- **CI time and minutes.** Building the app twice (normal and fixture build), pulling the Postgres image and running about 80 browser tests may take 15–20 minutes. If the repo is private, that's roughly 100 pushes a month on the free plan. If it's too slow, browser tests can run only on `main` and pull requests.
+- **Accessibility fixes touch the public pages.** Any visible change to the portfolio gets before and after screenshots, and big ones wait for your OK.
+- **Drive Production** could show Google's "unverified app" screen if Google classifies the app differently than expected. That only affects your own sign-in, and moving back to Testing undoes it.
+- **No production risk from CI itself.** It has no secrets and no deploy step.
+
+### Acceptance tests
+
+1. A push to the branch runs CI, and every job passes: types, lint, unit, build, SQL (all 11 suites, including Phase 2's 28 checks), browser, accessibility, budget, audit.
+2. A deliberately broken commit (a failing unit test, an unlabeled button, an extra 200 KB script on `/`) fails the right job. Tested on a throwaway branch, then deleted.
+3. `npm run test:sql` passes on this PC with the same output as CI.
+4. No secret appears in the workflow, the logs or the artifacts. CI never contacts Supabase, Google or Vercel.
+5. The runbook covers every variable in `.env.example` and every migration. A dry read-through of the go-live steps matches what was done for 6A.
+6. After Drive moves to Production, the Drive connection is still valid 8 days later (live, owner).
+7. If any `src/` fix ships: `/` stays static, homepage text and section ids match the baseline, smoke checks pass.
+
+### Rollback
+
+- **CI:** delete or disable the workflow. Nothing in production depends on it.
+- **Accessibility fixes, if deployed:** promote the previous deployment.
+- **Drive:** set the OAuth app back to Testing in Google Cloud Console.
+- No database change.
+
+### Not in 6C
+
+Enforcing the CSP live (the 6B follow-up after a week of reports), scheduled cloud backups, Dependabot or automatic dependency updates, uptime monitoring or error alerting, cross-browser runs (Firefox, WebKit), and 5B.
