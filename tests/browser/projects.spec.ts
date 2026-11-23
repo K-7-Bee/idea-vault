@@ -217,13 +217,14 @@ test("project overview edits stage and showcase separately, cannot publish, and 
   await page.getByRole("textbox", { name: "Goals" }).fill("Measure real torque");
   await page.getByRole("button", { name: "Save", exact: true }).click();
   await expect(page.getByText("Measure real torque")).toBeVisible();
-  let project = (await state(request)).work.projects[0];
-  expect(project).toMatchObject({ stage: "completed", publication_status: "ready", goals: "Measure real torque", version: 2 });
+  // The page can show the edit before the save reaches the fixture, so wait for the saved row
+  // (6C: this read raced on CI and once locally).
+  await expect.poll(async () => (await state(request)).work.projects[0])
+    .toMatchObject({ stage: "completed", publication_status: "ready", goals: "Measure real torque", version: 2 });
 
   await page.getByRole("button", { name: "Archive project" }).click();
   await expect(page.getByRole("button", { name: "Restore project" })).toBeVisible();
-  project = (await state(request)).work.projects[0];
-  expect(project.archived_at).not.toBeNull();
+  await expect.poll(async () => (await state(request)).work.projects[0].archived_at).not.toBeNull();
   await page.goto("/vault/projects");
   await expect(page.getByText("Archived projects (1)")).toBeVisible();
 
