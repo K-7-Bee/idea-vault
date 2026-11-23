@@ -35,6 +35,47 @@ try {
 
 **First run (2026-11-21):** 30 tables, 1 account, 0 stored files. The drill restored all 30 tables identical to production. The catalog matched apart from the legacy `timevault_state` table (not created by any migration) and a production-only `rls_auto_enable()` function.
 
+## Weekly backup on this PC (Phase 6E)
+
+`backup-scheduled.ps1` runs the two commands above for you every week through Windows Task Scheduler:
+- the backup;
+- keeping the newest 8 archives. Only files named `vault-live-<ref>-<time>.vaultlive` and their manifests are ever removed, and only from this folder;
+- a restore drill when the last passing one is over 28 days old.
+
+**Setup, once (PowerShell, from the repository folder):**
+
+```powershell
+# 1. Seal the passphrase for this Windows account (asked twice, never shown or stored in plain text).
+powershell -ExecutionPolicy Bypass -File scriptsaultackup-scheduled.ps1 -Action Setup
+# 2. Create the task: Sundays 11:00, or at your next sign-in if the PC was off.
+powershell -ExecutionPolicy Bypass -File scriptsaultackup-scheduled.ps1 -Action Register
+# 3. Try it now (about 3 minutes; Docker Desktop running for the drill).
+Start-ScheduledTask -TaskName 'Idea Vault weekly backup'
+npm run check:backup
+```
+
+**The folder** defaults to `S:\Road to Storm K7\codex test\idea-vault-preservation\live-backups`, next to the pre-reset snapshot and with the same restricted permissions. Pass `-Folder '<path>'` to both commands to use another one; it must be outside the repository. Set `VAULT_BACKUP_DIR` to the same path for `npm run check:backup`.
+
+**What the sealing means:** the passphrase is encrypted with Windows DPAPI for your Windows account. That account on this PC can unseal it, so anyone signed in as you could open the backups (the same protection as the pre-reset snapshot key). Nobody else can, not even an administrator, and a copy of the folder on another PC can't be opened without the passphrase itself. Keep the passphrase in your password manager as well: the sealed copy is lost if Windows is reinstalled.
+
+**Other actions:**
+- `-Action Run`: back up now. Add `-Drill` to force a restore drill.
+- `-Action Status`: the same report as `npm run check:backup`.
+- `-Action Unregister`: remove the task. Archives and the sealed passphrase stay; delete `backup-passphrase.dpapi` yourself to remove the passphrase.
+
+**When something goes wrong** you get a Windows notification. Each run writes `last-run.json` and a log in `logs\`, and the newest 30 logs are kept. The task only runs while you're signed in, because that's what lets DPAPI unseal without storing your Windows password.
+
+**Tested (2026-11-23)** with a throwaway passphrase in a scratch folder:
+- by hand: backup, then restore drill (30 of 30 tables identical), about 3 minutes;
+- from Task Scheduler: the same result, after one fix (below);
+- the failure path: a wrong CLI path is recorded and gives a non-zero result;
+- pruning, with dummy archives and a decoy snapshot-key file;
+- no file contained the passphrase.
+
+The test archives were then deleted.
+
+**Fixed along the way:** the Supabase CLI prints query results as a plain list in a normal terminal or a scheduled task, but wraps them in an envelope inside an AI agent's shell. `backup-live.mjs` only understood the envelope, so a backup run from your own PowerShell would have failed with "Supabase CLI returned no rows array". It now reads both (`parseCliRows`, unit-tested).
+
 ---
 
 ## Phase 0 preservation tools (historical)

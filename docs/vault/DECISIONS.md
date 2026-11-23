@@ -158,3 +158,15 @@ Owner replied "exicute plan 6d" to the 6D section of [PHASE_6_PLAN.md](PHASE_6_P
 | V-062 | Privacy page | `/privacy`, static, linked from the homepage footer and the login page. Wording drafted from verified facts and approved by the owner before go-live. |
 | V-063 | Search Console method | The HTML verification file in `public/`. A DNS TXT record on `kaushikkamal.com` is an equal alternative once the domain is connected. |
 | V-064 | OAuth branding | App name "Idea Vault", the owner's support email, homepage, `/privacy` and the authorized domain; no logo. |
+
+## Phase 6E decisions (2026-11-23, in conversation)
+
+Owner replied "approve 6E" to the 6E section of [PHASE_6_PLAN.md](PHASE_6_PLAN.md) without answering D1–D3, so the recommendations apply. D2's suggested 6A folder (`D:\PrivateVaultBackups`) turned out to be only the README's example: there is no D: drive. The default became the existing restricted preservation folder.
+
+| ID | Question | Answer |
+| --- | --- | --- |
+| V-065 | Backup passphrase storage (D1) | Sealed with Windows DPAPI for the owner's Windows account (`ConvertFrom-SecureString`). The task runs with an interactive logon, so no Windows password is stored. It is never in plain text, on a command line or in a log. |
+| V-066 | Backup folder (D2) | `S:\Road to Storm K7\codex test\idea-vault-preservation\live-backups` by default; `-Folder` overrides it (outside the repository only). Keep the newest 8; prune only this tooling's own file names. |
+| V-067 | Health check (D3) | Every 6 hours from GitHub Actions, logged out, no secrets, retried once per check. GitHub's failure email is the alert. |
+| V-068 | Dependency updates | Dependabot weekly, minor and patch grouped, majors one per PR, never auto-merged; owner approves merges, then a normal go-live. |
+| V-069 | Cross-browser | Firefox and WebKit run a three-test public sample on pushes to `main`, weekly and on demand. It informs but doesn't block a go-live by itself. |

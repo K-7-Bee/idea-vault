@@ -1,0 +1,35 @@
+# Phase 6E: weekly update pull requests. Nothing merges automatically: CI runs on each PR and the
+# owner approves the merge. Minor and patch updates are grouped; major versions arrive one per PR so
+# they can be read and declined. Security updates (Settings -> Code security -> Dependabot security
+# updates) arrive as soon as they're published, independent of this schedule.
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:00"
+      timezone: Asia/Seoul
+    open-pull-requests-limit: 5
+    groups:
+      production:
+        dependency-type: production
+        update-types: [minor, patch]
+      development:
+        dependency-type: development
+        update-types: [minor, patch]
+    commit-message:
+      prefix: deps
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:00"
+      timezone: Asia/Seoul
+    groups:
+      actions:
+        patterns: ["*"]
+    commit-message:
+      prefix: ci

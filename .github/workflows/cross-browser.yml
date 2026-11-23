@@ -1,0 +1,54 @@
+# Phase 6E: the public pages in Firefox and WebKit (Safari's engine), against the same synthetic
+# fixture as CI. Chromium keeps running every spec on every push (ci.yml); this runs a public-page
+# sample on pushes to main, weekly, on demand, and when its own setup changes. No secrets.
+# WebKit on Linux is close to Safari but not the same; it doesn't replace a real iPhone or iPad.
+name: Cross-browser
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    paths:
+      - playwright.config.ts
+      - .github/workflows/cross-browser.yml
+  schedule:
+    - cron: "41 3 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: cross-browser-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  NEXT_TELEMETRY_DISABLED: "1"
+
+jobs:
+  public-pages:
+    name: Public pages in Firefox and WebKit
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - name: Install Firefox and WebKit
+        run: npx playwright install --with-deps firefox webkit
+      - name: Public-page specs
+        run: npm run test:browser
+        env:
+          CROSS_BROWSER: "1"
+      - name: Keep failure screenshots and traces (synthetic data only)
+        if: failure()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: cross-browser-results
+          path: test-results/
+          retention-days: 7

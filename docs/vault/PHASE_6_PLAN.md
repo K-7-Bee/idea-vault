@@ -531,3 +531,14 @@ Changed:
 - Paid uptime services or error tracking such as Sentry (needs a third-party account and a privacy-page update).
 - Cloud-hosted backups (they would put a database credential in a cloud service).
 - 5B and 5C.
+
+### 6E as built (2026-11-23; local and branch only, awaiting go-live)
+
+Approved by the owner ("approve 6E"), with the recommended D1–D3 (V-065–V-069). Built as planned, with these differences:
+
+- **The backup folder default** is `S:\Road to Storm K7\codex test\idea-vault-preservation\live-backups`. The 6A folder in the README (`D:\PrivateVaultBackups`) was only an example: there is no D: drive.
+- **A real bug fixed in `backup-live.mjs`.** The Supabase CLI prints a plain array outside an AI agent's shell, and the backup only read the agent envelope. So a backup run from the owner's own PowerShell, or from Task Scheduler, would have failed. Found by running the task from Task Scheduler; now `parseCliRows` reads both forms, with a unit test.
+- **A new public-pages spec** (`tests/browser/public-pages.spec.ts`) replaces the planned showcase test in the cross-browser sample. Every public page, including `/privacy` and the 404, gets a status, an h1 and no sideways scroll at 320, 768 and 1280 px. The showcase test logs in to the Vault, and WebKit doesn't complete that login against the plain-http test server.
+- **Cross-browser runs offline:** Firefox and WebKit get a refusing proxy, the equivalent of Chromium's host-blocking switch.
+- **Firefox gets 2 retries.** It occasionally never fires `load` on a fully rendered page (not reproduced in a 108-navigation probe). Playwright reports such a test as flaky.
+- **The live check** has no homepage text comparison: the text lives in the CI tests. It checks status codes, the `/login` redirect, headers, section ids and the Limited Use statement.

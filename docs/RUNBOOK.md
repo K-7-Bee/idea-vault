@@ -44,8 +44,21 @@ Test-only settings (`VAULT_E2E`, `DRIVE_GOOGLE_TEST_BASE`, `GEMINI_TEST_BASE`, `
 | `npm run test:sql` | Applies `schema.sql` and every migration to a disposable offline Postgres (Docker), re-applies 004 onwards, then runs every suite in `tests/sql/`. `npm run test:sql -- phase2` runs a single suite. | about 20 s, plus image download the first time |
 | `npm run test:browser` | Builds the production app against a fake Supabase/Google/Gemini and runs every browser spec, with the CSP enforced, axe accessibility rules, pixel-measured text contrast (WCAG AA, light and dark) and the homepage byte budget. | about 15–20 min |
 | `npm audit --omit=dev` | Known vulnerabilities in production dependencies | seconds |
+| `npm run check:live` | The go-live smoke check against the live site (logged out; also scheduled, below) | seconds |
+| `npm run check:backup` | Age of the newest backup and of the last passing restore drill | instant |
 
-CI runs all of these on every push. **A commit goes live only when CI is green on it** (V-056).
+CI runs all of these on every push (Chromium). Firefox and WebKit run a public-page sample on pushes to `main`, weekly and on demand (`.github/workflows/cross-browser.yml`). **A commit goes live only when CI is green on it** (V-056).
+
+## Monitoring and upkeep (Phase 6E)
+
+| What | When | If it fails |
+| --- | --- | --- |
+| **Live check** (`.github/workflows/live-check.yml`): the logged-out smoke check below, against the live site | Every 6 hours, and from Actions → Live check → Run workflow | GitHub emails you. Open the run: each line names the check and the status it got. Then see "The site is down or erroring". Scheduled runs pause after 60 days without repository activity; re-enable them in the Actions tab. |
+| **Dependabot** (`.github/dependabot.yml`): update PRs for npm packages and the pinned Actions | Mondays; security fixes as soon as published (turn on Settings → Code security → Dependabot security updates) | Nothing merges by itself. Merge a PR only when its CI is green; major versions come one per PR, so read their release notes or close them. After merging, go live as usual. |
+| **Weekly backup** (`scripts/vault/backup-scheduled.ps1`, Task Scheduler "Idea Vault weekly backup") | Sundays 11:00, or at your next sign-in if the PC was off. A restore drill runs when the last passing one is over 28 days old. | A Windows notification. `npm run check:backup` or `…backup-scheduled.ps1 -Action Status` says what's wrong. The log is in `<backup folder>\logs`. Common causes: Docker Desktop not running (drill skipped), the Supabase CLI login expired (log in again in the tools folder). |
+| **Cross-browser** (`.github/workflows/cross-browser.yml`) | Pushes to `main`, Mondays, on demand | Not a blocker for go-live by itself. Look at the failing browser's screenshot artifact; fix or note it. |
+
+Setup for the weekly backup is in [scripts/vault/README.md](../scripts/vault/README.md) "Weekly backup on this PC".
 
 ## Keeping the privacy page true
 
@@ -68,10 +81,11 @@ Order applied to production so far: `schema.sql`, `002_tags.sql` … `017_ai.sql
 4. **Apply the migration**, if any: `supabase db query --remote=<ref> --yes --file supabase/NNN_name.sql`. Then a read-only post-check (columns, RLS on, policies, grants, data counts unchanged).
 5. **Note the current production deployment** (Vercel → Deployments, the one marked Production) for rollback.
 6. **Deploy:** fast-forward `main` to the commit, without force: `git push origin <commit>:refs/heads/main`. Vercel builds in about a minute.
-7. **Smoke check, logged out:**
+7. **Smoke check, logged out:** `npm run check:live` runs all of these except the Vercel logs:
    - `/`, `/projects`, `/login` give 200.
    - `/vault` and `/vault/settings` redirect to `/login`.
    - `/api/export` gives 401, and 403 when sent with `Sec-Fetch-Site: cross-site` (the header a browser adds for a cross-site request).
+   - `/privacy` and an unknown address (404) respond.
    - The security headers are present: `curl -sI https://kaushik-kamal.vercel.app/`.
    - Vercel shows no runtime errors.
 8. **Smoke check, logged in:** open the Vault, open an idea and a project, then check Settings.
@@ -95,6 +109,7 @@ Order applied to production so far: `schema.sql`, `002_tags.sql` … `017_ai.sql
 ## Backups and restore drill
 
 See [scripts/vault/README.md](../scripts/vault/README.md). In short:
+- **Weekly and automatic** on this PC since Phase 6E (see Monitoring and upkeep). Still back up by hand before a migration.
 - `backup-live.mjs` writes an encrypted archive of every table, the account list (without secrets), Storage settings and every file's bytes. Write it to a folder outside the repository.
 - `restore-drill.mjs` restores that archive into a disposable offline Postgres and compares it table by table.
 - Settings → Your data → **Download my data** gives a JSON copy of your rows (no file bytes).

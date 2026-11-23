@@ -1138,3 +1138,33 @@ Plan in [PHASE_6_PLAN.md](PHASE_6_PLAN.md), "Phase 6E plan":
 - a Firefox and WebKit sample in CI.
 
 No code, no deploy. Awaiting owner approval and decisions D1–D3.
+
+## 2026-11-23: Phase 6E built (live check, Dependabot, weekly backup, cross-browser)
+
+Owner approved ("approve 6E") and took the recommended D1–D3 (V-065–V-069). No `src/` change and no database change.
+
+Built:
+- `scripts/vault/live-check.mjs` (`npm run check:live`) and `.github/workflows/live-check.yml` (every 6 hours, on demand, and on changes to the check).
+- `.github/dependabot.yml`.
+- `scripts/vault/backup-scheduled.ps1` (Setup, Register, Run, Status, Unregister) and `scripts/vault/backup-status.mjs` (`npm run check:backup`, with pruning).
+- `.github/workflows/cross-browser.yml`, Playwright projects, and `tests/browser/public-pages.spec.ts`.
+- `tests/operations.test.mjs` (6 tests).
+- A fix in `live-archive.mjs`: Supabase CLI output is now read in both of its forms.
+- Runbook and backup README sections.
+
+Verified on this PC:
+- **Live check:** 12/12 against the live site, in about 3 s. The unit tests cover a wrong redirect, a missing header, a lost section, an open API, retries and network errors.
+- **Scheduled backup, with a throwaway passphrase in a scratch folder:**
+  - By hand: a read-only production backup (30 tables, 1 account, 0 files), then a restore drill: 30 of 30 tables identical, all file hashes matching. The 16 catalog differences are the known legacy `timevault_state` table and `rls_auto_enable()` (as in 6A).
+  - From Task Scheduler: first a failure ("no rows array", which found the CLI-output bug), then after the fix, backup and drill ok with task result 0.
+  - The failure path: a wrong CLI path gives task result 1, records the reason in `last-run.json`, and Status warns about it.
+  - Pruning: 9 dummy archives plus a decoy `run-20261116T002012Z.key.dpapi`. The newest 8 were kept with their manifests, and the decoy was untouched.
+  - The passphrase was found in no file.
+  - The test task, the archives and the sealed throwaway passphrase were deleted afterwards.
+- **Cross-browser sample** (`CROSS_BROWSER=1`, three tests in Firefox and WebKit, repeated 3 times): 17 passed and 1 flaky (Firefox, passed on retry), 0 failed. The new public-pages spec also passes in Chromium.
+- **Checks:** tsc, lint (only the old warning) and 208 unit tests pass.
+
+Not verified, or waiting for the go-live:
+- **Needs `main`:** the scheduled live check and Dependabot run only from `main` (GitHub reads them from the default branch). The cross-browser workflow runs on pushes to `main`.
+- **Owner:** run Setup and Register with your own passphrase (the task isn't registered for real yet). Turn on Dependabot security updates in the repository settings.
+- **Windows notification:** shown by code, not seen on screen during the test.

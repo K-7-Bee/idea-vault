@@ -115,10 +115,18 @@ export function cliQuery({ cli, ref, workdir, sqlFile }) {
   const result = spawnSync(process.execPath, [cli, 'db', 'query', `--remote=${ref}`, '--read-only', '--workdir', workdir, '--output', 'json', '--file', sqlFile],
     { encoding: 'utf8', maxBuffer: MAX_BYTES, windowsHide: true, timeout: 180000 });
   if (result.status !== 0) fail(`Supabase CLI query failed (exit ${result.status}). ${String(result.stderr).split('\n').filter((l) => /error/i.test(l)).slice(0, 2).join(' ')}`);
+  return parseCliRows(result.stdout);
+}
+
+// `supabase db query --output json` prints a plain array of rows in a normal terminal or a scheduled
+// task, but wraps them as { boundary, rows, warning } when it detects an AI agent's shell (Phase 6E
+// found this: the 6A backups had only been run from such a shell). Accept both.
+export function parseCliRows(stdout) {
   let parsed;
-  try { parsed = JSON.parse(result.stdout); } catch { fail('Supabase CLI returned output that is not JSON'); }
-  if (!Array.isArray(parsed.rows)) fail('Supabase CLI returned no rows array');
-  return parsed.rows;
+  try { parsed = JSON.parse(stdout); } catch { fail('Supabase CLI returned output that is not JSON'); }
+  const rows = Array.isArray(parsed) ? parsed : parsed?.rows;
+  if (!Array.isArray(rows)) fail('Supabase CLI returned no rows array');
+  return rows;
 }
 
 export function cliStorageCopy({ cli, ref, workdir, bucket, destination }) {
