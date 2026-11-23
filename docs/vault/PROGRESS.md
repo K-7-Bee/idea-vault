@@ -1168,3 +1168,27 @@ Not verified, or waiting for the go-live:
 - **Needs `main`:** the scheduled live check and Dependabot run only from `main` (GitHub reads them from the default branch). The cross-browser workflow runs on pushes to `main`.
 - **Owner:** run Setup and Register with your own passphrase (the task isn't registered for real yet). Turn on Dependabot security updates in the repository settings.
 - **Windows notification:** shown by code, not seen on screen during the test.
+
+## 2026-11-23: Phase 6E live (on main)
+
+Owner: "6E go live".
+
+- **CI:** green on `bc48972` (CI `45133411237`), and the Live check run from that push passed (`45133411276`).
+- **Deploy:** `main` fast-forwarded `4644ecb..bc48972`, no force. No `src/` or database change, so Vercel rebuilt the same app.
+- **On `main`:**
+  - CI passed (`45134500127`).
+  - Live check passed (`45134500120`).
+  - Cross-browser passed (`45134500236`): 6/6 in Firefox and WebKit on GitHub, no retries, 3 min.
+- **`npm run check:live` after the deploy:** 12/12.
+
+From now on:
+- the live check runs every 6 hours;
+- Dependabot opens its first PRs on the next Monday;
+- the cross-browser sample runs on pushes to `main` and every Monday.
+
+Still with the owner:
+- Run `backup-scheduled.ps1 -Action Setup`, then `-Action Register`, then start the task once (scripts/vault/README.md "Weekly backup on this PC"). No backup is scheduled until then.
+- Turn on Dependabot security updates (Settings → Code security).
+- Make sure GitHub's Actions failure emails reach you (GitHub → Settings → Notifications → Actions).
+
+Not verified: the first scheduled (cron) live-check run and the first Dependabot PRs haven't happened yet.

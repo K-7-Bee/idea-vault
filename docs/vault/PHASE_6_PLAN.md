@@ -1,4 +1,4 @@
-# Phase 6 plan: Hardening and launch (6A live 2026-11-21; 6B live 2026-11-23, CSP report-only; 6C built 2026-11-23, CI only; 6D live 2026-11-23 except Drive Production and CSP enforcement)
+# Phase 6 plan: Hardening and launch (6A live 2026-11-21; 6B live 2026-11-23, CSP report-only; 6C built 2026-11-23, CI only; 6D live 2026-11-23 except Drive Production and CSP enforcement; 6E live 2026-11-23, backup task awaiting owner setup)
 
 ## 6A as built (2026-11-21, local only)
 
@@ -532,7 +532,7 @@ Changed:
 - Cloud-hosted backups (they would put a database credential in a cloud service).
 - 5B and 5C.
 
-### 6E as built (2026-11-23; local and branch only, awaiting go-live)
+### 6E as built (2026-11-23; live on main the same day)
 
 Approved by the owner ("approve 6E"), with the recommended D1–D3 (V-065–V-069). Built as planned, with these differences:
 
