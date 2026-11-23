@@ -1,6 +1,7 @@
 "use client";
 
 import { Suspense, useState } from "react";
+import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { looksOffline } from "@/lib/sync";
@@ -79,6 +80,9 @@ export default function LoginPage() {
             <DeniedNotice />
           </Suspense>
         )}
+        <p className="text-center text-sm text-muted">
+          <Link href="/privacy" className="underline underline-offset-4 hover:text-foreground">Privacy</Link>
+        </p>
       </main>
     </div>
   );

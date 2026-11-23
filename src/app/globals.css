@@ -101,7 +101,7 @@
   --pf-deep: #0a2540;
   --pf-ink: #0b2340;
   --pf-muted: #3d5470;
-  --pf-teal: #0b7f86;
+  --pf-teal: #09696f; /* 6D: was #0b7f86 (3.6:1 on the petal-tinted background); now ≥ 4.8:1 */
   --pf-blue: #1d5fbf;
   --pf-line: rgba(11, 35, 64, 0.12);
   --pf-glass: rgba(255, 255, 255, 0.72);

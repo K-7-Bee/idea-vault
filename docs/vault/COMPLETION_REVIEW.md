@@ -1,6 +1,47 @@
 # Master-guide completion review
 
-## Current reconciliation: 2026-11-16
+## Current reconciliation: 2026-11-23 (Phase 6D)
+
+This replaces the 2026-11-16 review below, which is kept as history; it said Phases 1–6 weren't built. Since then, Phases 1–6C were planned, approved slice by slice, built and (except 6C, which is CI only) taken live. Each step is recorded in [PROGRESS.md](PROGRESS.md). Phase 0 was closed by the owner's reset on 2026-11-16. The pre-reset data exists only in the encrypted DPAPI snapshot `run-20261116T002012Z`.
+
+"Verified" below means a check that ran and passed: SQL suites (`npm run test:sql`), unit tests, browser tests against the synthetic fixture (`npm run test:browser`, all run in CI), or a live check recorded in PROGRESS. The fixture imitates Supabase, Google and Gemini; it is not them.
+
+### The 12 acceptance items (`PORTFOLIO_IDEA_VAULT_FINAL_MASTER_PROMPT.md`)
+
+| # | Item | Evidence | Not verified |
+| --- | --- | --- | --- |
+| 1 | Anonymous visitors see only approved public content | SQL: anon reads only `showcases`, published profile and journal snapshots; anon can't read projects, drafts or `user_id`, or list any bucket (phase4a–4d suites). Live 4A check as anon: public columns only. Browser: private projects never appear on `/projects`. | — |
+| 2 | Direct private API and asset access is denied without authorization | Every private API route gives 401 without a session and 403 cross-site (browser tests; live smoke checks at every go-live). The proxy and the `ALLOWED_EMAIL` check gate `/vault`. RLS on every public table (6A catalog drill). Drive files are served only to the owner, sandboxed. | Whether Supabase sign-ups are off (owner, V-053). |
+| 3 | Completed but not Published is invisible publicly | SQL: no snapshot exists without the publish call. Browser: "project overview … cannot publish". | — |
+| 4 | Published on a non-Completed project doesn't expose it | SQL: a project can't be created as published; publishing a project that isn't completed is refused; moving a project away from completed removes its snapshot (phase4a). | — |
+| 5 | Completed + Published shows only approved showcase fields | Publishing copies only the reviewed fields into a separate snapshot (`showcases`). Browser: "visitors see only the chosen fields". Live 4A: `user_id` refused to anon. | — |
+| 6 | Unpublishing or reverting removes public content and cached exposure | SQL: unpublish removes the snapshot. Browser: unpublish takes a showcase or journal entry down, and the next homepage request reflects it. | Live unpublish and stage-change removal not yet exercised (noted at 4A go-live). Vercel's cache behaviour is proven only through the fixture build. |
+| 7 | Portfolio editing through the Vault login, without editing code | 4B (homepage profile), 4C (résumé, photo, files), 4D (journal), 4A (showcases): all edited in the Vault, all live. | — |
+| 8 | Draft, preview, save, publish and rollback behave predictably | Browser: "edit, save, preview, confirm and publish: the very next homepage request shows exactly the preview", and "history and rollback". | — |
+| 9 | Real content is never invented | The homepage seed is the pre-4B page text, compared with git history by `tests/profile.test.mjs`. Everything else is the owner's own input. Publishing refuses empty image descriptions. The 6D privacy page states only behaviour checked in code. | The owner's review of the privacy wording (pending). |
+| 10 | Works on phone, tablet and desktop and respects reduced motion | Browser: layouts at 320–1280 px with no horizontal scrolling. axe (WCAG 2.2 AA) and pixel-measured text contrast on every public page and Vault screen at 320, 768 and 1280 px, light and dark, in CI. The CSS and animated sections honour `prefers-reduced-motion`. | A real phone and iPad pass (owner, checklist below). Reduced motion isn't asserted by a test. |
+| 11 | Existing Vault data and workflows survive migrations | Every migration is additive and re-runnable from 004 on, proven twice per CI run. A backup comes before each migration go-live. The 6A restore drill reproduced all 30 production tables exactly. | Current data hasn't been backed up with the owner's own passphrase since 6A (the drill used a one-time one). |
+| 12 | Deployable and maintainable with documented configuration and recovery | [docs/RUNBOOK.md](../RUNBOOK.md): settings, migrations, go-live, rollback, backups, incidents. CI on every push. Backup and restore drill scripts. | — |
+
+### Still open (owner actions or later slices)
+
+- **Before the 6D go-live:** approve the privacy wording and the before and after screenshots.
+- **Domain:** connect `kaushikkamal.com` (steps given 2026-11-23). Then Search Console verification and Drive OAuth to Production (6D item 4).
+- **CSP:** enforce it on or after 2026-11-30 if Vercel's logs are clean (6D item 5).
+- **Sign-ups:** confirm they're off in Supabase (V-053).
+- **Backup:** run one with your own passphrase.
+- **Live unpublish check (item 6):** publish a test project, unpublish it, and confirm `/projects` drops it.
+- **Real-device pass (item 10):**
+  1. On a phone and an iPad, open `/`, `/projects` and a case study, and check nothing overflows sideways.
+  2. With "Reduce motion" turned on in the device settings, check the hero doesn't animate.
+  3. Log in to the Vault, capture an idea with a photo and a voice note, then put the device in airplane mode, capture another, reconnect and confirm both sync.
+  4. Open a project and the Journal editor.
+- **5B** (assistant proposals) and **5C** (file text), once 5A is switched on with a real key.
+
+---
+
+## Earlier reconciliation: 2026-11-16 (historical)
+
 
 Owner-authorized source repairs now cover dashboard locking, non-navigating logout preservation, device-local attachment/idea recovery and conditional edits. See [repair evidence and limitations](RELIABILITY_REPAIRS_2026-11-16.md). Current verification: 74 tests, full ESLint, TypeScript and production build pass. These repairs do not complete Phase 0, browser/backend acceptance, the proposed product modules or deployment. Historical completion/approval statements below must be read with this update.
 

@@ -42,10 +42,14 @@ Test-only settings (`VAULT_E2E`, `DRIVE_GOOGLE_TEST_BASE`, `GEMINI_TEST_BASE`, `
 | `npx tsc --noEmit` and `npm run lint` | Types and lint | < 1 min |
 | `npm test` | Unit tests | < 1 min |
 | `npm run test:sql` | Applies `schema.sql` and every migration to a disposable offline Postgres (Docker), re-applies 004 onwards, then runs every suite in `tests/sql/`. `npm run test:sql -- phase2` runs a single suite. | about 20 s, plus image download the first time |
-| `npm run test:browser` | Builds the production app against a fake Supabase/Google/Gemini and runs every browser spec, with the CSP enforced, axe accessibility rules and the homepage byte budget. | about 15–20 min |
+| `npm run test:browser` | Builds the production app against a fake Supabase/Google/Gemini and runs every browser spec, with the CSP enforced, axe accessibility rules, pixel-measured text contrast (WCAG AA, light and dark) and the homepage byte budget. | about 15–20 min |
 | `npm audit --omit=dev` | Known vulnerabilities in production dependencies | seconds |
 
 CI runs all of these on every push. **A commit goes live only when CI is green on it** (V-056).
+
+## Keeping the privacy page true
+
+`/privacy` (`src/app/privacy/page.tsx`) describes exactly what the site does with data. Update it in the same change whenever that changes: a new analytics or tracking script, cookies on public pages, a new Google scope, the assistant sending new kinds of data, or a new service that receives data. Google's brand verification relies on it.
 
 ## Changing the database
 

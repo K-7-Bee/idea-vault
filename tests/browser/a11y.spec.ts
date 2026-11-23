@@ -12,7 +12,7 @@ const controlHeaders = { "x-fixture-key": "local-synthetic-test-control" };
 const WIDTHS = [320, 768, 1280];
 const TAGS = ["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "wcag22aa"];
 
-const PUBLIC = ["/", "/projects", "/projects/waste-to-energy-lighting", "/journal", "/login"];
+const PUBLIC = ["/", "/projects", "/projects/waste-to-energy-lighting", "/journal", "/login", "/privacy", "/no-such-page"];
 const VAULT = ["/vault", `/vault/ideas/${IDEA}`, "/vault/projects", `/vault/projects/${PROJECT}`, "/vault/archive",
   "/vault/lab", "/vault/story", "/vault/portfolio", "/vault/settings"];
 

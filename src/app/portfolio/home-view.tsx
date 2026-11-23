@@ -347,7 +347,10 @@ export default function HomeView({ content: c, publishedAt, media = {}, journalC
 
       <footer className="font-nav mx-auto flex max-w-7xl items-center justify-between border-t border-pf-line px-5 py-6 text-xs font-semibold text-pf-muted sm:px-8">
         <span>© {c.name}</span>
-        <Link href="/login" className="transition-colors hover:text-pf-ink">Vault login</Link>
+        <span className="flex gap-5">
+          <Link href="/privacy" className="transition-colors hover:text-pf-ink">Privacy</Link>
+          <Link href="/login" className="transition-colors hover:text-pf-ink">Vault login</Link>
+        </span>
       </footer>
     </div>
   );

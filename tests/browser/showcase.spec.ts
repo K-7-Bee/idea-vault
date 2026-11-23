@@ -100,13 +100,13 @@ async function publish(page: Page) {
 async function expectGone(v: Page, slug: string) {
   const response = await v.goto(`/projects/${slug}`);
   expect(response!.headers()["cache-control"] ?? "").not.toMatch(/public|s-maxage/);
-  await expect(v.getByRole("heading", { name: "This page could not be found." })).toBeVisible();
+  await expect(v.getByRole("heading", { name: "Page not found", level: 1 })).toBeVisible();
   await expect(v.locator('meta[name="robots"][content*="noindex"]').first()).toBeAttached();
   expect(await v.locator("main, body").first().innerText()).not.toMatch(/Explore project|Lessons learned|The problem/);
 }
 async function expectLive(v: Page, slug: string) {
   await v.goto(`/projects/${slug}`);
-  await expect(v.getByRole("heading", { level: 1 })).not.toHaveText("This page could not be found.");
+  await expect(v.getByRole("heading", { level: 1 })).not.toHaveText("Page not found");
   await expect(v.getByRole("link", { name: "← All projects" })).toBeVisible();
 }
 // A visitor with no session at all.

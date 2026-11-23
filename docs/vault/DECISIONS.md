@@ -146,3 +146,15 @@ Owner replied "approve 6C" to the 6C section of [PHASE_6_PLAN.md](PHASE_6_PLAN.m
 | V-057 | Accessibility standard | axe-core rules tagged WCAG 2.0, 2.1 and 2.2 A and AA, on the public pages and the Vault's main screens at 320, 768 and 1280 px; any violation fails. Larger fixes come back to the owner first. |
 | V-058 | Performance budget | Bytes downloaded by `/` (document, scripts, styles, fonts, images), each at most 10% over the 2026-11-23 baseline. |
 | V-059 | Drive OAuth to Production | Yes, after confirming Google's requirements; a public privacy policy page, if needed, is a separate change the owner approves first. |
+
+## Phase 6D decisions (2026-11-23, in conversation)
+
+Owner replied "exicute plan 6d" to the 6D section of [PHASE_6_PLAN.md](PHASE_6_PLAN.md), accepting every recommendation. The owner will connect the new domain `kaushikkamal.com` (Namecheap) later, so Drive OAuth to Production (6D item 4) waits for the domain and the live privacy page.
+
+| ID | Question | Answer |
+| --- | --- | --- |
+| V-060 | Contrast standard and method | WCAG AA (4.5:1, or 3:1 for large text), measured on rendered pixels (worst case behind each text), on the axe page list at three widths, enforced in CI. Fixes change colour tokens only; owner sees before and after screenshots before go-live. |
+| V-061 | 404 page | Site-styled, with `main`, "Page not found" and links to Home and Projects. Status codes unchanged. |
+| V-062 | Privacy page | `/privacy`, static, linked from the homepage footer and the login page. Wording drafted from verified facts and approved by the owner before go-live. |
+| V-063 | Search Console method | The HTML verification file in `public/`. A DNS TXT record on `kaushikkamal.com` is an equal alternative once the domain is connected. |
+| V-064 | OAuth branding | App name "Idea Vault", the owner's support email, homepage, `/privacy` and the authorized domain; no logo. |

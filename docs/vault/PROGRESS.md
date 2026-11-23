@@ -1076,3 +1076,27 @@ Drafted the 6D section of [PHASE_6_PLAN.md](PHASE_6_PLAN.md):
 Decisions V-060 to V-064 are proposed.
 
 Documentation only; no code or deployment.
+
+## 2026-11-23 - Slice 6D built locally (contrast, 404, privacy page, completion review)
+
+Owner replied "exicute plan 6d" (decisions V-060 to V-064 recorded) and will connect `kaushikkamal.com` later. Details are in [PHASE_6_PLAN.md](PHASE_6_PLAN.md) "6D as built".
+
+Built:
+- A pixel-based contrast check (public pages and Vault screens, three widths, light and dark, with a canary).
+- `--pf-teal` changed from `#0b7f86` to `#09696f`, the only real failure.
+- A site-styled 404 page.
+- `/privacy`, linked from the homepage footer and the login page.
+- `COMPLETION_REVIEW.md` rewritten against the 12 acceptance items.
+- Runbook additions.
+- Three browser tests updated for the new 404 heading (they expected Next's built-in wording).
+
+Verified on this PC:
+- tsc, lint and 202 unit tests pass.
+- **Browser, first full run:** 86 passed and 3 failed (the old 404 wording). After the fix, the affected showcase and journal specs pass (10/10), and the accessibility, contrast, budget and portfolio specs pass (10/10).
+- Before and after screenshots taken (live site against the fixture build).
+
+Not verified, not committed or not live:
+- The owner's approval of the privacy wording and the screenshots.
+- CI on the new commit (pushed next).
+- Live go-live.
+- Item 4 (Drive Production) waits for the domain; item 5 (CSP) waits for 2026-11-30.

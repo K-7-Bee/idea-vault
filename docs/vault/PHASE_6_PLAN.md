@@ -1,4 +1,4 @@
-# Phase 6 plan: Hardening and launch (6A live 2026-11-21; 6B live 2026-11-23, CSP report-only; 6C built 2026-11-23, CI only; 6D proposed 2026-11-23)
+# Phase 6 plan: Hardening and launch (6A live 2026-11-21; 6B live 2026-11-23, CSP report-only; 6C built 2026-11-23, CI only; 6D approved 2026-11-23, built locally)
 
 ## 6A as built (2026-11-21, local only)
 
@@ -320,7 +320,7 @@ Files:
 
 **Rollback:** delete or disable the workflow. No production or database change.
 
-## 6D plan: launch close-out (proposal 2026-11-23; not approved)
+## 6D plan: launch close-out (proposal 2026-11-23; approved 2026-11-23)
 
 6A–6C are done. What remains of Phase 6 are the items they left open. 5B (assistant proposals) stays deferred until 5A is switched on with a real key and tried.
 
@@ -407,3 +407,36 @@ Slices 1–3 ship as one go-live. 4 follows once 3 is live, 5 on its date, and 6
 ### Not in 6D
 
 5B and 5C, scheduled cloud backups, uptime monitoring, Dependabot, cross-browser CI, terms of service, and cookie banners (no tracking cookies exist).
+
+### 6D as built (2026-11-23, slices 1–3 and 6 local; awaiting owner review)
+
+Approved by the owner ("exicute plan 6d"). The new domain `kaushikkamal.com` (Namecheap) will be connected later, so item 4 (Drive OAuth to Production) waits for it and for the live privacy page. Item 5 (enforce the CSP) stays on or after 2026-11-30.
+
+- **The pixel contrast check** (`tests/browser/contrast.spec.ts`):
+  - **Method:** records each text's colour through a canvas (so any CSS colour syntax works), makes all text transparent, and screenshots the page a viewport at a time. Each text is scored against the pixels behind its own line boxes, blending in the text's alpha; the 5th percentile counts.
+  - **Skipped:** text over images, canvases or video; text covered at that scroll position; disabled controls.
+  - **Coverage:** public pages (including `/privacy` and a 404 address) and Vault screens at 320, 768 and 1280 px, in light and dark schemes. A canary proves it reports pale text.
+- **What it found** was much less than the rough probe suggested. Every Vault screen and the homepage pass in both schemes. The only failure was the teal label colour `--pf-teal` (`#0b7f86`): 3.6–4.4:1 on `/projects` and the case studies.
+- **The fix:** one token. `--pf-teal` is now `#09696f`, the same hue 17% darker (computed: 4.86:1 against the worst measured background, 6.4:1 on white). It also deepens the check icon, the "award" badge and one hero accent slightly.
+- **The 404 page** (`src/app/not-found.tsx`) uses the projects frame, with `main#main-content`, "Page not found" and links to Home and Projects.
+- **The privacy page** (`src/app/privacy/page.tsx`) is static and written from facts checked in code:
+  - the public pages set no cookies (the auth proxy matches only `/vault`) and register no service worker (registered only from the Vault layout);
+  - Drive reads only `about.user` (email, permission id) and file details and bytes;
+  - the assistant's sendable records exclude files.
+
+  It includes Google's Limited Use statement. Contact points to the homepage's contact section, so no address is repeated. It's linked from the homepage footer ("Privacy", next to "Vault login") and the login page.
+- **The completion review** (`COMPLETION_REVIEW.md`) is rewritten against the 12 acceptance items with evidence. The 2026-11-16 text is kept below it as history.
+- **The runbook** now lists the contrast check and adds "Keeping the privacy page true".
+
+Before and after screenshots, taken in a scratch folder rather than the repo:
+- **Before:** the live site at `/projects`, a case study, a 404 address, `/login`, and the homepage footer.
+- **After:** the fixture build at the same addresses, plus `/privacy`.
+- **Widths:** 1280 and 390 px.
+
+The visible public changes:
+- a slightly darker teal on labels;
+- the site-styled 404 page, which replaces the unstyled default;
+- "Privacy" in the homepage footer and under the login form;
+- the new `/privacy`.
+
+The homepage's visible text changes only by "Privacy". The byte budget still passes: the HTML grew by 259 B.

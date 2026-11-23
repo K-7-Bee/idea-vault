@@ -75,7 +75,7 @@ test("write, preview and publish an entry: /journal and the homepage link appear
   await expect(nav(v).getByRole("link", { name: "Projects", exact: true })).toBeAttached();
   await expect(nav(v).getByRole("link", { name: "Journal", exact: true })).toHaveCount(0);
   await v.goto("/journal");
-  await expect(v.getByText("This page could not be found.")).toBeVisible();
+  await expect(v.getByRole("heading", { name: "Page not found", level: 1 })).toBeVisible();
   await expect(v.locator('meta[name="robots"][content*="noindex"]').first()).toBeAttached();
 
   await login(page);
@@ -97,7 +97,7 @@ test("write, preview and publish an entry: /journal and the homepage link appear
   const previewMain = await preview.locator("main").innerText();
   await preview.close();
   await v.goto("/journal/why-my-fuse-blew");
-  await expect(v.getByText("This page could not be found.")).toBeVisible();
+  await expect(v.getByRole("heading", { name: "Page not found", level: 1 })).toBeVisible();
 
   await publish(page);
   await expect(page.getByText("Published", { exact: true })).toBeVisible();
@@ -120,7 +120,7 @@ test("write, preview and publish an entry: /journal and the homepage link appear
   await page.getByRole("group", { name: "Confirm unpublishing this entry" }).getByRole("button", { name: "Unpublish now" }).click();
   await expect(status(page, "Unpublished. The entry is off your site.")).toBeVisible();
   await v.goto("/journal/why-my-fuse-blew");
-  await expect(v.getByText("This page could not be found.")).toBeVisible();
+  await expect(v.getByRole("heading", { name: "Page not found", level: 1 })).toBeVisible();
   await v.goto("/");
   await expect(nav(v).getByRole("link", { name: "Journal", exact: true })).toHaveCount(0);
   expect((await state(request)).journal.entries, "the draft is kept").toHaveLength(1);
