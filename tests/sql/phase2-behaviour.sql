@@ -11,6 +11,17 @@ create or replace function pg_temp.check(ok boolean, label text) returns void la
 begin if ok is not true then raise exception 'FAIL %', label; end if; raise notice 'OK %', label; end $$;
 grant execute on function pg_temp.as_user(text), pg_temp.expect_error(text,text), pg_temp.check(boolean,text) to public;
 
+-- seed: the two accounts and the owner's two ideas the project checks below use (6C: the suite
+-- used to rely on rows left by earlier runs, so it stopped on a fresh database)
+insert into auth.users (id, email) values
+  ('11111111-1111-4111-8111-111111111111', 'owner@fixture.invalid'),
+  ('22222222-2222-4222-8222-222222222222', 'other@fixture.invalid')
+on conflict (id) do nothing;
+insert into public.ideas (id, user_id, content) values
+  ('a0000000-0000-4000-8000-000000000001', '11111111-1111-4111-8111-111111111111', 'seed idea one'),
+  ('a0000000-0000-4000-8000-000000000003', '11111111-1111-4111-8111-111111111111', 'seed idea three')
+on conflict (id) do nothing;
+
 -- legacy stage values from old clients are translated
 begin; select pg_temp.as_user('11111111-1111-4111-8111-111111111111');
 insert into public.ideas (id, content, status, user_id) values ('a0000000-0000-4000-8000-000000000009','legacy raw','raw','11111111-1111-4111-8111-111111111111');

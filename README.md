@@ -17,18 +17,14 @@ npm run dev
 
 Open http://localhost:3000.
 
-## Environment variables
+## Settings, database, checks and deploy
 
-| Name | What it is |
-| --- | --- |
-| `NEXT_PUBLIC_SUPABASE_URL` | Your Supabase project URL |
-| `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | Your Supabase publishable (anon) key |
-| `ALLOWED_EMAIL` | The only email allowed into `/vault` |
+See [docs/RUNBOOK.md](docs/RUNBOOK.md) for:
+- every setting (`.env.example` lists them with short notes);
+- the migration order;
+- the checks (`npm test`, `npm run test:sql`, `npm run test:browser`; CI runs them all on every push);
+- go-live and rollback;
+- backups;
+- what to do if something goes wrong.
 
-## Database
-
-Run the SQL files in `supabase/` in the Supabase SQL editor, in order: `schema.sql`, `002_tags.sql`, `003_files.sql`.
-
-## Deploy
-
-Deploy anywhere that runs Next.js, such as Vercel. Set the three environment variables above in the host's project settings.
+The minimum to run locally is `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` and `ALLOWED_EMAIL`.

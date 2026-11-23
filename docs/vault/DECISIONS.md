@@ -133,3 +133,16 @@ Owner replied "approve 6B" to the 6B section of [PHASE_6_PLAN.md](PHASE_6_PLAN.m
 | V-051 | CSP strictness | Scripts allowed from `'self'` with `'unsafe-inline'` plus `https://apis.google.com`, without nonces, so pages stay static. Everything else is limited to this site, the Supabase project and Google's Picker and upload hosts. No framing, plugins or foreign form targets. |
 | V-052 | Rollout | Report-only on the live site (`Content-Security-Policy-Report-Only`, reports to `/api/csp-report`, which logs only the directive and blocked origin). Enforced in the local browser build, where any violation fails the run. Enforce live with `CSP_ENFORCE=1` after about a week of clean reports. |
 | V-053 | Sign-ups | The owner turns off "Allow new users to sign up" in the Supabase dashboard; confirmation pending. |
+
+## Phase 6C decisions (2026-11-23, in conversation)
+
+Owner replied "approve 6C" to the 6C section of [PHASE_6_PLAN.md](PHASE_6_PLAN.md), accepting every recommendation.
+
+| ID | Question | Answer |
+| --- | --- | --- |
+| V-054 | What CI runs | Type check, ESLint, unit tests, the production build (as the fixture build), the SQL suites, every browser spec (including accessibility and the byte budget), and `npm audit --omit=dev --audit-level=high`. On every push and pull request. |
+| V-055 | Secrets in CI | None. Fixture and dummy values only; CI never contacts Supabase, Google, Gemini or Vercel. The repository is public, so CI logs and artifacts are public. |
+| V-056 | How CI gates a go-live | Step 1 of every go-live: CI is green on the commit before `main` is fast-forwarded. No branch-protection change. |
+| V-057 | Accessibility standard | axe-core rules tagged WCAG 2.0, 2.1 and 2.2 A and AA, on the public pages and the Vault's main screens at 320, 768 and 1280 px; any violation fails. Larger fixes come back to the owner first. |
+| V-058 | Performance budget | Bytes downloaded by `/` (document, scripts, styles, fonts, images), each at most 10% over the 2026-11-23 baseline. |
+| V-059 | Drive OAuth to Production | Yes, after confirming Google's requirements; a public privacy policy page, if needed, is a separate change the owner approves first. |
