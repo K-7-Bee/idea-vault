@@ -1,4 +1,4 @@
-# Phase 6 plan: Hardening and launch (6A live 2026-11-21 as e4b73c1; 6B live 2026-11-23 as f04bc47, CSP report-only; 6C approved and built 2026-11-23, CI only)
+# Phase 6 plan: Hardening and launch (6A live 2026-11-21; 6B live 2026-11-23, CSP report-only; 6C built 2026-11-23, CI only; 6D proposed 2026-11-23)
 
 ## 6A as built (2026-11-21, local only)
 
@@ -319,3 +319,91 @@ Files:
 - **No `src/` change.** axe found no violations, so nothing deploys with 6C.
 
 **Rollback:** delete or disable the workflow. No production or database change.
+
+## 6D plan: launch close-out (proposal 2026-11-23; not approved)
+
+6A–6C are done. What remains of Phase 6 are the items they left open. 5B (assistant proposals) stays deferred until 5A is switched on with a real key and tried.
+
+### Checked before planning (2026-11-23, read-only)
+
+- **Colour contrast.** axe can't judge most text because it sits on gradients. A rough probe compared each such text colour with every colour in the gradient behind it (worst case; semi-transparent layers treated as solid, so it over-reports). It flagged:
+  - **Homepage:** dark text on the dark-blue and purple gradient chips ("Electrical engineering", "Web development"), about 1.4–1.8:1, and white hero text over a light overlay. These may be layering artefacts and need a visual check.
+  - **`/projects` and case studies:** teal labels, about 3.2:1 at worst (AA needs 4.5).
+  - **Blue links:** about 4.1:1 at worst.
+  - **Vault:** muted grey text near the top of every page, about 4.4:1.
+
+  Some of these are probably real, some are probe artefacts. An accurate check needs the rendered pixels behind each text.
+- **404 page:** Next's built-in page, shown for every unknown address and for `/journal` while nothing is published. It has no `main` landmark, so "Skip to main content" goes nowhere.
+- **Privacy.** There's no privacy page. The public site has no analytics, trackers or cookies for visitors. The Vault uses login cookies and browser storage (the outbox, drafts) for the owner only. Vercel keeps request logs. CSP reports log only the directive and the blocked origin. Drive access is `drive.file` (only files the owner creates or picks). The assistant, when on, sends only the records the owner ticks to Gemini.
+- **Google brand verification** for a published OAuth app needs:
+  - a public homepage that describes the app and links to the privacy policy;
+  - a privacy policy on the same domain, saying how Google user data is accessed, used, stored and shared;
+  - ownership of the domain, proven in Google Search Console.
+
+  `drive.file` is non-sensitive, so there is no scope review.
+- **CSP:** report-only since 2026-11-23. Enforcing is due around 2026-11-30 if Vercel's logs stay clean. This session has no Vercel access, so you read the logs, or share the `csp-violation` lines.
+- **Completion review** (`docs/vault/COMPLETION_REVIEW.md`) is from 2026-11-16 and says Phases 1–6 aren't implemented. That's out of date.
+
+### Scope
+
+1. **An accurate contrast check, and fixes.**
+   - A browser test that, for each text element on the listed pages, hides the text, captures the pixels behind it, and measures contrast against the darkest and lightest of them. That's the worst case, as the eye sees it.
+   - It runs on the same pages and widths as the axe check, and fails below WCAG AA (4.5:1, or 3:1 for large text).
+   - Then the smallest fixes for real failures, usually one colour token each (a darker teal, a darker muted grey, chip text colours), with before and after screenshots of every changed page for you.
+2. **A site-styled 404 page** (`src/app/not-found.tsx`). It has a `main` landmark the skip link reaches, the heading "Page not found", and links to Home and Projects. It stays `noindex`, and the status code is unchanged.
+3. **A privacy page at `/privacy`**, static, in the portfolio's style, written only from the facts above: what the public site collects (nothing beyond Vercel's request logs), what the Vault stores and where, how Google Drive data is used (`drive.file` only, never shared, disconnect at any time), the assistant, retention, and contact. It's linked from the homepage footer and the login page. **I draft the text and you approve the wording before it goes live.** It's a statement about you and your site, and I'll describe facts, not give legal advice.
+4. **Drive OAuth to Production** (your steps, my checklist and checks):
+   - Verify the domain in Search Console. I add the verification file Google gives you to `public/`.
+   - Fill in the Branding page: app name, support email, homepage `https://kaushik-kamal.vercel.app`, privacy link `/privacy`, the authorized domain, no logo.
+   - Verify branding, then publish.
+   - I confirm with the live site that your Drive connection still works 8 days later.
+5. **Enforce the CSP** (small go-live, on or after 2026-11-30): once you've confirmed the logs are clean, add `CSP_ENFORCE=1` and redeploy. Then you try the Picker, a Drive upload, the recorder and the assistant (if on).
+6. **Completion review refresh.** Rewrite `COMPLETION_REVIEW.md` against the master prompt's 12 acceptance items, with evidence for each (tests, live checks, PROGRESS entries) and an honest list of what's unverified. That includes a real phone and iPad pass (your part, with a short checklist) and the live unpublish check from 4A.
+
+Slices 1–3 ship as one go-live. 4 follows once 3 is live, 5 on its date, and 6 at the end.
+
+### Decisions needed
+
+| ID | Question | Recommendation |
+| --- | --- | --- |
+| V-060 | Contrast standard and method | WCAG AA, measured on rendered pixels (worst case behind each text), on the axe page list at three widths, enforced in CI. Fixes change colour tokens only. You see before and after screenshots before go-live. |
+| V-061 | 404 page | Site-styled, with `main`, "Page not found", and links to Home and Projects. Status codes unchanged. |
+| V-062 | Privacy page | `/privacy`, static, linked from the homepage footer and the login page. The wording is drafted from verified facts and approved by you before go-live. |
+| V-063 | Search Console method | The HTML file Google gives you, in `public/`. It's simpler than a meta tag and leaves the page code alone. The file isn't secret. |
+| V-064 | OAuth branding | App name "Idea Vault", your support email, homepage, `/privacy`, the authorized domain, **no logo**. A logo can trigger manual review. |
+
+### Files (expected)
+
+| Kind | Files |
+| --- | --- |
+| New | `src/app/not-found.tsx`, `src/app/privacy/page.tsx`, `tests/browser/contrast.spec.ts`, `public/google<token>.html` (later, from you) |
+| Changed | Colour tokens in `src/app/globals.css` and/or the portfolio and Vault styles (only where the check fails); `src/app/portfolio/home-view.tsx` (footer link); `src/app/login/page.tsx` (privacy link); `tests/browser/a11y.spec.ts` (adds `/privacy` and a 404 address); `tests/browser/performance.spec.ts` (only if the baseline moves); `docs/vault/COMPLETION_REVIEW.md`, `docs/RUNBOOK.md`, PROGRESS, DECISIONS |
+
+### Risks
+
+- **Visible public changes.** Colours, a footer link, a new 404 page. The homepage's visible text changes by one link, so the go-live text comparison expects exactly that. Screenshots come first.
+- **Privacy wording** could promise something the site doesn't do. I'll write only what the code and settings show, and you approve it.
+- **Google review** may take 2–3 business days if it goes manual. Testing mode keeps working meanwhile.
+- **Enforcing the CSP** could break the Picker or an upload if the logs missed something. Undo by removing `CSP_ENFORCE` and redeploying.
+- **The pixel contrast check** could be flaky on animated or image-backed areas. It skips text over photos and animated canvases and lists what it skipped.
+
+### Acceptance tests
+
+1. The contrast test passes on every listed page at three widths, in CI. It fails on a deliberately low-contrast element (canary).
+2. Every unknown address shows the new 404 page, with `main` and a working skip link. axe passes on it.
+3. `/privacy` is static and linked from the homepage and the login page, axe and contrast pass, and you've approved the text.
+4. Live: the go-live smoke checks pass. The homepage text differs from the baseline only by the privacy link.
+5. Search Console verifies the domain and Google's branding check passes. The OAuth app shows "In production", and the Drive connection is still valid 8 days later.
+6. With the CSP enforced live: the Picker opens, a Drive upload completes, and the recorder records, with no new violation lines.
+7. `COMPLETION_REVIEW.md` lists each of the 12 acceptance items with evidence or an explicit "not verified".
+
+### Rollback
+
+- **App:** promote the previous deployment (colours, 404, privacy page).
+- **CSP:** remove `CSP_ENFORCE` and redeploy.
+- **Drive:** set the OAuth app back to Testing.
+- No database change.
+
+### Not in 6D
+
+5B and 5C, scheduled cloud backups, uptime monitoring, Dependabot, cross-browser CI, terms of service, and cookie banners (no tracking cookies exist).

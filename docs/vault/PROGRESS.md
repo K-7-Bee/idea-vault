@@ -1051,3 +1051,28 @@ Not done or not verified:
 - **Audit:** 7 moderate dev-only advisories (`minimatch` under the ESLint tooling), already there before this work. CI gates production dependencies at high.
 
 Nothing deployed and no `src/` change. The commits are on the working branch (`ecfda75`, `43b9537`, `f42f615`), and `main` is unchanged.
+
+## 2026-11-23 - Phase 6D plan proposal (launch close-out)
+
+Owner asked for the next phase. 5B stays deferred (5A isn't switched on with a real key yet).
+
+Read-only checks:
+- **Contrast:** a rough worst-case contrast probe (gradient stops, semi-transparent layers treated as solid) flagged likely real low contrast:
+  - teal labels on `/projects` and case studies, about 3.2:1;
+  - homepage chips, which need a visual check;
+  - Vault muted text near the top, about 4.4:1.
+- **Privacy:** the public site has no analytics, trackers or visitor cookies.
+- **Brand verification:** Google needs a privacy policy on the same domain and Search Console domain ownership before the OAuth app can be published; `drive.file` is non-sensitive.
+- **Completion review:** `COMPLETION_REVIEW.md` is from 2026-11-16 and is out of date.
+
+Drafted the 6D section of [PHASE_6_PLAN.md](PHASE_6_PLAN.md):
+- a pixel-based contrast check and colour-token fixes;
+- a site-styled 404 page;
+- a `/privacy` page whose text the owner approves;
+- Drive OAuth to Production;
+- enforcing the CSP on or after 2026-11-30;
+- a refreshed completion review against the 12 acceptance items.
+
+Decisions V-060 to V-064 are proposed.
+
+Documentation only; no code or deployment.
