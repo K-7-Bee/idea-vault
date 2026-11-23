@@ -71,7 +71,7 @@ Order applied to production so far: `schema.sql`, `002_tags.sql` … `017_ai.sql
 7. **Smoke check, logged out:**
    - `/`, `/projects`, `/login` give 200.
    - `/vault` and `/vault/settings` redirect to `/login`.
-   - `/api/export` gives 401, and 403 with a foreign `Origin`.
+   - `/api/export` gives 401, and 403 when sent with `Sec-Fetch-Site: cross-site` (the header a browser adds for a cross-site request).
    - The security headers are present: `curl -sI https://kaushik-kamal.vercel.app/`.
    - Vercel shows no runtime errors.
 8. **Smoke check, logged in:** open the Vault, open an idea and a project, then check Settings.

@@ -1097,6 +1097,34 @@ Verified on this PC:
 
 Not verified or not live:
 - The owner's approval of the privacy wording and the screenshots.
-- CI on `1b6d85b`: green (run `45099064955`: browser 9.6 min, database 38 s, checks 34 s).
-- Live go-live.
+- Live go-live (done later the same day; see below).
+
+CI on `1b6d85b`: green (run `45099064955`: browser 9.6 min, database 38 s, checks 34 s).
 - Item 4 (Drive Production) waits for the domain; item 5 (CSP) waits for 2026-11-30.
+
+## 2026-11-23: Phase 6D live (privacy page, 404 page, darker teal)
+
+The owner approved the privacy wording and the screenshots, and asked for the go-live ("6D go live").
+
+- **CI:** green on `4644ecb` (run `45100081119`).
+- **No migration**, so no backup was needed.
+- **Deploy:** `main` fast-forwarded `f04bc47..4644ecb`, no force. `/privacy` answered 200 about 60 s later.
+- **Rollback:** promote the previous production deployment (built from `f04bc47`) in Vercel. Its deployment id wasn't read (no Vercel access in this session).
+
+Smoke check (logged out):
+- `/`, `/projects`, a case study, `/journal`, `/login` and `/privacy` give 200.
+- An unknown address gives 404 with "Page not found" and `noindex`.
+- `/vault` and `/vault/settings` redirect to `/login`.
+- `/api/export` gives 401, and 403 cross-site. `/api/ai/ask` gives 403 cross-site.
+- The five protective headers and `Content-Security-Policy-Report-Only` are present on `/`.
+- The live stylesheet has `--pf-teal:#09696f`.
+- The homepage footer and the login page link to `/privacy`. The privacy page shows the 23 November 2026 date, `drive.file` and the Limited Use statement.
+
+Runbook fix: the cross-site check is driven by `Sec-Fetch-Site`. A bare foreign `Origin` header on a GET gives 401, as it did before, so the runbook now names the header that matters.
+
+Not verified:
+- The homepage text wasn't diffed against the previous live page, because no copy was saved before the deploy. The CI portfolio tests pin the homepage text to the seed, and the only addition there is "Privacy".
+- Vercel runtime logs and the deployment id: no Vercel access.
+- Logged-in smoke check: owner.
+
+Still open: Drive OAuth to Production (waits for `kaushikkamal.com`), enforcing the CSP (on or after 2026-11-30), the sign-ups check, an owner-passphrase backup, a live unpublish test, and the real-device pass.

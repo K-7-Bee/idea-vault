@@ -18,14 +18,13 @@ This replaces the 2026-11-16 review below, which is kept as history; it said Pha
 | 6 | Unpublishing or reverting removes public content and cached exposure | SQL: unpublish removes the snapshot. Browser: unpublish takes a showcase or journal entry down, and the next homepage request reflects it. | Live unpublish and stage-change removal not yet exercised (noted at 4A go-live). Vercel's cache behaviour is proven only through the fixture build. |
 | 7 | Portfolio editing through the Vault login, without editing code | 4B (homepage profile), 4C (résumé, photo, files), 4D (journal), 4A (showcases): all edited in the Vault, all live. | — |
 | 8 | Draft, preview, save, publish and rollback behave predictably | Browser: "edit, save, preview, confirm and publish: the very next homepage request shows exactly the preview", and "history and rollback". | — |
-| 9 | Real content is never invented | The homepage seed is the pre-4B page text, compared with git history by `tests/profile.test.mjs`. Everything else is the owner's own input. Publishing refuses empty image descriptions. The 6D privacy page states only behaviour checked in code. | The owner's review of the privacy wording (pending). |
+| 9 | Real content is never invented | The homepage seed is the pre-4B page text, compared with git history by `tests/profile.test.mjs`. Everything else is the owner's own input. Publishing refuses empty image descriptions. The 6D privacy page states only behaviour checked in code. | — |
 | 10 | Works on phone, tablet and desktop and respects reduced motion | Browser: layouts at 320–1280 px with no horizontal scrolling. axe (WCAG 2.2 AA) and pixel-measured text contrast on every public page and Vault screen at 320, 768 and 1280 px, light and dark, in CI. The CSS and animated sections honour `prefers-reduced-motion`. | A real phone and iPad pass (owner, checklist below). Reduced motion isn't asserted by a test. |
 | 11 | Existing Vault data and workflows survive migrations | Every migration is additive and re-runnable from 004 on, proven twice per CI run. A backup comes before each migration go-live. The 6A restore drill reproduced all 30 production tables exactly. | Current data hasn't been backed up with the owner's own passphrase since 6A (the drill used a one-time one). |
 | 12 | Deployable and maintainable with documented configuration and recovery | [docs/RUNBOOK.md](../RUNBOOK.md): settings, migrations, go-live, rollback, backups, incidents. CI on every push. Backup and restore drill scripts. | — |
 
 ### Still open (owner actions or later slices)
 
-- **Before the 6D go-live:** approve the privacy wording and the before and after screenshots.
 - **Domain:** connect `kaushikkamal.com` (steps given 2026-11-23). Then Search Console verification and Drive OAuth to Production (6D item 4).
 - **CSP:** enforce it on or after 2026-11-30 if Vercel's logs are clean (6D item 5).
 - **Sign-ups:** confirm they're off in Supabase (V-053).

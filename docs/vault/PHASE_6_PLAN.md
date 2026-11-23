@@ -1,4 +1,4 @@
-# Phase 6 plan: Hardening and launch (6A live 2026-11-21; 6B live 2026-11-23, CSP report-only; 6C built 2026-11-23, CI only; 6D approved 2026-11-23, built locally)
+# Phase 6 plan: Hardening and launch (6A live 2026-11-21; 6B live 2026-11-23, CSP report-only; 6C built 2026-11-23, CI only; 6D live 2026-11-23 except Drive Production and CSP enforcement)
 
 ## 6A as built (2026-11-21, local only)
 
