@@ -46,9 +46,9 @@ try {
 
 ```powershell
 # 1. Seal the passphrase for this Windows account (asked twice, never shown or stored in plain text).
-powershell -ExecutionPolicy Bypass -File scriptsaultackup-scheduled.ps1 -Action Setup
+powershell -ExecutionPolicy Bypass -File scripts\vault\backup-scheduled.ps1 -Action Setup
 # 2. Create the task: Sundays 11:00, or at your next sign-in if the PC was off.
-powershell -ExecutionPolicy Bypass -File scriptsaultackup-scheduled.ps1 -Action Register
+powershell -ExecutionPolicy Bypass -File scripts\vault\backup-scheduled.ps1 -Action Register
 # 3. Try it now (about 3 minutes; Docker Desktop running for the drill).
 Start-ScheduledTask -TaskName 'Idea Vault weekly backup'
 npm run check:backup
