@@ -24,7 +24,7 @@ The owner's autonomous run ("master prompt", 2026-11-24). **If context is lost, 
   - [x] fixture support, browser spec, WebKit Vault login
   - [x] Download my data includes drawings; docs
 - [x] **7B: annotation** (`94a11ba`): Annotate buttons, overlay with toggle, removal blocked while annotated, export as a new file
-- [ ] **7C: visual board** (owner asked to complete Phase 7; built without a new library if feasible)
+- [x] **7C: visual board** (`0261fa4`): migration 019, board page, Boards panel. No new library.
 - [ ] **Other unfinished phases:**
   - 5B and 5C: assess. They depend on 5A being switched on with a real key.
   - Domain, Drive Production and CSP enforcement are owner-blocked.
@@ -53,3 +53,12 @@ The owner's autonomous run ("master prompt", 2026-11-24). **If context is lost, 
   - The WebKit export failure turned out to be the test's request blocking (WebKit routes blob: URLs). Fixed in the tests.
   - Export now loads images with onload instead of decode(). This is a precaution; I didn't confirm decode() actually fails in Safari.
 - Next: 7C, the visual board (migration 019; boards, cards, links; drag with pen, finger or mouse; zoom buttons; list view). No new library.
+- 7C built:
+  - **SQL:** 13/13 suites (24 new board checks).
+  - **Unit:** 223/223.
+  - **Browser:** board spec 3/3 in Chromium and 2/2 in WebKit; a11y and all 5 contrast checks pass.
+  - **Bugs found and fixed:**
+    - a fast drag could land short, because the release used state from the last render;
+    - a board title typed before the page finished loading was ignored;
+    - the contrast check measured clipped text against pixels outside the clip.
+- Next: decide on 5B and 5C (read PHASE_5_PLAN), then the security and bug audits, reports, and final verification.

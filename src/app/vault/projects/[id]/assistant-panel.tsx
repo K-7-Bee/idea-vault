@@ -1,7 +1,8 @@
 "use client";
 
 import { Fragment, useMemo, useState } from "react";
-import type { Project } from "@/lib/workspace";
+import { insertRecord, nextPosition, type Project, type Row, type TableName } from "@/lib/workspace";
+import { MAX_FOCUS, type Proposal } from "@/lib/ai/proposals";
 import { CONTEXT_TOKEN_LIMIT, MAX_QUESTION, costUsd, usd } from "@/lib/ai/limits";
 import { MODES, OVERVIEW, TAB_OF, availableSources, buildContext, estimateTokens, modesFor, systemInstruction, type AiMode, type Records, type Source } from "@/lib/ai/context";
 import { splitCitations } from "@/lib/ai/citations";
@@ -50,9 +51,17 @@ function Answer({ text, sources }: { text: string; sources: Source[] }) {
 
 // Phase 5A: ask the read-only assistant about this project. Only the records ticked here are sent,
 // and the size and approximate cost are shown first. Nothing in the project is ever changed.
-export default function AssistantPanel({ project, records, config, writer }: {
+type Suggested = Proposal & { state: "new" | "accepted" | "rejected" };
+const PROPOSAL_TABLE: Record<Proposal["kind"], TableName> = { task: "project_tasks", milestone: "project_milestones", continuity: "story_continuity" };
+const PROPOSAL_LABEL: Record<Proposal["kind"], string> = { task: "Task", milestone: "Milestone", continuity: "Continuity note" };
+
+export default function AssistantPanel({ project, records, config, writer, ownerId, onAdded }: {
   project: Project; records: Records; config: AssistantConfig; writer: Writer;
+  // Phase 5B: accepted proposals are saved by the owner's own insert and shown in their tab.
+  ownerId?: string; onAdded?: (table: TableName, row: Row) => void;
 }) {
+  const [focus, setFocus] = useState("");
+  const [suggestions, setSuggestions] = useState<{ items: Suggested[]; dropped: number; unreadable: boolean } | null>(null);
   const modes = modesFor(project.project_type);
   const [mode, setMode] = useState<AiMode>(modes[0]);
   const [picked, setPicked] = useState<Set<string>>(new Set());
@@ -117,6 +126,45 @@ export default function AssistantPanel({ project, records, config, writer }: {
         r.truncated ? "The answer hit its length limit and may be cut off." : "",
         r.saved ? "" : "The answer couldn't be saved to the conversation history.",
       ].filter(Boolean).join(" ") || null);
+    });
+  }
+
+  // Phase 5B: proposals. The route saves nothing; each Accept is one normal insert by the owner.
+  function suggest() {
+    const sent = selected.map(({ table, id }) => ({ table, id }));
+    void writer.run(async (): Promise<Outcome<{ proposals: Proposal[]; dropped: number; unreadable: boolean; month: number }>> => {
+      try {
+        const response = await fetch("/api/ai/propose", {
+          method: "POST", cache: "no-store", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ projectId: project.id, mode, focus: focus.trim(), selected: sent }),
+        });
+        const body = await response.json().catch(() => ({})) as Record<string, unknown>;
+        if (!response.ok) return { ok: false, reason: "failed", message: typeof body.message === "string" ? body.message : "The assistant couldn't make suggestions. Try again." };
+        return { ok: true, value: { proposals: (body.proposals as Proposal[]) ?? [], dropped: Number(body.dropped) || 0, unreadable: Boolean(body.unreadable), month: Number(body.monthUsd) } };
+      } catch {
+        return { ok: false, reason: "failed", message: "Couldn't reach the Vault. Nothing was sent. Try again." };
+      }
+    }, null, (r) => {
+      setSuggestions({ items: r.proposals.map((p) => ({ ...p, state: "new" })), dropped: r.dropped, unreadable: r.unreadable });
+      setMonthUsd(r.month);
+      setToday((n) => n + 1);
+    });
+  }
+  function decide(index: number, accept: boolean) {
+    const item = suggestions?.items[index];
+    if (!item || item.state !== "new") return;
+    const mark = (state: Suggested["state"]) => setSuggestions((s) => s && { ...s, items: s.items.map((x, i) => (i === index ? { ...x, state } : x)) });
+    if (!accept) { mark("rejected"); return; }
+    if (!ownerId) return;
+    const table = PROPOSAL_TABLE[item.kind];
+    const values: Record<string, unknown> = item.kind === "task"
+      ? { title: item.title, notes: item.notes, status: "todo", milestone_id: null, position: nextPosition(records[table] ?? []) }
+      : item.kind === "milestone"
+        ? { title: item.title, notes: item.notes, due_on: item.due_on, status: "open", position: nextPosition(records[table] ?? []) }
+        : { subject: item.subject, detail: item.detail, unit_id: item.unit_id, character_id: item.character_id, status: "open" };
+    void writer.run((c) => insertRecord(c, table, ownerId, project.id, values), `Saved to ${PROPOSAL_LABEL[item.kind]}s.`, (row) => {
+      mark("accepted");
+      onAdded?.(table, row);
     });
   }
 
@@ -224,6 +272,58 @@ export default function AssistantPanel({ project, records, config, writer }: {
             {conversationId && <button type="button" className={button} onClick={() => { setConversationId(null); setMessages([]); setWarning(null); }}>New conversation</button>}
           </div>
         </form>
+        {ownerId && (
+          <section aria-labelledby="suggest-heading" className="grid gap-2 rounded-2xl border border-line bg-card p-4">
+            <h3 id="suggest-heading" className="font-semibold">Suggest new items</h3>
+            <p className="text-sm text-muted">
+              The assistant proposes {mode === "story" ? "continuity notes" : "tasks and milestones"} from the ticked records. Nothing is saved until you accept an item, one at a time.
+            </p>
+            <form className="flex flex-wrap items-end gap-2" onSubmit={(e) => { e.preventDefault(); suggest(); }}>
+              <label className="grid min-w-0 flex-1 gap-1 text-sm font-medium">
+                Focus (optional)
+                <input value={focus} maxLength={MAX_FOCUS} onChange={(e) => setFocus(e.target.value)} placeholder="For example: testing before the demo"
+                  className="rounded-xl border border-line bg-background px-3 py-2 font-normal" />
+              </label>
+              <button type="submit" className={button} disabled={disabled || selected.length === 0 || contextTokens > CONTEXT_TOKEN_LIMIT || paused !== null}>
+                {writer.busy ? "Working…" : "Suggest items"}
+              </button>
+            </form>
+            {suggestions && (
+              suggestions.unreadable ? (
+                <p role="alert" className="text-sm text-danger">The assistant&apos;s reply couldn&apos;t be read as suggestions, so nothing is shown. Try again.</p>
+              ) : suggestions.items.length === 0 ? (
+                <p role="status" className="text-sm text-muted">No suggestions from these records{suggestions.dropped ? ` (${suggestions.dropped} unusable item${suggestions.dropped === 1 ? "" : "s"} left out)` : ""}.</p>
+              ) : (
+                <>
+                  {suggestions.dropped > 0 && <p className="text-xs text-muted">{suggestions.dropped} item{suggestions.dropped === 1 ? " was" : "s were"} left out: not based on the records you sent, or not in a usable form.</p>}
+                  <ul aria-label="Suggestions" className="grid gap-2">
+                    {suggestions.items.map((item, i) => {
+                      const name = item.kind === "continuity" ? item.subject : item.title;
+                      const detail = item.kind === "continuity" ? item.detail : item.notes;
+                      return (
+                        <li key={i} className={`rounded-xl border p-3 ${item.state === "accepted" ? "border-accent" : "border-line"} ${item.state === "rejected" ? "opacity-60" : ""}`}>
+                          <p className="text-xs font-semibold uppercase tracking-wider text-muted">{PROPOSAL_LABEL[item.kind]}</p>
+                          <p className="font-medium">{name}</p>
+                          {item.kind === "milestone" && item.due_on && <p className="text-sm">Target date: {item.due_on}</p>}
+                          {detail && <p className="whitespace-pre-wrap text-sm">{detail}</p>}
+                          <p className="mt-1 text-xs text-muted">Based on: {item.basis.join(", ")}</p>
+                          {item.state === "new" ? (
+                            <div className="mt-2 flex gap-2">
+                              <button type="button" className={small} disabled={disabled} onClick={() => decide(i, true)} aria-label={`Accept: ${name}`}>Accept</button>
+                              <button type="button" className={small} disabled={disabled} onClick={() => decide(i, false)} aria-label={`Reject: ${name}`}>Reject</button>
+                            </div>
+                          ) : (
+                            <p className="mt-2 text-sm font-medium">{item.state === "accepted" ? "Accepted and saved." : "Rejected. Nothing was saved."}</p>
+                          )}
+                        </li>
+                      );
+                    })}
+                  </ul>
+                </>
+              )
+            )}
+          </section>
+        )}
       </section>
 
       <aside aria-label="Saved conversations" className="grid content-start gap-2">

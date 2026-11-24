@@ -337,7 +337,8 @@ export default function ProjectWorkspace({ ownerId, initialProject, initialRecor
               onProject={(change) => setProject((p) => ({ ...p, ...change }))}
               saved={showcaseDraft} setSaved={setShowcaseDraft} liveShowcase={liveShowcase} setLive={setLiveShowcase} />
           ) : current.id === "assistant" && assistant ? (
-            <AssistantPanel project={project} records={records} config={assistant} writer={writer} />
+            <AssistantPanel project={project} records={records} config={assistant} writer={writer} ownerId={ownerId}
+              onAdded={(table, row) => update(table, (list) => [...list, row])} />
           ) : current.id === "files" ? (
             <ProjectFiles files={files}
               entries={hasEngineering(project.project_type) ? records.project_entries : []}
