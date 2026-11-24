@@ -71,7 +71,7 @@ Setup for the weekly backup is in [scripts/vault/README.md](../scripts/vault/REA
 3. `npm run test:sql` until it passes.
 4. Apply to production only during a go-live (below), after a backup.
 
-Order applied to production so far: `schema.sql`, `002_tags.sql` … `017_ai.sql`, in number order. A fresh project needs `scripts/vault/drill/storage-standin.sql` **only in test databases**; real Supabase has its own Storage schema.
+Order applied to production so far: `schema.sql`, `002_tags.sql` … `017_ai.sql`, in number order. **Not yet applied:** `018_drawings.sql` and `019_boards.sql` (built 2026-11-24). Apply them in that order at the next go-live, after a backup. A fresh project needs `scripts/vault/drill/storage-standin.sql` **only in test databases**; real Supabase has its own Storage schema.
 
 ## Go-live
 
@@ -104,7 +104,7 @@ Order applied to production so far: `schema.sql`, `002_tags.sql` … `017_ai.sql
 | --- | --- |
 | Enforce the CSP | After about a week with no unexplained `csp-violation` lines in Vercel's runtime logs: add `CSP_ENFORCE=1` (Production), redeploy, then test the Picker, a Drive upload, the recorder and the assistant. Undo: remove it and redeploy. |
 | Turn the assistant on or off | `AI_ENABLED=1` plus `GEMINI_API_KEY`, then redeploy. To turn it off: remove `AI_ENABLED` and redeploy. Saved conversations stay. |
-| Send attachments to Drive | `DRIVE_UPLOADS_ENABLED=1`, then redeploy. Remove it to go back to Supabase Storage. |
+| Send attachments to Drive | `DRIVE_UPLOADS_ENABLED=1`, then redeploy. Remove it to go back to Supabase Storage. Drawing export (PNG) and "Upload image" in the drawing editor also need this switch. |
 
 ## Backups and restore drill
 

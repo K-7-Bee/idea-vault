@@ -138,3 +138,16 @@ Mapped to master prompt §6 and the roadmap's Phase 5 row:
 ## Not in 5A
 
 Proposals and any data changes (5B), file or Drive text (5C), image generation, a public chatbot (excluded by the master prompt), background or scheduled AI, and automatic provider fallback.
+
+## 5B as built (2026-11-24, overnight run; branch only)
+
+- **Route:** `/api/ai/propose` makes the same checks as `/api/ai/ask` and writes only the ledger.
+- **`src/lib/ai/proposals.ts`:**
+  - a JSON-only instruction;
+  - a strict parser that keeps grounded items of the mode's kinds;
+  - fields cleaned and capped;
+  - scene and character references resolved only to ticked records.
+- **Assistant panel:** a "Suggest new items" section with Accept (a normal owner insert) and Reject (saves nothing). Proposals aren't stored.
+- **Tests:** `tests/proposals.test.mjs` (6) and `tests/browser/proposals.spec.ts` (3), both against the fake Gemini.
+- **Not verified:** real Gemini output quality, or whether the real model follows the JSON format reliably. An unreadable reply shows nothing.
+- **5C is not built (V-077).**

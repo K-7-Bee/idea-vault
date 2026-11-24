@@ -1209,3 +1209,30 @@ Plan in [PHASE_7_PLAN.md](PHASE_7_PLAN.md):
 - **7C:** a visual board, planned but built only on request.
 
 Both 7A and 7B use one new owner-only `drawings` table (migration 018) and one editor. Decisions D1–D7 await the owner. No code, no deploy.
+
+## 2026-11-24: Overnight run (Phase 7A–7C, 5B, audits), branch only
+
+The owner asked for all remaining phases, a security audit and a bug audit without routine approval, and with no deploys, no live database changes and nothing pushed to `main`. Details are in [docs/FINAL_HANDOVER.md](../FINAL_HANDOVER.md).
+
+Built (all on the branch; nothing deployed; migrations **not** applied live):
+- **7A:** Pencil sketching on shots and scenes (migration `018_drawings.sql`).
+- **7B:** image annotation.
+- **7C:** boards (migration `019_boards.sql`).
+- **5B:** assistant proposals.
+- **Audit fixes.**
+
+Verified (local, and CI on the branch):
+- **SQL:** 13 suites, 432 checks.
+- **Unit:** 229 tests.
+- **Browser:**
+  - the new specs pass in Chromium, and the drawing and board specs pass in WebKit;
+  - axe and pixel contrast cover the editor and the board;
+  - the homepage stays within budget.
+
+Not verified:
+- live Supabase;
+- a real iPad;
+- real Gemini output for proposals;
+- Drive export against real Google.
+
+Commits: `e02570a`, `564c58d`, `94a11ba`, `0261fa4`, `a185e7c`, `127115c` and the documentation commits after them.

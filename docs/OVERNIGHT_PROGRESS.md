@@ -28,12 +28,12 @@ The owner's autonomous run ("master prompt", 2026-11-24). **If context is lost, 
 - [x] **5B: assistant proposals** (`a185e7c`): built and tested against the fake Gemini. It sits behind the same off-by-default switch as 5A.
 - [ ] **5C: file text to the assistant.** Blocked: owner decision. The live privacy page (approved 2026-11-23) promises the assistant "never sends Google Drive file contents".
 - [ ] **Domain, Drive Production, CSP enforcement.** Blocked: owner actions or dates.
-- [ ] **Security audit:** SECURITY_AUDIT.md
-- [ ] **Bug audit:** BUG_FIX_REPORT.md
-- [ ] **Tests:** TEST_REPORT.md
-- [ ] **Performance:** PERFORMANCE_REPORT.md
-- [ ] **Final verification:** audit, lint, tsc, unit, SQL, browser (CI), build
-- [ ] **FINAL_HANDOVER.md**
+- [x] **Security audit:** [SECURITY_AUDIT.md](SECURITY_AUDIT.md). Fixed S-1 and S-2; no critical or high findings.
+- [x] **Bug audit:** [BUG_FIX_REPORT.md](BUG_FIX_REPORT.md), B-1 to B-9.
+- [x] **Tests:** [TEST_REPORT.md](TEST_REPORT.md)
+- [x] **Performance:** [PERFORMANCE_REPORT.md](PERFORMANCE_REPORT.md)
+- [x] **Final verification:** audit, lint, tsc, unit 229, SQL 432 and the new browser specs locally. Full CI on `127115c` was running at handover; result at the end of FINAL_HANDOVER.
+- [x] **[FINAL_HANDOVER.md](FINAL_HANDOVER.md)**
 
 ## Log
 
@@ -64,3 +64,4 @@ The owner's autonomous run ("master prompt", 2026-11-24). **If context is lost, 
 - Next: decide on 5B and 5C (read PHASE_5_PLAN), then the security and bug audits, reports, and final verification.
 - 5B built: 6 unit and 3 browser tests pass; 229/229 unit tests overall.
 - Next: security audit (secrets, history, bundles, routes, RLS, XSS, redirects, uploads, dependencies).
+- Audits and reports written. **Stopped here: every remaining item needs the owner** (go-live with migrations 018/019, 5C, domain, CSP date, Supabase checks).

@@ -1,4 +1,4 @@
-# Phase 7 plan: iPad and Pencil (proposed 2026-11-24, awaiting owner approval)
+# Phase 7 plan: iPad and Pencil (built 2026-11-24 on the branch; not live)
 
 Source: [IDEA_VAULT_3_IPAD_PENCIL_ADDENDUM.md](../../IDEA_VAULT_3_IPAD_PENCIL_ADDENDUM.md). It was committed with the first audit, but no phase plan covered it until now. The addendum's rules apply throughout:
 - change the existing Vault and Story Studio, never a separate app;
@@ -220,3 +220,29 @@ The addendum calls it optional and says it must not delay anything. It's planned
 - Handwriting to text, AI reading of sketches, vector brush engines, real-time multi-user editing, infinite canvas (deferred by the addendum).
 - Publishing drawings directly (only exported PNGs, through the existing showcase approval).
 - A native iPad app or Apple Pencil hover and double-tap features that websites can't use reliably.
+
+## As built (2026-11-24, overnight run; branch only)
+
+Built as planned. The differences:
+
+- **7A:**
+  - **Linking:** drawings link to scenes and shots by `unit_id`, and annotations by `base_file_id`. Deleting a linked shot or image is refused while drawings exist (`no action`, V-071).
+  - **Data format:** `{ v: 1, w, h, bg?, items }` with the canvas size stored. Thinning keeps the pressure shape (B-2). Thumbnails are thinned on the server (`previewOf`).
+  - **Editor:** one page for sketches and annotations (`/vault/projects/[id]/drawings/[drawingId]`), with all four tools (pen, eraser, arrow, label) from the start.
+  - **Storyboard:** the existing shot grid in the Structure tab, plus a "⠿ Drag" handle (the ↑/↓ buttons are kept), and a sketch strip on each scene or shot card.
+  - **WebKit:** the Vault login works in WebKit tests after the login fix (B-1) and retrying test helpers.
+- **7B:** "Annotate" / "Edit annotations" on character, shot and Files-tab images. The overlay uses `slice` to match the thumbnail crop, with an Annotated/Original toggle. Removing an annotated image gives a clear message (route `409 annotated`).
+- **7C:**
+  - **No library:** cards are positioned absolutely, with an SVG connection layer, zoom buttons (40–160%), arrow-key moves on the drag handle, and a List view (V-074).
+  - **Boards panel:** on the project Overview.
+  - **Removed records:** a card stays when its record is deleted (V-075).
+- **Tests:** SQL `phase7a` (31) and `phase7c` (24). Unit tests: `drawing.test.mjs`, `boards.test.mjs`, `workspace.test.mjs` (`positionForMove`). Browser: `sketch.spec.ts` (7), `annotate.spec.ts` (2), `board.spec.ts` (3); the WebKit subset is configured in `playwright.config.ts`. axe and contrast include the editor and a seeded board.
+
+**Go-live** (owner approval required):
+1. Back up.
+2. Apply `018_drawings.sql`, then `019_boards.sql`, with read-only pre- and post-checks.
+3. Fast-forward `main`.
+4. Run the live check.
+5. Do the iPad checklist in FINAL_HANDOVER.
+
+Export and "Upload image" need `DRIVE_UPLOADS_ENABLED=1`.

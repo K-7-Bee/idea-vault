@@ -170,3 +170,20 @@ Owner replied "approve 6E" to the 6E section of [PHASE_6_PLAN.md](PHASE_6_PLAN.m
 | V-067 | Health check (D3) | Every 6 hours from GitHub Actions, logged out, no secrets, retried once per check. GitHub's failure email is the alert. |
 | V-068 | Dependency updates | Dependabot weekly, minor and patch grouped, majors one per PR, never auto-merged; owner approves merges, then a normal go-live. |
 | V-069 | Cross-browser | Firefox and WebKit run a three-test public sample on pushes to `main`, weekly and on demand. It informs but doesn't block a go-live by itself. |
+
+## Overnight decisions (2026-11-24, owner's autonomous-run instruction)
+
+The owner removed the approval waits from AGENTS.md and asked for every remaining phase to be completed without routine confirmation:
+- recommended answers to be used where safe;
+- no deploys, no live database changes and no pushes to `main`.
+
+| ID | Question | Answer |
+| --- | --- | --- |
+| V-070 | Phase 7 D1–D7 | The recommendations: drawing data in the database; whole-stroke eraser; PNG only on Export; `perfect-freehand` 1.2.3; shape per sketch (16:9 default); one annotation layer per image. 7C built as well, because the owner asked to complete Phase 7. |
+| V-071 | Deleting a shot, scene or image that has drawings | Refused until the drawings are deleted (`no action` foreign keys, the same "nothing disappears by cascade" rule as structure items). Deleting the whole project still removes everything. |
+| V-072 | Sketches on which levels | Scenes and shots only, not seasons or episodes (trigger). |
+| V-073 | Pencil and palm handling | The canvas takes all touches. The first Pencil stroke turns finger drawing off automatically (palm rejection); a visible "Draw with finger" toggle turns it back on. While a pointer is drawing, other pointers are ignored. |
+| V-074 | Board library | None: absolutely positioned cards, an SVG layer for connections, zoom buttons and a List view. The plan's `@xyflow/react` candidate wasn't needed. |
+| V-075 | Board cards whose record is deleted | Kept and shown as "(removed)" (link cleared). Deleting a card removes its connections; deleting a board removes its cards, after a confirmation. |
+| V-076 | 5B scope | Proposals for tasks and milestones (engineering and planning modes) or continuity notes (story mode); at most 8; each must cite a ticked record. The route writes only the usage ledger. Each Accept is one normal owner insert. Proposals aren't kept after the page closes. |
+| V-077 | 5C | **Not built.** Sending file text to Gemini contradicts the privacy page the owner approved on 2026-11-23 ("never sends Google Drive file contents"). That needs the owner's decision. |
