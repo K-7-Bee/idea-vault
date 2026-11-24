@@ -1192,3 +1192,20 @@ Still with the owner:
 - Make sure GitHub's Actions failure emails reach you (GitHub → Settings → Notifications → Actions).
 
 Not verified: the first scheduled (cron) live-check run and the first Dependabot PRs haven't happened yet.
+
+## 2026-11-24: Phase 7 proposed (iPad and Pencil)
+
+The owner asked for a complete Phase 7 plan. Source: `IDEA_VAULT_3_IPAD_PENCIL_ADDENDUM.md`, which had been committed with the first audit but was not in any plan.
+
+The audit (code only) found:
+- story shots (`story_units`) already have notes, ordering and ↑/↓ reorder buttons;
+- images are Drive-backed `project_files` with owner-only serving;
+- there's no drawing code or library;
+- the CSP already allows `blob:` and `data:` images.
+
+Plan in [PHASE_7_PLAN.md](PHASE_7_PLAN.md):
+- **7A:** sketching on shots, a storyboard grid with touch reorder, and the WebKit Vault login in the fixture.
+- **7B:** annotating existing images, with exports as new files and originals unchanged.
+- **7C:** a visual board, planned but built only on request.
+
+Both 7A and 7B use one new owner-only `drawings` table (migration 018) and one editor. Decisions D1–D7 await the owner. No code, no deploy.
