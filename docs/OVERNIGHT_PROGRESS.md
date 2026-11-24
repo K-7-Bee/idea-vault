@@ -25,9 +25,9 @@ The owner's autonomous run ("master prompt", 2026-11-24). **If context is lost, 
   - [x] Download my data includes drawings; docs
 - [x] **7B: annotation** (`94a11ba`): Annotate buttons, overlay with toggle, removal blocked while annotated, export as a new file
 - [x] **7C: visual board** (`0261fa4`): migration 019, board page, Boards panel. No new library.
-- [ ] **Other unfinished phases:**
-  - 5B and 5C: assess. They depend on 5A being switched on with a real key.
-  - Domain, Drive Production and CSP enforcement are owner-blocked.
+- [x] **5B: assistant proposals** (`a185e7c`): built and tested against the fake Gemini. It sits behind the same off-by-default switch as 5A.
+- [ ] **5C: file text to the assistant.** Blocked: owner decision. The live privacy page (approved 2026-11-23) promises the assistant "never sends Google Drive file contents".
+- [ ] **Domain, Drive Production, CSP enforcement.** Blocked: owner actions or dates.
 - [ ] **Security audit:** SECURITY_AUDIT.md
 - [ ] **Bug audit:** BUG_FIX_REPORT.md
 - [ ] **Tests:** TEST_REPORT.md
@@ -62,3 +62,5 @@ The owner's autonomous run ("master prompt", 2026-11-24). **If context is lost, 
     - a board title typed before the page finished loading was ignored;
     - the contrast check measured clipped text against pixels outside the clip.
 - Next: decide on 5B and 5C (read PHASE_5_PLAN), then the security and bug audits, reports, and final verification.
+- 5B built: 6 unit and 3 browser tests pass; 229/229 unit tests overall.
+- Next: security audit (secrets, history, bundles, routes, RLS, XSS, redirects, uploads, dependencies).

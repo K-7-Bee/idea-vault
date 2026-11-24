@@ -74,7 +74,7 @@ const SAVE_TEXT: Record<SaveState, string> = {
   locked: "Not saved: log in again (kept on this device)",
 };
 
-export default function DrawingEditor({ ownerId, projectId, projectTitle, initial, context, base, backgrounds: initialBackgrounds }: {
+export default function DrawingEditor({ ownerId, projectId, projectTitle, initial, context, base, backgrounds: initialBackgrounds, driveUploads }: {
   ownerId: string; projectId: string; projectTitle: string; initial: DrawingRow; context: string;
   base: EditorImage | null; backgrounds: EditorImage[]; driveUploads: boolean;
 }) {
@@ -507,11 +507,11 @@ export default function DrawingEditor({ ownerId, projectId, projectTitle, initia
               {backgrounds.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
             </select>
           </label>
-          <label className={`${button} inline-flex cursor-pointer items-center`}>
+          {driveUploads && <label className={`${button} inline-flex cursor-pointer items-center`}>
             Upload image
             <input type="file" accept="image/png,image/jpeg,image/webp,image/gif" className="sr-only" disabled={!!busy}
               onChange={(e) => { void uploadBackground(e.target.files?.[0]); e.target.value = ""; }} />
-          </label>
+          </label>}
           <p id="shape-hint" className="w-full text-xs text-muted">The shape can be changed while the sketch is empty. A background image is shown under your strokes and is never changed.</p>
         </div>
       )}
@@ -629,7 +629,9 @@ export default function DrawingEditor({ ownerId, projectId, projectTitle, initia
           Shortcuts: P pen, E eraser, A arrow, T label, Ctrl/⌘ Z undo.
         </p>
         <div className="flex flex-wrap gap-2">
-          <button type="button" className={button} disabled={!!busy || (isAnnotation && !base?.available)} onClick={() => void exportPng()}>Export PNG to Drive</button>
+          <button type="button" className={button} disabled={!!busy || !driveUploads || (isAnnotation && !base?.available)} onClick={() => void exportPng()}
+            aria-describedby={driveUploads ? undefined : "export-off"}>Export PNG to Drive</button>
+          {!driveUploads && <span id="export-off" className="self-center text-xs text-muted">Exporting needs Drive uploads switched on (DRIVE_UPLOADS_ENABLED).</span>}
           <button type="button" className={`${button} text-danger`} disabled={!!busy} onClick={() => void remove()}>
             {isAnnotation ? "Delete annotations" : "Delete sketch"}
           </button>

@@ -10,6 +10,9 @@ function origin(value: unknown): string {
 }
 
 export async function POST(request: Request) {
+  // Refuse an oversized body before reading it (anyone can post here).
+  const declared = Number(request.headers.get("content-length") ?? "0");
+  if (declared > MAX_BYTES) return new Response(null, { status: 204 });
   const text = await request.text().catch(() => "");
   if (!text || text.length > MAX_BYTES) return new Response(null, { status: 204 });
   let reports: Record<string, unknown>[] = [];
