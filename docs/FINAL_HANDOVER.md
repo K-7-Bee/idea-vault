@@ -18,7 +18,7 @@
   - fast board-card drags landed short;
   - a board title typed before the page finished loading was ignored;
   - export failed with a misleading message when Drive uploads are off.
-- **Checks passing:** SQL 13/13 suites (432 checks), unit tests 229/229, all new browser specs in Chromium and the drawing and board specs in WebKit, accessibility and contrast with the new pages, and the homepage budget. CI was green on 7A and 7B. The audit-fix run caught a phone layout bug (B-10), now fixed; see "CI" below.
+- **Checks passing:** SQL 13/13 suites (432 checks), unit tests 229/229, all new browser specs in Chromium and the drawing and board specs in WebKit, accessibility and contrast with the new pages, and the homepage budget. CI was green on 7A and 7B. The audit-fix run caught a phone layout bug (B-10), now fixed; **the branch head is green** (run 45322880280).
 - **Your call before going live:** applying migrations **018** and **019** to the live database, then the go-live.
 - **Still blocked on you:** 5C, the domain, Drive Production, CSP enforcement (date), and checking that sign-ups are off.
 
@@ -117,7 +117,9 @@
 - 7B `94a11ba`: **green** (45315498831).
 - 7C and 5B runs were cancelled by the next push, which is how the CI is set up.
 - Audit-fix commit `127115c`: run 45319328121 **failed**. 104 browser tests passed and 1 failed: the project Overview scrolled sideways at 320 px (B-10). Types, lint, unit, audit and SQL were green.
-- **Fixed** in the commit after the reports. That fix passed locally (the phone-width test, the board spec, and a width check of every Vault page). Its CI run is on the branch head; check it is green before the go-live (Go-live step 5 already requires that).
+- **Fixed** in `63319fa` (passed locally: the phone-width test, the board spec, and a width check of every Vault page).
+  - On `63319fa`, run 45321296646 passed all browser tests. Its database job failed at `docker run` within 1 second, before any SQL ran: the image start failed, not a test. No SQL had changed since the previous green run.
+  - Re-run on `7e01663` (an empty commit): **run 45322880280, all jobs green.** This is the branch head to go live from.
 
 ## Verified vs assumed
 
