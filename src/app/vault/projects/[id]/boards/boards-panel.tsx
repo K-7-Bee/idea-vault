@@ -38,7 +38,7 @@ export default function BoardsPanel({ ownerId, projectId, boards, writer }: {
       <form onSubmit={add} className="mt-3 flex gap-2">
         <label className="sr-only" htmlFor="new-board-title">New board title</label>
         <input id="new-board-title" value={title} maxLength={200} onChange={(e) => setTitle(e.target.value)} placeholder="New board title"
-          className="min-h-10 min-w-0 flex-1 rounded-xl border border-line bg-field px-3 text-base" />
+          className="min-h-10 w-0 min-w-0 flex-1 rounded-xl border border-line bg-field px-3 text-base" />
         <button type="submit" disabled={writer.busy || !writer.online}
           className="min-h-10 rounded-xl bg-accent px-3 text-sm font-medium text-on-accent disabled:opacity-40">New board</button>
       </form>

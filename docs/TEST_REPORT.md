@@ -20,7 +20,7 @@
 | `a11y.spec.ts` Vault screens (now includes the drawing editor and a board) | Pass: no axe violations at 320, 768 and 1280 px | Local |
 | `contrast.spec.ts` (public and Vault, light and dark, plus the canary) | 5 / 5 pass, after the clipped-text fix to the check (T-5) | Local |
 | `performance.spec.ts` | Pass: homepage within budget (see PERFORMANCE_REPORT) | Local |
-| Full CI (types, lint, unit, audit, SQL, full Chromium browser suite) | 7A `564c58d`: green (run 45313627530). 7B `94a11ba`: green (45315498831). Audit fixes `127115c`: see FINAL_HANDOVER for the last run. | GitHub Actions |
+| Full CI (types, lint, unit, audit, SQL, full Chromium browser suite) | 7A `564c58d`: green (run 45313627530). 7B `94a11ba`: green (45315498831). Audit fixes `127115c`: **failed**, 1 of 105 browser tests (phone width, B-10), fixed in the next commit and passing locally; the branch head's run is in FINAL_HANDOVER. | GitHub Actions |
 
 A production `next build` runs as part of every browser test run: the app server builds with `VAULT_E2E` into `.next-e2e`. It succeeded every time tonight. A build against the real Supabase settings wasn't run locally, because `.env.local` isn't read in this workspace.
 

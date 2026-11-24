@@ -12,13 +12,13 @@
     - **7B:** annotating images;
     - **7C:** visual boards.
   - **Phase 5B:** assistant proposals that you accept or reject one by one.
-- **A security audit and a bug audit** found no critical or high issues. They found and fixed **9 app bugs**, five of them reachable on a real iPad or slow device:
+- **A security audit and a bug audit** found no critical or high issues. They found and fixed **9 app bugs**, and CI found a 10th (B-10, phone-width layout). Five of the first nine are reachable on a real iPad or slow device:
   - text typed into the login form before the page finished loading was ignored;
   - straight Pencil strokes lost their pressure shape;
   - fast board-card drags landed short;
   - a board title typed before the page finished loading was ignored;
   - export failed with a misleading message when Drive uploads are off.
-- **Checks passing:** SQL 13/13 suites (432 checks), unit tests 229/229, all new browser specs in Chromium and the drawing and board specs in WebKit, accessibility and contrast with the new pages, and the homepage budget. CI was green on 7A and 7B; see "CI" below for the last commit.
+- **Checks passing:** SQL 13/13 suites (432 checks), unit tests 229/229, all new browser specs in Chromium and the drawing and board specs in WebKit, accessibility and contrast with the new pages, and the homepage budget. CI was green on 7A and 7B. The audit-fix run caught a phone layout bug (B-10), now fixed; see "CI" below.
 - **Your call before going live:** applying migrations **018** and **019** to the live database, then the go-live.
 - **Still blocked on you:** 5C, the domain, Drive Production, CSP enforcement (date), and checking that sign-ups are off.
 
@@ -52,7 +52,7 @@
 
 ## Bugs fixed and security findings
 
-- **Bugs:** [BUG_FIX_REPORT.md](BUG_FIX_REPORT.md), with B-1 to B-9 (app) and T-1 to T-6 (test tooling).
+- **Bugs:** [BUG_FIX_REPORT.md](BUG_FIX_REPORT.md), with B-1 to B-10 (app) and T-1 to T-6 (test tooling).
 - **Security:** [SECURITY_AUDIT.md](SECURITY_AUDIT.md).
   - **Fixed:** S-1 (editor ignored the uploads switch) and S-2 (CSP report size check order).
   - **Accepted:** S-3 (host-derived site address on Vercel) and S-5 (session cookie readable by scripts, which the library requires).
@@ -116,7 +116,8 @@
 - 7A `564c58d`: **green** (run 45313627530).
 - 7B `94a11ba`: **green** (45315498831).
 - 7C and 5B runs were cancelled by the next push, which is how the CI is set up.
-- Audit-fix commit `127115c`: run 45319328121. The result is recorded at the end of this file.
+- Audit-fix commit `127115c`: run 45319328121 **failed**. 104 browser tests passed and 1 failed: the project Overview scrolled sideways at 320 px (B-10). Types, lint, unit, audit and SQL were green.
+- **Fixed** in the commit after the reports. That fix passed locally (the phone-width test, the board spec, and a width check of every Vault page). Its CI run is on the branch head; check it is green before the go-live (Go-live step 5 already requires that).
 
 ## Verified vs assumed
 

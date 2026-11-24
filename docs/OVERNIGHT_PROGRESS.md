@@ -29,7 +29,7 @@ The owner's autonomous run ("master prompt", 2026-11-24). **If context is lost, 
 - [ ] **5C: file text to the assistant.** Blocked: owner decision. The live privacy page (approved 2026-11-23) promises the assistant "never sends Google Drive file contents".
 - [ ] **Domain, Drive Production, CSP enforcement.** Blocked: owner actions or dates.
 - [x] **Security audit:** [SECURITY_AUDIT.md](SECURITY_AUDIT.md). Fixed S-1 and S-2; no critical or high findings.
-- [x] **Bug audit:** [BUG_FIX_REPORT.md](BUG_FIX_REPORT.md), B-1 to B-9.
+- [x] **Bug audit:** [BUG_FIX_REPORT.md](BUG_FIX_REPORT.md), B-1 to B-10 (B-10 found by CI).
 - [x] **Tests:** [TEST_REPORT.md](TEST_REPORT.md)
 - [x] **Performance:** [PERFORMANCE_REPORT.md](PERFORMANCE_REPORT.md)
 - [x] **Final verification:** audit, lint, tsc, unit 229, SQL 432 and the new browser specs locally. Full CI on `127115c` was running at handover; result at the end of FINAL_HANDOVER.
