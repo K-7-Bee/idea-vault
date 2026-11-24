@@ -125,6 +125,9 @@ export function useFileActions({ ownerId, projectId, writer, picker, setFiles }:
     if (!window.confirm(`Remove "${file.name}" from this project? The file itself stays in your Google Drive.`)) return;
     void writer.run(async () => {
       const result = await api(`/api/drive/project-files/${file.id}`, "DELETE");
+      if (result.status === 409 && result.body.error === "annotated") {
+        return failed(`"${file.name}" has annotations. Open it with "Edit annotations" and choose "Delete annotations" first; nothing was removed.`);
+      }
       return result.ok ? { ok: true, value: file.id } : failed("The file couldn't be removed. Try again.");
     }, `Removed "${file.name}" from this project. It is still in your Google Drive.`, (id) => setFiles((current) => current.filter((f) => f.id !== id)));
   }

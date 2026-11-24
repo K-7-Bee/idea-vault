@@ -5,7 +5,7 @@ import { UNAVAILABLE_TEXT, isImage, projectFileMeta, projectFileView, type Proje
 import type { Row } from "@/lib/workspace";
 import type { Writer } from "./record-section";
 import { NO_LINK, type FileActions, type Link } from "./file-actions";
-import { Thumb } from "./story-image";
+import { AnnotateButton, AnnotatedThumb, type Annotations } from "./drawings/annotate";
 
 const button = "rounded-xl border border-line px-3 py-2 text-sm font-medium transition hover:bg-background disabled:opacity-40";
 const small = "rounded-lg border border-line px-2.5 py-1 text-xs transition hover:bg-background disabled:opacity-40";
@@ -28,9 +28,11 @@ const UNIT_LABEL: Record<string, string> = { season: "Season", episode: "Episode
 // Phase 3C/3D: files on a project, kept in the owner's Google Drive. Uploads go to Projects/<title>;
 // linked files stay where they are. Unlinking never deletes anything from Drive. Story projects
 // also get an image-first Gallery, filterable by character or structure item.
-export default function ProjectFiles({ files, entries, components, characters, units, writer, driveUploads, actions }: {
+export default function ProjectFiles({ files, entries, components, characters, units, writer, driveUploads, actions, annotations }: {
   files: ProjectFile[]; entries: Row[]; components: Row[]; characters: Row[]; units: Row[];
   writer: Writer; driveUploads: boolean; actions: FileActions;
+  // Phase 7B: annotation layers over project images.
+  annotations?: Annotations;
 }) {
   const input = useRef<HTMLInputElement>(null);
   const [attachTo, setAttachTo] = useState("");
@@ -120,8 +122,9 @@ export default function ProjectFiles({ files, entries, components, characters, u
                 return (
                   <li key={file.id} className="grid content-start gap-1 rounded-xl border border-line bg-card p-2">
                     <a href={projectFileView(file).href} target="_blank" rel="noreferrer" aria-label={`Open ${file.name}`}>
-                      <Thumb file={file} alt={file.name} className="aspect-square w-full rounded-lg" />
+                      <AnnotatedThumb file={file} alt={file.name} className="aspect-square w-full rounded-lg" annotations={annotations} />
                     </a>
+                    <AnnotateButton file={file} annotations={annotations} disabled={disabled} />
                     <p className="break-words text-xs font-medium">{file.name}</p>
                     <p className="text-xs text-muted">{record ?? "Not attached"}{file.is_main ? " · Main image" : ""}</p>
                     <button type="button" className={`${small} justify-self-start text-danger`} disabled={disabled} onClick={() => actions.unlink(file)}
@@ -166,6 +169,7 @@ export default function ProjectFiles({ files, entries, components, characters, u
                     {picker(choiceValue(file), (v) => actions.attach(file, parseChoice(v)),
                       { label: `Attach ${file.name} to`, disabled, className: "max-w-[14rem] rounded-lg border border-line bg-background px-2 py-1" })}
                   </label>
+                  <AnnotateButton file={file} annotations={annotations} disabled={disabled} />
                   <button type="button" className={`${small} text-danger`} disabled={disabled} onClick={() => actions.unlink(file)}
                     aria-label={`Remove ${file.name} from this project`}>Remove</button>
                 </div>

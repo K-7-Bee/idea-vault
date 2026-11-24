@@ -51,6 +51,17 @@ function reducer(s: State, a: Action): State {
   }
 }
 
+// Loads an image for drawing on a canvas. Uses onload rather than decode(): Safari's decode() rejects
+// SVG images, which would make every export fail on an iPad.
+function loadImage(src: string): Promise<HTMLImageElement> {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => resolve(img);
+    img.onerror = () => reject(new Error("image"));
+    img.src = src;
+  });
+}
+
 const button = "min-h-11 min-w-11 rounded-xl border border-line px-3 text-sm font-medium transition hover:bg-background disabled:opacity-40";
 const pressed = "border-accent bg-accent text-on-accent hover:bg-accent";
 const SAVE_TEXT: Record<SaveState, string> = {
@@ -370,9 +381,7 @@ export default function DrawingEditor({ ownerId, projectId, projectTitle, initia
       ctx.fillRect(0, 0, data.w, data.h);
       if (bgImage) {
         // Same-origin image (served by the Vault), so the canvas stays exportable.
-        const img = new Image();
-        img.src = bgImage.href;
-        await img.decode();
+        const img = await loadImage(bgImage.href);
         const scale = Math.min(data.w / img.naturalWidth, data.h / img.naturalHeight);
         const w = img.naturalWidth * scale, h = img.naturalHeight * scale;
         ctx.drawImage(img, (data.w - w) / 2, (data.h - h) / 2, w, h);
@@ -384,9 +393,7 @@ export default function DrawingEditor({ ownerId, projectId, projectTitle, initia
       copy.setAttribute("xmlns", "http://www.w3.org/2000/svg");
       const url = URL.createObjectURL(new Blob([new XMLSerializer().serializeToString(copy)], { type: "image/svg+xml" }));
       try {
-        const marks = new Image();
-        marks.src = url;
-        await marks.decode();
+        const marks = await loadImage(url);
         ctx.drawImage(marks, 0, 0, data.w, data.h);
       } finally {
         URL.revokeObjectURL(url);
@@ -401,6 +408,7 @@ export default function DrawingEditor({ ownerId, projectId, projectTitle, initia
       const row = await uploadToDrive<{ name: string }>({ ownerId, projectId, fileId: crypto.randomUUID(), file, ...link });
       setMessage({ text: `Exported "${row.name}" to Google Drive. It's a new file on the same ${isAnnotation ? "record" : "shot"}; ${isAnnotation ? "the original image and " : ""}this drawing stay as they are.`, error: false });
     } catch (error) {
+      console.error("Drawing export failed", error);
       setMessage({ text: error instanceof DriveUnavailable ? "Google Drive isn't connected. Reconnect it in Settings to export; your drawing is saved."
         : error instanceof DriveOffline ? "The connection dropped during the export. Try again." : "The PNG couldn't be made or saved. Your drawing is unchanged.", error: true });
     } finally {

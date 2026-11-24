@@ -4,6 +4,7 @@ import { useRef, useState } from "react";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { projectFileMeta, projectFileView, type ProjectFile } from "@/lib/project-files";
 import type { FileActions } from "./file-actions";
+import type { Annotations } from "./drawings/annotate";
 import StoryImages from "./story-image";
 import SketchStrip, { type DrawingSummary } from "./drawings/sketch-strip";
 import {
@@ -181,7 +182,7 @@ export default function RecordSection({ table, records, ownerId, projectId, writ
   // Phase 3C: project files, listed under the lab entry or component they are attached to.
   files?: ProjectFile[];
   // Phase 3D: images on characters (portrait) and structure items (frame; shots show it as the panel).
-  media?: { files: ProjectFile[]; actions: FileActions; canAdd: boolean };
+  media?: { files: ProjectFile[]; actions: FileActions; canAdd: boolean; annotations?: Annotations };
   // Phase 7A: sketches on scenes and shots (thumbnails; the editor is its own page).
   drawings?: DrawingSummary[];
 }) {
@@ -283,7 +284,7 @@ export default function RecordSection({ table, records, ownerId, projectId, writ
         {media ? (
           <StoryImages owner={{ kind: table === "story_characters" ? "character" : "unit", id: row.id }} label={rowTitle(config, row, records)}
             files={media.files} actions={media.actions} canAdd={media.canAdd} disabled={disabled}
-            shape={table === "story_characters" ? "portrait" : "frame"} />
+            shape={table === "story_characters" ? "portrait" : "frame"} annotations={media.annotations} />
         ) : isShot && <div aria-hidden className="mb-2 aspect-video w-full rounded-lg border border-dashed border-line bg-background" />}
         <div className="flex flex-wrap items-start justify-between gap-2">
           <h4 className="min-w-0 break-words font-semibold">

@@ -80,7 +80,8 @@ test.beforeEach(async ({ request, context, page }) => {
   expect((await request.post(`${API}/_test/reset`, { headers: controlHeaders })).ok()).toBeTruthy();
   await context.route("**/*", async (route) => {
     const url = new URL(route.request().url());
-    if (url.hostname === "127.0.0.1" && ["4317", "4318"].includes(url.port)) await route.continue();
+    // blob: and data: are in-page images (the PNG export); WebKit routes them, Chromium doesn't.
+    if (["blob:", "data:"].includes(url.protocol) || (url.hostname === "127.0.0.1" && ["4317", "4318"].includes(url.port))) await route.continue();
     else await route.abort("blockedbyclient");
   });
   page.on("dialog", (dialog) => dialog.accept());

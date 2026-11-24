@@ -15,14 +15,14 @@ The owner's autonomous run ("master prompt", 2026-11-24). **If context is lost, 
 
 ## Checklist
 
-- [ ] **7A: sketching on storyboard shots** ([PHASE_7_PLAN.md](vault/PHASE_7_PLAN.md))
-  - [ ] migration 018 `drawings`, and SQL suite phase7a
-  - [ ] `src/lib/drawing` (format, thinning, size) and unit tests
-  - [ ] editor page (pen, eraser, undo, redo, clear, autosave, local draft, conflict copy)
-  - [ ] storyboard grid, touch reorder, Sketch button, thumbnails
-  - [ ] export PNG to Drive, and an imported background
-  - [ ] fixture support, browser spec, WebKit Vault login
-  - [ ] Download my data includes drawings; docs
+- [x] **7A: sketching on storyboard shots** (`e02570a`, `564c58d`; CI pending) ([PHASE_7_PLAN.md](vault/PHASE_7_PLAN.md))
+  - [x] migration 018 `drawings`, and SQL suite phase7a
+  - [x] `src/lib/drawing` (format, thinning, size) and unit tests
+  - [x] editor page (pen, eraser, undo, redo, clear, autosave, local draft, conflict copy)
+  - [x] storyboard grid, touch reorder, Sketch button, thumbnails
+  - [x] export PNG to Drive, and an imported background
+  - [x] fixture support, browser spec, WebKit Vault login
+  - [x] Download my data includes drawings; docs
 - [ ] **7B: annotation** (base image, arrow, label, Annotate button, original unchanged, export)
 - [ ] **7C: visual board** (owner asked to complete Phase 7; built without a new library if feasible)
 - [ ] **Other unfinished phases:**
@@ -38,3 +38,14 @@ The owner's autonomous run ("master prompt", 2026-11-24). **If context is lost, 
 ## Log
 
 - 2026-11-24: checkpoint tag created; the tree was clean at `bc2dc8a`.
+- 7A built and committed:
+  - **SQL:** 12/12 suites, 408 checks (31 new). **Unit:** 219/219.
+  - **Browser:**
+    - sketch spec 7/7 in Chromium, and the 3 sketch tests 6/6 in WebKit (repeated twice);
+    - a11y and contrast pass with the editor added;
+    - vault and export specs pass.
+  - **Bugs found and fixed while building:**
+    - straight Pencil strokes lost their pressure shape when thinned;
+    - the editor treated a missing `base_file_id` as an annotation;
+    - the login form ignored text typed before the page finished loading (WebKit, slow devices).
+- Next: 7B (Annotate buttons on images, mark and toggle, a file-removal message when an image has annotations).

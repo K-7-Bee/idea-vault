@@ -30,6 +30,7 @@ import ShowcaseEditor from "./showcase-editor";
 import { requestImageCleanup } from "../../portfolio/orphan-cleanup";
 import AssistantPanel, { type AssistantConfig } from "./assistant-panel";
 import type { DrawingSummary } from "./drawings/sketch-strip";
+import { useAnnotations } from "./drawings/annotate";
 
 type Tab = { id: string; label: string; tables: TableName[] };
 
@@ -99,7 +100,9 @@ export default function ProjectWorkspace({ ownerId, initialProject, initialRecor
   const writer = { run, busy, online, setMessage };
   // Phase 3C/3D: one set of file actions shared by the Files tab and story image cards.
   const fileActions = useFileActions({ ownerId, projectId: initialProject.id, writer, picker, setFiles });
-  const media = { files, actions: fileActions, canAdd: driveUploads };
+  // Phase 7B: annotation layers over project images (one per image; the image is never changed).
+  const annotations = useAnnotations({ ownerId, projectId: initialProject.id, writer, drawings });
+  const media = { files, actions: fileActions, canAdd: driveUploads, annotations };
   const tabs = tabsFor(project.project_type, assistant !== null);
   const current = tabs.find((t) => t.id === tab) ?? tabs[0];
   const archived = project.archived_at !== null;
@@ -336,7 +339,7 @@ export default function ProjectWorkspace({ ownerId, initialProject, initialRecor
               components={hasEngineering(project.project_type) ? records.project_components : []}
               characters={hasStory(project.project_type) ? records.story_characters : []}
               units={hasStory(project.project_type) ? records.story_units : []}
-              writer={writer} driveUploads={driveUploads} actions={fileActions} />
+              writer={writer} driveUploads={driveUploads} actions={fileActions} annotations={annotations} />
           ) : (
             <div className="grid gap-8">
               {current.tables.map((table) => (

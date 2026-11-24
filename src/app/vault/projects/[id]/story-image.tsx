@@ -1,40 +1,23 @@
 "use client";
 
-import { useRef, useState } from "react";
-import { UNAVAILABLE_TEXT, imagesFor, projectFileView, thumbUrl, type ImageOwner, type ProjectFile } from "@/lib/project-files";
+import { useRef } from "react";
+import { imagesFor, projectFileView, type ImageOwner, type ProjectFile } from "@/lib/project-files";
+import { Thumb } from "./thumb";
+import { AnnotateButton, AnnotatedThumb, type Annotations } from "./drawings/annotate";
 import type { FileActions } from "./file-actions";
 
 const small = "rounded-lg border border-line px-2.5 py-1 text-xs transition hover:bg-background disabled:opacity-40";
 
-// A Drive image preview with a placeholder: shown while the record is fine but the picture isn't
-// (unavailable in Drive, or it failed to load). The card and its text never depend on it.
-export function Thumb({ file, className, alt }: { file: ProjectFile; className: string; alt: string }) {
-  const [failed, setFailed] = useState(false);
-  if (file.state === "unavailable" || failed) {
-    const reason = file.state === "unavailable" ? UNAVAILABLE_TEXT[file.state_reason ?? "missing"] : "Couldn't load from Google Drive";
-    return (
-      <div role="img" aria-label={`Image unavailable: ${file.name}`} title={file.name}
-        className={`${className} flex flex-col items-center justify-center gap-1 border border-dashed border-line bg-background p-2 text-center text-xs text-muted`}>
-        <span aria-hidden className="text-lg">▨</span>
-        <span>Image unavailable</span>
-        <span>{reason}</span>
-      </div>
-    );
-  }
-  return (
-    // Previews stream through the Vault's owner-checked route; next/image can't proxy those.
-    // eslint-disable-next-line @next/next/no-img-element
-    <img src={thumbUrl(file)} alt={alt} loading="lazy" decoding="async" onError={() => setFailed(true)}
-      className={`${className} border border-line bg-background object-cover`} />
-  );
-}
+export { Thumb };
 
 // Images on one character (portrait) or structure item (16:9 frame): the main image large, others
 // in a strip with "Make main" and "Remove" (the Drive file is kept), and Add image (upload or link
 // from Drive) attached in one step.
-export default function StoryImages({ owner, label, files, actions, canAdd, disabled, shape }: {
+export default function StoryImages({ owner, label, files, actions, canAdd, disabled, shape, annotations }: {
   owner: ImageOwner; label: string; files: ProjectFile[]; actions: FileActions; canAdd: boolean; disabled: boolean;
   shape: "portrait" | "frame";
+  // Phase 7B: annotation layers over these images.
+  annotations?: Annotations;
 }) {
   const input = useRef<HTMLInputElement>(null);
   const images = imagesFor(files, owner);
@@ -47,10 +30,13 @@ export default function StoryImages({ owner, label, files, actions, canAdd, disa
       {main ? (
         <>
           <a href={projectFileView(main).href} target="_blank" rel="noreferrer" className={box} aria-label={`Open ${main.name}`}>
-            <Thumb file={main} alt={`${label}: ${main.name}`} className="h-full w-full rounded-lg" />
+            <AnnotatedThumb file={main} alt={`${label}: ${main.name}`} className="h-full w-full rounded-lg" annotations={annotations} />
           </a>
-          <button type="button" className={`${small} justify-self-start text-danger`} disabled={disabled} onClick={() => actions.unlink(main)}
-            aria-label={`Remove ${main.name} from ${label}`}>Remove</button>
+          <div className="flex flex-wrap gap-1.5">
+            <AnnotateButton file={main} annotations={annotations} disabled={disabled} />
+            <button type="button" className={`${small} text-danger`} disabled={disabled} onClick={() => actions.unlink(main)}
+              aria-label={`Remove ${main.name} from ${label}`}>Remove</button>
+          </div>
         </>
       ) : (
         <div aria-hidden className={`${box} rounded-lg border border-dashed border-line bg-background`} />
@@ -60,8 +46,9 @@ export default function StoryImages({ owner, label, files, actions, canAdd, disa
           {others.map((f) => (
             <li key={f.id} className="grid w-20 gap-1">
               <a href={projectFileView(f).href} target="_blank" rel="noreferrer" aria-label={`Open ${f.name}`}>
-                <Thumb file={f} alt={`${label}: ${f.name}`} className="aspect-square w-20 rounded-md" />
+                <AnnotatedThumb file={f} alt={`${label}: ${f.name}`} className="aspect-square w-20 rounded-md" annotations={annotations} />
               </a>
+              <AnnotateButton file={f} annotations={annotations} disabled={disabled} />
               {canAdd && (
                 <button type="button" className={small} disabled={disabled} onClick={() => actions.makeMain(f)}
                   aria-label={`Make ${f.name} the main image of ${label}`}>Make main</button>

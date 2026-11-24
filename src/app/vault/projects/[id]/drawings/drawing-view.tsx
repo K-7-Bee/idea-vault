@@ -17,12 +17,14 @@ export function ItemShape({ item, live = false }: { item: Item; live?: boolean }
 }
 
 /** A drawing (optionally over an image) as a scalable picture; used for thumbnails. */
-export default function DrawingView({ data, label, imageHref, className }: {
+export default function DrawingView({ data, label, imageHref, className, overlay = false }: {
   data: DrawingData; label: string; imageHref?: string | null; className?: string;
+  // Phase 7B: marks only, laid over an image thumbnail; "slice" matches the thumbnail's object-cover crop.
+  overlay?: boolean;
 }) {
   return (
-    <svg viewBox={`0 0 ${data.w} ${data.h}`} role="img" aria-label={label} className={className} preserveAspectRatio="xMidYMid meet">
-      <rect width={data.w} height={data.h} fill="#ffffff" />
+    <svg viewBox={`0 0 ${data.w} ${data.h}`} role="img" aria-label={label} className={className} preserveAspectRatio={overlay ? "xMidYMid slice" : "xMidYMid meet"}>
+      {!overlay && <rect width={data.w} height={data.h} fill="#ffffff" />}
       {imageHref && <image href={imageHref} width={data.w} height={data.h} preserveAspectRatio="xMidYMid meet" />}
       {data.items.map((item, i) => <ItemShape key={i} item={item} />)}
     </svg>

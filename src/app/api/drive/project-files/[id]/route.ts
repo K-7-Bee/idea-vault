@@ -59,6 +59,8 @@ export async function DELETE(request: NextRequest, { params }: Params) {
   if (!owned.session) return owned.response;
   const removed = await owned.session.supabase.from("project_files").delete().eq("id", id).eq("user_id", owned.session.owner.id)
     .select("id").then((r) => r, () => null);
+  // Phase 7B: an image with an annotation layer can't be removed until the layer is deleted (018).
+  if (removed?.error?.code === "23503") return json({ error: "annotated" }, 409);
   if (!removed || removed.error || removed.data?.length !== 1) return json({ error: "storage" }, 503);
   return json({ ok: true });
 }
