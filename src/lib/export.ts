@@ -14,6 +14,7 @@ export const EXPORT_TABLES: Source[] = [
   { table: "story_bible_entries" }, { table: "story_characters" }, { table: "story_relationships" },
   { table: "story_units" }, { table: "story_timeline_events" }, { table: "story_continuity" },
   { table: "drawings", note: "Sketches and image annotations (vector data)." },
+  { table: "boards" }, { table: "board_cards" }, { table: "board_links" },
   { table: "project_showcases" },
   { table: "showcases", columns: "project_id, slug, title, category, summary, technologies, sections, links, images, published_at", owned: false, note: "Published project snapshots (public)." },
   { table: "profile_drafts" }, { table: "profile_versions" },

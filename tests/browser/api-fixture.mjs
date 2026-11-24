@@ -17,8 +17,8 @@ const FOLDER_MIME = 'application/vnd.google-apps.folder';
 // Phase 2 tables (migrations 006/007). Imitates their triggers and keys; not PostgreSQL.
 const WORK_TABLES = ['projects', 'project_milestones', 'project_tasks', 'project_entries', 'project_components', 'project_links',
   'story_bible_entries', 'story_characters', 'story_relationships', 'story_units', 'story_timeline_events', 'story_continuity',
-  // Phase 7 (migration 018).
-  'drawings'];
+  // Phase 7 (migrations 018 and 019).
+  'drawings', 'boards', 'board_cards', 'board_links'];
 const LEVELS = ['season', 'episode', 'scene', 'shot'];
 const failure = (status, code, message) => ({ status, body: { code, message } });
 const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==', 'base64');
@@ -53,8 +53,43 @@ function drawingProblem(row, before) {
   row.data = data; row.title = row.title ?? ''; row.aspect = row.aspect ?? '16:9';
   return null;
 }
+// Phase 7C (migration 019): cards sit on a board of the same project and link to at most one record
+// of that project; connections join two different cards of one board, once per pair.
+const CARD_LINKS = { file_id: () => simple.project_files, drawing_id: () => work.drawings, unit_id: () => work.story_units,
+  character_id: () => work.story_characters, entry_id: () => work.project_entries };
+function boardProblem(table, row, before) {
+  if (before) { row.board_id = before.board_id; if (table === 'board_links') { row.from_card_id = before.from_card_id; row.to_card_id = before.to_card_id; } }
+  if (table === 'board_cards' || table === 'board_links') {
+    if (!work.boards.some((b) => b.id === row.board_id && b.project_id === row.project_id)) return failure(409, '23503', 'board fk');
+  }
+  if (table === 'board_cards') {
+    if (!['note', 'file', 'drawing', 'unit', 'character', 'entry'].includes(row.kind)) return failure(400, '23514', 'kind');
+    const links = Object.keys(CARD_LINKS).filter((k) => row[k] != null);
+    if (links.length > 1) return failure(400, '23514', 'one link');
+    for (const k of links) if (!CARD_LINKS[k]().some((r) => r.id === row[k] && r.project_id === row.project_id)) return failure(409, '23503', k + ' fk');
+    for (const k of Object.keys(CARD_LINKS)) row[k] = row[k] ?? null;
+    row.text = row.text ?? ''; row.colour = row.colour ?? 'yellow';
+    row.x = row.x ?? 40; row.y = row.y ?? 40; row.w = row.w ?? 220; row.h = row.h ?? 160;
+    if (Math.abs(row.x) > 20000 || Math.abs(row.y) > 20000) return failure(400, '23514', 'position');
+  }
+  if (table === 'board_links') {
+    if (row.from_card_id === row.to_card_id) return failure(400, '23514', 'self');
+    const onBoard = (id) => work.board_cards.some((c) => c.id === id && c.board_id === row.board_id);
+    if (!onBoard(row.from_card_id) || !onBoard(row.to_card_id)) return failure(409, '23503', 'card fk');
+    const pair = (l) => [l.from_card_id, l.to_card_id].sort().join();
+    if (!before && work.board_links.some((l) => l.board_id === row.board_id && pair(l) === pair(row))) return failure(409, '23505', 'board_links_pair');
+    row.label = row.label ?? '';
+  }
+  return null;
+}
+function clearCardLinks(column, id) {
+  work.board_cards.filter((c) => c[column] === id).forEach((c) => { c[column] = null; touch(c); });
+}
 function touch(row) { row.version += 1; row.updated_at = new Date().toISOString(); }
 function clearLinks(table, id) {
+  // Phase 7C: board cards keep existing when the record they show is deleted (link cleared).
+  const cardColumn = { story_units: 'unit_id', story_characters: 'character_id', project_entries: 'entry_id', drawings: 'drawing_id' }[table];
+  if (cardColumn) clearCardLinks(cardColumn, id);
   const unlink = (target, column) => work[target].filter((r) => r[column] === id).forEach((r) => { r[column] = null; touch(r); });
   if (table === 'project_milestones') unlink('project_tasks', 'milestone_id');
   if (table === 'story_units') { unlink('story_timeline_events', 'unit_id'); unlink('story_continuity', 'unit_id'); }
@@ -310,6 +345,7 @@ const server = http.createServer(async (req, res) => {
           }
           if (table === 'story_units') { const problem = levelProblem(row); if (problem) return reply(problem.status, problem.body); }
           if (table === 'drawings') { const problem = drawingProblem(row, null); if (problem) return reply(problem.status, problem.body); }
+          if (table.startsWith('board')) { const problem = boardProblem(table, row, null); if (problem) return reply(problem.status, problem.body); }
           made.push(row);
         }
         rows.push(...made); found = made;
@@ -321,6 +357,7 @@ const server = http.createServer(async (req, res) => {
           const next = { ...row, ...update };
           if (table === 'story_units') { const problem = levelProblem(next); if (problem) return reply(problem.status, problem.body); }
           if (table === 'drawings') { const problem = drawingProblem(next, row); if (problem) return reply(problem.status, problem.body); }
+          if (table.startsWith('board')) { const problem = boardProblem(table, next, row); if (problem) return reply(problem.status, problem.body); }
           if (table === 'projects' && 'archived_at' in update) next.archived_at = update.archived_at == null ? null : (row.archived_at ?? new Date().toISOString());
           if (table === 'projects') { const problem = publicationRules(row, next); if (problem) return reply(problem.status, problem.body); }
           Object.assign(row, next); touch(row);
@@ -330,7 +367,15 @@ const server = http.createServer(async (req, res) => {
         if (table === 'story_units' && found.some((u) => work.drawings.some((d) => d.unit_id === u.id))) {
           return reply(409, { code: '23503', message: 'update or delete on table "story_units" violates foreign key constraint "drawings_project_id_unit_id_fkey"' });
         }
-        if (table === 'projects') for (const p of found) work.drawings = work.drawings.filter((d) => d.project_id !== p.id);
+        if (table === 'projects') for (const p of found) {
+          for (const t of ['drawings', 'boards', 'board_cards', 'board_links']) work[t] = work[t].filter((d) => d.project_id !== p.id);
+        }
+        if (table === 'boards') for (const b of found) {
+          work.board_cards = work.board_cards.filter((c) => c.board_id !== b.id);
+          work.board_links = work.board_links.filter((l) => l.board_id !== b.id);
+        }
+        if (table === 'board_cards') for (const c of found) work.board_links = work.board_links.filter((l) => l.from_card_id !== c.id && l.to_card_id !== c.id);
+
         if (table === 'story_units' && found.some((u) => work.story_units.some((c) => c.parent_id === u.id))) {
           return reply(409, { code: '23503', message: 'update or delete on table "story_units" violates foreign key constraint' });
         }
@@ -463,7 +508,7 @@ function simpleRows(table, url, req, json, owner, reply) {
     const gone = found();
     // Phase 7: an image with an annotation layer can't be removed until the layer is deleted.
     if (gone.some((f) => work.drawings.some((d) => d.base_file_id === f.id))) return reply(409, { code: '23503', message: 'violates foreign key constraint "drawings_base_file_fk"' });
-    for (const row of gone) rows.splice(rows.indexOf(row), 1);
+    for (const row of gone) { rows.splice(rows.indexOf(row), 1); if (table === 'project_files') clearCardLinks('file_id', row.id); }
     return respond(200, gone);
   }
   const body = json();

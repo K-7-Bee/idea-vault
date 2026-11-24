@@ -15,7 +15,7 @@ The owner's autonomous run ("master prompt", 2026-11-24). **If context is lost, 
 
 ## Checklist
 
-- [x] **7A: sketching on storyboard shots** (`e02570a`, `564c58d`; CI pending) ([PHASE_7_PLAN.md](vault/PHASE_7_PLAN.md))
+- [x] **7A: sketching on storyboard shots** (`e02570a`, `564c58d`; CI green, run 45313627530) ([PHASE_7_PLAN.md](vault/PHASE_7_PLAN.md))
   - [x] migration 018 `drawings`, and SQL suite phase7a
   - [x] `src/lib/drawing` (format, thinning, size) and unit tests
   - [x] editor page (pen, eraser, undo, redo, clear, autosave, local draft, conflict copy)
@@ -23,7 +23,7 @@ The owner's autonomous run ("master prompt", 2026-11-24). **If context is lost, 
   - [x] export PNG to Drive, and an imported background
   - [x] fixture support, browser spec, WebKit Vault login
   - [x] Download my data includes drawings; docs
-- [ ] **7B: annotation** (base image, arrow, label, Annotate button, original unchanged, export)
+- [x] **7B: annotation** (`94a11ba`): Annotate buttons, overlay with toggle, removal blocked while annotated, export as a new file
 - [ ] **7C: visual board** (owner asked to complete Phase 7; built without a new library if feasible)
 - [ ] **Other unfinished phases:**
   - 5B and 5C: assess. They depend on 5A being switched on with a real key.
@@ -48,4 +48,8 @@ The owner's autonomous run ("master prompt", 2026-11-24). **If context is lost, 
     - straight Pencil strokes lost their pressure shape when thinned;
     - the editor treated a missing `base_file_id` as an annotation;
     - the login form ignored text typed before the page finished loading (WebKit, slow devices).
-- Next: 7B (Annotate buttons on images, mark and toggle, a file-removal message when an image has annotations).
+- 7B built:
+  - annotate spec 2/2 in Chromium and 1/1 in WebKit; the 27 affected Chromium specs pass; tsc and lint clean.
+  - The WebKit export failure turned out to be the test's request blocking (WebKit routes blob: URLs). Fixed in the tests.
+  - Export now loads images with onload instead of decode(). This is a precaution; I didn't confirm decode() actually fails in Safari.
+- Next: 7C, the visual board (migration 019; boards, cards, links; drag with pen, finger or mouse; zoom buttons; list view). No new library.

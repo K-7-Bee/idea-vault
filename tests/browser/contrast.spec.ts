@@ -17,16 +17,22 @@ const PROJECT = "dddddddd-0000-4000-8000-0000000000a1";
 const STORY = "dddddddd-0000-4000-8000-0000000000b1";
 const SHOT = "dddddddd-0000-4000-8000-0000000000b2";
 const DRAWING = "dddddddd-0000-4000-8000-0000000000b3";
+const BOARD = "dddddddd-0000-4000-8000-0000000000b4";
 const STORY_SEED = {
   story_units: [{ id: SHOT, project_id: STORY, parent_id: null, kind: "shot", title: "Opening shot", summary: "", location: "", time_of_day: "", camera: "", duration_seconds: null, position: 1 }],
   drawings: [{ id: DRAWING, project_id: STORY, unit_id: SHOT, base_file_id: null, title: "First pass", aspect: "16:9", position: 1,
     data: { v: 1, w: 1600, h: 900, items: [{ t: "pen", c: "#111827", s: 6, pr: false, p: [100, 100, 500, 800, 400, 500] }, { t: "label", c: "#dc2626", s: 40, x: 200, y: 600, text: "Door" }] } }],
+  boards: [{ id: BOARD, project_id: STORY, title: "Plot map", position: 1 }],
+  board_cards: ["yellow", "blue", "green", "pink", "grey"].map((colour, i) => ({ id: `dddddddd-0000-4000-8000-0000000000c${i}`, project_id: STORY, board_id: BOARD,
+    kind: i === 1 ? "unit" : i === 2 ? "drawing" : "note", text: `Card ${i + 1} note`, colour, file_id: null, drawing_id: i === 2 ? DRAWING : null, unit_id: i === 1 ? SHOT : null,
+    character_id: null, entry_id: null, x: 40 + i * 260, y: 40, w: 220, h: 160 })),
+  board_links: [{ id: "dddddddd-0000-4000-8000-0000000000d1", project_id: STORY, board_id: BOARD, from_card_id: "dddddddd-0000-4000-8000-0000000000c0", to_card_id: "dddddddd-0000-4000-8000-0000000000c1", label: "leads to" }],
 };
 const controlHeaders = { "x-fixture-key": "local-synthetic-test-control" };
 const WIDTHS = [320, 768, 1280];
 const PUBLIC = ["/", "/projects", "/projects/waste-to-energy-lighting", "/journal", "/login", "/privacy", "/no-such-page"];
 const VAULT = ["/vault", `/vault/ideas/${IDEA}`, "/vault/projects", `/vault/projects/${PROJECT}`, "/vault/archive",
-  "/vault/lab", "/vault/story", "/vault/portfolio", "/vault/settings", `/vault/projects/${STORY}/drawings/${DRAWING}`];
+  "/vault/lab", "/vault/story", "/vault/portfolio", "/vault/settings", `/vault/projects/${STORY}/drawings/${DRAWING}`, `/vault/projects/${STORY}/boards/${BOARD}`];
 const PERCENTILE = 0.05;
 
 type Item = { id: string; text: string; fg: number[]; large: boolean };
@@ -88,6 +94,16 @@ function boxes(): { boxes: Box[]; media: number; covered: number } {
       for (const r of range.getClientRects()) if (r.width >= 2 && r.height >= 4) rects.push(r);
     }
     if (!rects.length || rects.some((r) => r.left < 0 || r.top < 0 || r.right > vw || r.bottom > vh)) continue;
+    // Text partly hidden by a scrolling or clipping ancestor (a board, a list in a box) can't be
+    // measured: the pixels outside the clip belong to something else. It is measured when scrolled in.
+    let clipped = false;
+    for (let a = el.parentElement; a && !clipped; a = a.parentElement) {
+      const style = getComputedStyle(a);
+      if (style.overflowX === "visible" && style.overflowY === "visible") continue;
+      const c = a.getBoundingClientRect();
+      clipped = rects.some((r) => r.left < c.left - 0.5 || r.top < c.top - 0.5 || r.right > c.right + 0.5 || r.bottom > c.bottom + 0.5);
+    }
+    if (clipped) { covered++; continue; }
     if (rects.some((r) => mediaRects.some((m) => overlaps(r, m)))) { media++; continue; }
     const r0 = rects[0], hit = document.elementFromPoint(r0.left + r0.width / 2, r0.top + r0.height / 2);
     if (!hit || !(el === hit || el.contains(hit) || hit.contains(el))) { covered++; continue; }

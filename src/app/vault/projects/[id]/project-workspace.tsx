@@ -31,6 +31,8 @@ import { requestImageCleanup } from "../../portfolio/orphan-cleanup";
 import AssistantPanel, { type AssistantConfig } from "./assistant-panel";
 import type { DrawingSummary } from "./drawings/sketch-strip";
 import { useAnnotations } from "./drawings/annotate";
+import BoardsPanel from "./boards/boards-panel";
+import type { Board } from "@/lib/boards";
 
 type Tab = { id: string; label: string; tables: TableName[] };
 
@@ -75,7 +77,7 @@ function when(value: string) {
   return new Date(value).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
 }
 
-export default function ProjectWorkspace({ ownerId, initialProject, initialRecords, sourceIdea, truncated, initialFiles = [], driveUploads = false, picker = { apiKey: "", appId: "" }, showcase = { draft: null, live: null }, assistant = null, drawings = [] }: {
+export default function ProjectWorkspace({ ownerId, initialProject, initialRecords, sourceIdea, truncated, initialFiles = [], driveUploads = false, picker = { apiKey: "", appId: "" }, showcase = { draft: null, live: null }, assistant = null, drawings = [], boards = [] }: {
   ownerId: string; initialProject: Project; initialRecords: Records;
   sourceIdea: { id: string; label: string } | null; truncated: TableName[];
   // Phase 3C: files in Google Drive, the upload switch and the Picker configuration.
@@ -86,6 +88,8 @@ export default function ProjectWorkspace({ ownerId, initialProject, initialRecor
   assistant?: AssistantConfig | null;
   // Phase 7: sketches and annotation layers, as light previews.
   drawings?: DrawingSummary[];
+  // Phase 7C: visual boards.
+  boards?: Board[];
 }) {
   const [project, setProject] = useState(initialProject);
   const [records, setRecords] = useState(initialRecords);
@@ -325,6 +329,7 @@ export default function ProjectWorkspace({ ownerId, initialProject, initialRecor
                   <div><dt className="text-muted">Created</dt><dd suppressHydrationWarning>{when(project.created_at)}</dd></div>
                   <div><dt className="text-muted">Last updated</dt><dd suppressHydrationWarning>{when(project.updated_at)}</dd></div>
                 </dl>
+                <BoardsPanel ownerId={ownerId} projectId={project.id} boards={boards} writer={writer} />
               </aside>
             </section>
           ) : current.id === "showcase" ? (

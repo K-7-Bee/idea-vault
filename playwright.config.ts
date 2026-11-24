@@ -5,7 +5,7 @@ import { defineConfig } from "@playwright/test";
 // Chromium-only: WebKit doesn't complete the Vault login against the plain-http test server.
 const CROSS_BROWSER_SAMPLE = /public pages load and fit|public pages have no axe violations|contact email is absent/;
 // Phase 7A: Pencil and mouse drawing, palm handling and recovery of an unsaved sketch.
-const WEBKIT_SKETCH = /sketch a shot with pen and mouse|once the Pencil is used|an unsaved sketch survives a reload|annotate a character image/;
+const WEBKIT_SKETCH = /sketch a shot with pen and mouse|once the Pencil is used|an unsaved sketch survives a reload|annotate a character image|create a board, add note and record cards/;
 
 export default defineConfig({
   testDir: "./tests/browser",
