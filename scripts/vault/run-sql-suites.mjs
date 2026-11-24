@@ -15,7 +15,12 @@ import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
 
-const IMAGE = process.env.SQL_SUITE_IMAGE || 'public.ecr.aws/supabase/postgres:17.11.0.018';
+// The same image is published on two registries; the digest pins it, so either copy is identical.
+// AWS's public registry rate-limits anonymous pulls ("toomanyrequests"), which failed CI twice on
+// 2026-11-24, so the pull is retried and then taken from Docker Hub.
+const DIGEST = 'sha256:7c31363a3f7434ff14945f1b8a4880e6eca8b362e197e88b87c476c77aa3cf8c';
+const SOURCES = process.env.SQL_SUITE_IMAGE ? [process.env.SQL_SUITE_IMAGE]
+  : [`public.ecr.aws/supabase/postgres:17.11.0.018@${DIGEST}`, `docker.io/supabase/postgres:17.11.0.018@${DIGEST}`];
 const repo = path.resolve(import.meta.dirname, '..', '..');
 const log = (line) => process.stdout.write(`${line}\n`);
 const env = { ...process.env, MSYS_NO_PATHCONV: '1' };
@@ -41,6 +46,17 @@ const cleanup = () => { if (!removed) { removed = true; docker(['rm', '-f', name
 for (const signal of ['SIGINT', 'SIGTERM']) process.on(signal, () => { cleanup(); process.exit(130); });
 
 const started = Date.now();
+// An image already on this machine needs no download; otherwise try each registry, twice.
+let IMAGE = SOURCES.find((ref) => docker(['image', 'inspect', ref]).status === 0);
+for (let attempt = 0; !IMAGE && attempt < 2; attempt++) {
+  for (const ref of SOURCES) {
+    const r = docker(['pull', '-q', ref]);
+    if (r.status === 0) { IMAGE = ref; break; }
+    log(`Pulling ${ref.split('@')[0]} failed: ${String(r.stderr).trim().split('\n').at(-1)}`);
+  }
+  if (!IMAGE && attempt === 0) await new Promise((r) => setTimeout(r, 15000));
+}
+if (!IMAGE) throw new Error('The test database image could not be downloaded from any registry.');
 must(docker(['run', '-d', '--name', name, '--network', 'none', '-e', 'POSTGRES_PASSWORD=disposable-local-only', IMAGE]), 'Starting the database');
 try {
   const psql = (sql) => docker(['exec', '-i', name, 'psql', '-v', 'ON_ERROR_STOP=1', '-U', 'supabase_admin', '-d', 'postgres', '-q', '-At'], sql);
