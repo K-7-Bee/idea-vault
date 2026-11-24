@@ -218,3 +218,15 @@ test('archive and restore refuse a request that does not match the current state
   assert.equal((await ws.setProjectArchived(archive.client, 'owner', active, true)).ok, true);
   assert.ok(archive.calls[0].payload.archived_at);
 });
+
+test('positionForMove places a dragged item between its new neighbours in one update', () => {
+  const rows = [1, 2, 3, 4].map((p) => ({ id: `r${p}`, position: p }));
+  assert.equal(ws.positionForMove(rows, 'r1', 2), 3.5);   // first -> after the third
+  assert.equal(ws.positionForMove(rows, 'r4', 0), 0);     // last -> first
+  assert.equal(ws.positionForMove(rows, 'r2', 3), 5);     // -> last
+  assert.equal(ws.positionForMove(rows, 'r3', 1), 1.5);   // backwards by one
+  assert.equal(ws.positionForMove(rows, 'r2', 1), null);  // same place
+  assert.equal(ws.positionForMove(rows, 'nope', 1), null);
+  assert.equal(ws.positionForMove([{ id: 'a', position: 0 }, { id: 'b', position: 0 }, { id: 'c', position: 0 }], 'c', 1), null); // ties
+  assert.equal(ws.positionForMove([{ id: 'only', position: 5 }], 'only', 0), null);
+});

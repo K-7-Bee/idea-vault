@@ -12,11 +12,21 @@ import sharp from "sharp";
 const API = "http://127.0.0.1:4317";
 const IDEA = "33333333-3333-4333-8333-333333333333";
 const PROJECT = "dddddddd-0000-4000-8000-0000000000a1";
+
+// Phase 7: a story project with a sketch, so the drawing editor is checked too.
+const STORY = "dddddddd-0000-4000-8000-0000000000b1";
+const SHOT = "dddddddd-0000-4000-8000-0000000000b2";
+const DRAWING = "dddddddd-0000-4000-8000-0000000000b3";
+const STORY_SEED = {
+  story_units: [{ id: SHOT, project_id: STORY, parent_id: null, kind: "shot", title: "Opening shot", summary: "", location: "", time_of_day: "", camera: "", duration_seconds: null, position: 1 }],
+  drawings: [{ id: DRAWING, project_id: STORY, unit_id: SHOT, base_file_id: null, title: "First pass", aspect: "16:9", position: 1,
+    data: { v: 1, w: 1600, h: 900, items: [{ t: "pen", c: "#111827", s: 6, pr: false, p: [100, 100, 500, 800, 400, 500] }, { t: "label", c: "#dc2626", s: 40, x: 200, y: 600, text: "Door" }] } }],
+};
 const controlHeaders = { "x-fixture-key": "local-synthetic-test-control" };
 const WIDTHS = [320, 768, 1280];
 const PUBLIC = ["/", "/projects", "/projects/waste-to-energy-lighting", "/journal", "/login", "/privacy", "/no-such-page"];
 const VAULT = ["/vault", `/vault/ideas/${IDEA}`, "/vault/projects", `/vault/projects/${PROJECT}`, "/vault/archive",
-  "/vault/lab", "/vault/story", "/vault/portfolio", "/vault/settings"];
+  "/vault/lab", "/vault/story", "/vault/portfolio", "/vault/settings", `/vault/projects/${STORY}/drawings/${DRAWING}`];
 const PERCENTILE = 0.05;
 
 type Item = { id: string; text: string; fg: number[]; large: boolean };
@@ -164,7 +174,7 @@ for (const scheme of ["light", "dark"] as const) {
 
   test(`the Vault's main screens meet AA text contrast (${scheme} scheme)`, async ({ page, request }) => {
     test.setTimeout(300_000);
-    await control(request, { seed: { projects: [{ id: PROJECT, title: "Contrast check", summary: "A seeded project." }] } });
+    await control(request, { seed: { projects: [{ id: PROJECT, title: "Contrast check", summary: "A seeded project." }, { id: STORY, title: "Story check", project_type: "story" }], ...STORY_SEED } });
     await login(page);
     const found = await check(page, VAULT, scheme);
     expect(found, found.join("\n")).toEqual([]);

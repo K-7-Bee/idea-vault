@@ -19,8 +19,14 @@ export default function LoginPage() {
     e.preventDefault();
     setBusy(true);
     setError("");
+    // Read what is in the fields now: text typed before the page finished loading (a slow iPad) is
+    // in the inputs but not yet in React's state. The inputs have no name attribute on purpose, so a
+    // submit before loading finishes can never put the password in the address bar.
+    const form = e.currentTarget as HTMLFormElement;
+    const typedEmail = (form.querySelector('input[type="email"]') as HTMLInputElement | null)?.value || email;
+    const typedPassword = (form.querySelector('input[type="password"]') as HTMLInputElement | null)?.value || password;
     const supabase = createClient();
-    const { error } = await supabase.auth.signInWithPassword({ email, password });
+    const { error } = await supabase.auth.signInWithPassword({ email: typedEmail.trim(), password: typedPassword });
     setBusy(false);
     if (error) {
       setError(looksOffline(error.message) ? "You're offline. Logging in needs a connection." : error.message);

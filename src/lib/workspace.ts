@@ -316,6 +316,24 @@ export function nextPosition(rows: Row[]) {
   return rows.reduce((max, r) => Math.max(max, Number(r.position) || 0), 0) + 1;
 }
 
+// Phase 7A: the position that puts `moving` at index `to` among its sorted siblings (drag to
+// reorder). One update, between the new neighbours; null when nothing would change. Equal
+// positions (older data) fall back to null so the caller uses the step-by-step buttons instead.
+export function positionForMove(siblings: Row[], movingId: string, to: number): number | null {
+  const from = siblings.findIndex((r) => r.id === movingId);
+  if (from < 0) return null;
+  const rest = siblings.filter((r) => r.id !== movingId);
+  const at = Math.max(0, Math.min(rest.length, to));
+  if (at === from) return null;
+  const prev = at > 0 ? Number(rest[at - 1].position) || 0 : null;
+  const next = at < rest.length ? Number(rest[at].position) || 0 : null;
+  if (prev === null && next === null) return null;
+  if (prev === null) return next! - 1;
+  if (next === null) return prev + 1;
+  if (next <= prev) return null;
+  return (prev + next) / 2;
+}
+
 // "Resume project": the task in progress, otherwise the first task still to do.
 // Derived from saved tasks only; nothing is invented when there are none.
 export function nextAction(tasks: Row[]): Row | null {

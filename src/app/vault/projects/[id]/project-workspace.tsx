@@ -29,6 +29,7 @@ import type { LiveShowcase, ShowcaseDraft } from "@/lib/showcase";
 import ShowcaseEditor from "./showcase-editor";
 import { requestImageCleanup } from "../../portfolio/orphan-cleanup";
 import AssistantPanel, { type AssistantConfig } from "./assistant-panel";
+import type { DrawingSummary } from "./drawings/sketch-strip";
 
 type Tab = { id: string; label: string; tables: TableName[] };
 
@@ -73,7 +74,7 @@ function when(value: string) {
   return new Date(value).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
 }
 
-export default function ProjectWorkspace({ ownerId, initialProject, initialRecords, sourceIdea, truncated, initialFiles = [], driveUploads = false, picker = { apiKey: "", appId: "" }, showcase = { draft: null, live: null }, assistant = null }: {
+export default function ProjectWorkspace({ ownerId, initialProject, initialRecords, sourceIdea, truncated, initialFiles = [], driveUploads = false, picker = { apiKey: "", appId: "" }, showcase = { draft: null, live: null }, assistant = null, drawings = [] }: {
   ownerId: string; initialProject: Project; initialRecords: Records;
   sourceIdea: { id: string; label: string } | null; truncated: TableName[];
   // Phase 3C: files in Google Drive, the upload switch and the Picker configuration.
@@ -82,6 +83,8 @@ export default function ProjectWorkspace({ ownerId, initialProject, initialRecor
   showcase?: { draft: ShowcaseDraft | null; live: LiveShowcase | null };
   // Phase 5A: the assistant's settings and saved conversations; null while it is switched off.
   assistant?: AssistantConfig | null;
+  // Phase 7: sketches and annotation layers, as light previews.
+  drawings?: DrawingSummary[];
 }) {
   const [project, setProject] = useState(initialProject);
   const [records, setRecords] = useState(initialRecords);
@@ -350,6 +353,7 @@ export default function ProjectWorkspace({ ownerId, initialProject, initialRecor
                   layout={table === "project_tasks" ? "board" : table === "story_units" ? "tree" : "list"}
                   files={table === "project_entries" || table === "project_components" ? files : undefined}
                   media={table === "story_characters" || table === "story_units" ? media : undefined}
+                  drawings={table === "story_units" ? drawings : undefined}
                 />
               ))}
             </div>

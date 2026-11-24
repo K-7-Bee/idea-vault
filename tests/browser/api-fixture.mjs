@@ -16,7 +16,9 @@ const DRIVE_SCOPE = 'https://www.googleapis.com/auth/drive.file';
 const FOLDER_MIME = 'application/vnd.google-apps.folder';
 // Phase 2 tables (migrations 006/007). Imitates their triggers and keys; not PostgreSQL.
 const WORK_TABLES = ['projects', 'project_milestones', 'project_tasks', 'project_entries', 'project_components', 'project_links',
-  'story_bible_entries', 'story_characters', 'story_relationships', 'story_units', 'story_timeline_events', 'story_continuity'];
+  'story_bible_entries', 'story_characters', 'story_relationships', 'story_units', 'story_timeline_events', 'story_continuity',
+  // Phase 7 (migration 018).
+  'drawings'];
 const LEVELS = ['season', 'episode', 'scene', 'shot'];
 const failure = (status, code, message) => ({ status, body: { code, message } });
 const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==', 'base64');
@@ -26,6 +28,29 @@ function levelProblem(row) {
   const parent = work.story_units.find((u) => u.id === row.parent_id && u.project_id === row.project_id);
   if (!parent) return failure(409, '23503', 'parent missing');
   if (LEVELS.indexOf(parent.kind) >= LEVELS.indexOf(row.kind)) return failure(400, '23514', 'A ' + row.kind + ' cannot be placed inside a ' + parent.kind + '.');
+  return null;
+}
+// Phase 7 (migration 018): a drawing links to one scene/shot or one image of the same project, keeps
+// that link, has at most one layer per image, and stays under 2 MB.
+function drawingProblem(row, before) {
+  if (before) { row.unit_id = before.unit_id; row.base_file_id = before.base_file_id; if (before.aspect === 'image') row.aspect = 'image'; }
+  const links = [row.unit_id, row.base_file_id].filter((v) => v != null).length;
+  if (links !== 1) return failure(400, '23514', 'drawings must link to exactly one thing');
+  if ((row.base_file_id != null) !== (row.aspect === 'image')) return failure(400, '23514', 'aspect');
+  if (!['16:9', '4:3', '1:1', '9:16', 'image'].includes(row.aspect ?? '16:9')) return failure(400, '23514', 'aspect');
+  if (row.unit_id) {
+    const unit = work.story_units.find((u) => u.id === row.unit_id && u.project_id === row.project_id);
+    if (!unit) return failure(409, '23503', 'unit fk');
+    if (!['scene', 'shot'].includes(unit.kind)) return failure(400, '23514', 'Sketches belong to a scene or a shot.');
+  }
+  if (row.base_file_id) {
+    if (!simple.project_files.some((f) => f.id === row.base_file_id && f.project_id === row.project_id)) return failure(409, '23503', 'file fk');
+    if (!before && work.drawings.some((d) => d.base_file_id === row.base_file_id)) return failure(409, '23505', 'drawings_one_layer_per_image');
+  }
+  const data = row.data ?? { v: 1, items: [] };
+  if (typeof data !== 'object' || Array.isArray(data) || data.v !== 1 || !Array.isArray(data.items)) return failure(400, '23514', 'data');
+  if (Buffer.byteLength(JSON.stringify(data)) > 2097152) return failure(400, '23514', 'data too large');
+  row.data = data; row.title = row.title ?? ''; row.aspect = row.aspect ?? '16:9';
   return null;
 }
 function touch(row) { row.version += 1; row.updated_at = new Date().toISOString(); }
@@ -284,6 +309,7 @@ const server = http.createServer(async (req, res) => {
             return reply(409, { code: '23503', message: 'project fk' });
           }
           if (table === 'story_units') { const problem = levelProblem(row); if (problem) return reply(problem.status, problem.body); }
+          if (table === 'drawings') { const problem = drawingProblem(row, null); if (problem) return reply(problem.status, problem.body); }
           made.push(row);
         }
         rows.push(...made); found = made;
@@ -294,12 +320,17 @@ const server = http.createServer(async (req, res) => {
         for (const row of found) {
           const next = { ...row, ...update };
           if (table === 'story_units') { const problem = levelProblem(next); if (problem) return reply(problem.status, problem.body); }
+          if (table === 'drawings') { const problem = drawingProblem(next, row); if (problem) return reply(problem.status, problem.body); }
           if (table === 'projects' && 'archived_at' in update) next.archived_at = update.archived_at == null ? null : (row.archived_at ?? new Date().toISOString());
           if (table === 'projects') { const problem = publicationRules(row, next); if (problem) return reply(problem.status, problem.body); }
           Object.assign(row, next); touch(row);
           if (table === 'projects' && row.publication_status !== 'published') showcase.live = showcase.live.filter((l) => l.project_id !== row.id);
         }
       } else if (isWork && req.method === 'DELETE') {
+        if (table === 'story_units' && found.some((u) => work.drawings.some((d) => d.unit_id === u.id))) {
+          return reply(409, { code: '23503', message: 'update or delete on table "story_units" violates foreign key constraint "drawings_project_id_unit_id_fkey"' });
+        }
+        if (table === 'projects') for (const p of found) work.drawings = work.drawings.filter((d) => d.project_id !== p.id);
         if (table === 'story_units' && found.some((u) => work.story_units.some((c) => c.parent_id === u.id))) {
           return reply(409, { code: '23503', message: 'update or delete on table "story_units" violates foreign key constraint' });
         }
@@ -428,7 +459,13 @@ function simpleRows(table, url, req, json, owner, reply) {
     return ['entry_id', 'component_id', 'character_id', 'unit_id'].filter((k) => row[k]).length <= 1;
   };
   if (req.method === 'GET') return respond(200, found());
-  if (req.method === 'DELETE') { const gone = found(); for (const row of gone) rows.splice(rows.indexOf(row), 1); return respond(200, gone); }
+  if (req.method === 'DELETE') {
+    const gone = found();
+    // Phase 7: an image with an annotation layer can't be removed until the layer is deleted.
+    if (gone.some((f) => work.drawings.some((d) => d.base_file_id === f.id))) return reply(409, { code: '23503', message: 'violates foreign key constraint "drawings_base_file_fk"' });
+    for (const row of gone) rows.splice(rows.indexOf(row), 1);
+    return respond(200, gone);
+  }
   const body = json();
   if (req.method === 'POST') {
     const row = { id: body.id ?? randomUUID(), ...body, created_at: now, updated_at: now };

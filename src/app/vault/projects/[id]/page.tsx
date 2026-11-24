@@ -11,6 +11,8 @@ import { aiSettings } from "@/lib/ai/limits";
 import VaultShell from "../../vault-shell";
 import type { AssistantConfig } from "./assistant-panel";
 import ProjectWorkspace from "./project-workspace";
+import type { DrawingSummary } from "./drawings/sketch-strip";
+import { canvasFor, parseDrawing, previewOf } from "@/lib/drawing/format";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 // Per record type. The page says so if a list is cut off rather than hiding it.
@@ -57,7 +59,7 @@ async function ProjectContent({ id }: { id: string }) {
   if (!project.data) notFound();
   const data = project.data as Project;
 
-  const [projectFiles, showcaseDraft, liveShowcase, sourceIdea, ...lists] = await Promise.all([
+  const [projectFiles, showcaseDraft, liveShowcase, sourceIdea, drawingRows, ...lists] = await Promise.all([
     supabase.from("project_files").select(PROJECT_FILE_COLUMNS).eq("project_id", id).eq("user_id", owner.id)
       .order("created_at", { ascending: false }).limit(RECORD_LIMIT).then((r) => r, () => null),
     // Phase 4A: the private showcase draft and, if published, what is live.
@@ -66,12 +68,20 @@ async function ProjectContent({ id }: { id: string }) {
     data.source_idea_id
       ? supabase.from("ideas").select("id, title, content").eq("id", data.source_idea_id).eq("user_id", owner.id).maybeSingle().then((r) => r, () => null)
       : Promise.resolve(null),
+    // Phase 7: drawings, reduced to thumbnails below so a large storyboard stays light.
+    supabase.from("drawings").select("id, unit_id, base_file_id, title, aspect, data, position, updated_at").eq("project_id", id).eq("user_id", owner.id)
+      .limit(RECORD_LIMIT).then((r) => r, () => null),
     ...ALL_TABLES.map((table) =>
       supabase.from(table).select("*").eq("project_id", id).eq("user_id", owner.id).limit(RECORD_LIMIT).then((r) => r, () => null),
     ),
   ]);
   if (lists.some((r) => !r || r.error || !r.data) || !projectFiles || projectFiles.error || !projectFiles.data
-    || !showcaseDraft || showcaseDraft.error || !liveShowcase || liveShowcase.error) return <LoadError id={id} />;
+    || !showcaseDraft || showcaseDraft.error || !liveShowcase || liveShowcase.error || !drawingRows || drawingRows.error) return <LoadError id={id} />;
+  const drawings: DrawingSummary[] = (drawingRows.data ?? []).map((d) => ({
+    id: String(d.id), unit_id: (d.unit_id as string | null) ?? null, base_file_id: (d.base_file_id as string | null) ?? null, title: String(d.title ?? ""),
+    aspect: String(d.aspect), position: Number(d.position) || 0, updated_at: String(d.updated_at),
+    preview: previewOf(parseDrawing(d.data, canvasFor("16:9"))),
+  }));
 
   // Phase 5A: the assistant's limits and this project's saved conversations, when it is switched on.
   const ai = aiSettings();
@@ -100,6 +110,6 @@ async function ProjectContent({ id }: { id: string }) {
       initialFiles={projectFiles.data as unknown as ProjectFile[]} driveUploads={driveUploadsEnabled()}
       showcase={{ draft: (showcaseDraft.data as unknown as ShowcaseDraft | null) ?? null, live: (liveShowcase.data as LiveShowcase | null) ?? null }}
       picker={{ apiKey: process.env.NEXT_PUBLIC_GOOGLE_PICKER_API_KEY ?? "", appId: process.env.NEXT_PUBLIC_GOOGLE_APP_ID ?? "" }}
-      assistant={assistant} />
+      assistant={assistant} drawings={drawings} />
   );
 }

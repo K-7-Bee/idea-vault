@@ -4,6 +4,8 @@ import { defineConfig } from "@playwright/test";
 // contact link, and axe on every public page (including /privacy and the 404). Vault tests stay
 // Chromium-only: WebKit doesn't complete the Vault login against the plain-http test server.
 const CROSS_BROWSER_SAMPLE = /public pages load and fit|public pages have no axe violations|contact email is absent/;
+// Phase 7A: Pencil and mouse drawing, palm handling and recovery of an unsaved sketch.
+const WEBKIT_SKETCH = /sketch a shot with pen and mouse|once the Pencil is used|an unsaved sketch survives a reload/;
 
 export default defineConfig({
   testDir: "./tests/browser",
@@ -31,7 +33,8 @@ export default defineConfig({
       // Chromium's host-resolver switch keeps tests offline; these browsers get the same through a
       // proxy that refuses every connection, bypassed only for the local test servers.
       use: { browserName, proxy: { server: "http://127.0.0.1:9", bypass: "127.0.0.1" } },
-      grep: CROSS_BROWSER_SAMPLE,
+      // WebKit (Safari's engine, the closest CI gets to an iPad) also runs the main sketch tests.
+      grep: browserName === "webkit" ? new RegExp(`${CROSS_BROWSER_SAMPLE.source}|${WEBKIT_SKETCH.source}`) : CROSS_BROWSER_SAMPLE,
       // Firefox occasionally never fires "load" on a fully rendered page here (seen 2026-11-23, not
       // reproduced in a 108-navigation probe). Retries keep that from failing the job; Playwright
       // still lists such tests as "flaky" in the log.

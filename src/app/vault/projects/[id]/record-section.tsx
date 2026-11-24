@@ -1,10 +1,11 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { projectFileMeta, projectFileView, type ProjectFile } from "@/lib/project-files";
 import type { FileActions } from "./file-actions";
 import StoryImages from "./story-image";
+import SketchStrip, { type DrawingSummary } from "./drawings/sketch-strip";
 import {
   TABLES,
   UNIT_LEVELS,
@@ -12,6 +13,7 @@ import {
   deleteRecord,
   insertRecord,
   nextPosition,
+  positionForMove,
   sortRows,
   swapPositions,
   unitPath,
@@ -46,7 +48,7 @@ export const DEPENDENTS: Partial<Record<TableName, TableName[]>> = {
 const DELETE_NOTE: Partial<Record<TableName, string>> = {
   project_milestones: " Its tasks are kept.",
   story_characters: " Relationships that name this character are removed too. Continuity records are kept but lose the character link.",
-  story_units: " Timeline events and continuity records are kept but lose this scene/shot link.",
+  story_units: " Timeline events and continuity records are kept but lose this scene/shot link. A scene or shot that has sketches can't be deleted until its sketches are.",
 };
 
 function emptyDraft(config: TableConfig): Draft {
@@ -171,7 +173,7 @@ function rowTitle(config: TableConfig, row: Row, records: Records) {
   return String(row[config.titleField]);
 }
 
-export default function RecordSection({ table, records, ownerId, projectId, writer, update, reload, intro, layout = "list", files, media }: {
+export default function RecordSection({ table, records, ownerId, projectId, writer, update, reload, intro, layout = "list", files, media, drawings }: {
   table: TableName; records: Records; ownerId: string; projectId: string; writer: Writer;
   update: (table: TableName, change: (rows: Row[]) => Row[]) => void;
   reload: (tables: TableName[], done: string) => void;
@@ -180,6 +182,8 @@ export default function RecordSection({ table, records, ownerId, projectId, writ
   files?: ProjectFile[];
   // Phase 3D: images on characters (portrait) and structure items (frame; shots show it as the panel).
   media?: { files: ProjectFile[]; actions: FileActions; canAdd: boolean };
+  // Phase 7A: sketches on scenes and shots (thumbnails; the editor is its own page).
+  drawings?: DrawingSummary[];
 }) {
   const attached = (rowId: string) => (files ?? []).filter((f) => (table === "project_entries" ? f.entry_id : f.component_id) === rowId);
   const config = TABLES[table];
@@ -219,6 +223,39 @@ export default function RecordSection({ table, records, ownerId, projectId, writ
       if (dependents) reload(dependents, `Deleted ${label}.`);
     });
   }
+  // Phase 7A: drag a shot by its handle to reorder (touch, pen or mouse). The up/down buttons remain
+  // the keyboard and screen-reader way; both save the same position field.
+  const [drag, setDrag] = useState<{ id: string; over: string | null } | null>(null);
+  const dragRef = useRef<{ id: string; siblings: Row[]; over: string | null } | null>(null);
+  function startDrag(e: React.PointerEvent<HTMLButtonElement>, row: Row, siblings: Row[]) {
+    if (e.pointerType === "mouse" && e.button !== 0) return;
+    e.preventDefault();
+    // Capture keeps the stroke when the pointer leaves the element; some pointers (and synthetic
+    // events) can't be captured, and drawing still works without it.
+    try { e.currentTarget.setPointerCapture(e.pointerId); } catch { /* not capturable */ }
+    dragRef.current = { id: row.id, siblings, over: null };
+    setDrag({ id: row.id, over: null });
+  }
+  function moveDrag(e: React.PointerEvent<HTMLButtonElement>) {
+    const d = dragRef.current;
+    if (!d) return;
+    const el = document.elementFromPoint(e.clientX, e.clientY)?.closest<HTMLElement>("[data-reorder-id]");
+    const over = el && d.siblings.some((r) => r.id === el.dataset.reorderId) ? el.dataset.reorderId! : null;
+    if (over !== d.over) { d.over = over; setDrag({ id: d.id, over }); }
+  }
+  function endDrag(cancelled: boolean) {
+    const d = dragRef.current;
+    dragRef.current = null;
+    setDrag(null);
+    if (!d || cancelled || !d.over || d.over === d.id) return;
+    const row = d.siblings.find((r) => r.id === d.id)!;
+    const position = positionForMove(d.siblings, d.id, d.siblings.findIndex((r) => r.id === d.over));
+    if (position === null) { writer.setMessage({ text: "Couldn't move it by dragging here; use the up and down buttons instead. Nothing was changed.", error: true }); return; }
+    void writer.run((c) => updateRecord(c, table, ownerId, row, { position }), "Moved.", (saved) => {
+      update(table, (list) => list.map((r) => (r.id === saved.id ? saved : r)));
+    });
+  }
+
   function swap(a: Row, b: Row) {
     void writer.run((c) => swapPositions(c, table, ownerId, a, b), null, ([first, second]) => {
       update(table, (list) => list.map((r) => (r.id === first.id ? first : r.id === second.id ? second : r)));
@@ -241,7 +278,8 @@ export default function RecordSection({ table, records, ownerId, projectId, writ
     const kindLabel = table === "story_units" ? TABLES.story_units.fields[0].options!.find((o) => o.value === row.kind)?.label : null;
     const disabled = writer.busy || !writer.online;
     return (
-      <li key={row.id} className={`list-none rounded-xl border border-line bg-card p-3 shadow-sm ${isShot ? "flex flex-col" : ""}`}>
+      <li key={row.id} data-reorder-id={isShot ? row.id : undefined}
+        className={`list-none rounded-xl border bg-card p-3 shadow-sm ${isShot ? "flex flex-col" : ""} ${drag?.over === row.id && drag.id !== row.id ? "border-accent ring-4 ring-accent/30" : "border-line"} ${drag?.id === row.id ? "opacity-60" : ""} ${drag ? "select-none" : ""}`}>
         {media ? (
           <StoryImages owner={{ kind: table === "story_characters" ? "character" : "unit", id: row.id }} label={rowTitle(config, row, records)}
             files={media.files} actions={media.actions} canAdd={media.canAdd} disabled={disabled}
@@ -254,6 +292,9 @@ export default function RecordSection({ table, records, ownerId, projectId, writ
           </h4>
         </div>
         <RowDetails config={config} row={row} records={records} />
+        {drawings && table === "story_units" && (row.kind === "scene" || row.kind === "shot") && (
+          <SketchStrip unit={row} label={rowTitle(config, row, records)} drawings={drawings} ownerId={ownerId} projectId={projectId} writer={writer} />
+        )}
         {attached(row.id).length > 0 && (
           <ul aria-label={`Files attached to ${rowTitle(config, row, records)}`} className="mt-2 grid gap-1 text-sm">
             {attached(row.id).map((f) => {
@@ -274,6 +315,13 @@ export default function RecordSection({ table, records, ownerId, projectId, writ
           )}
           {groupField && g >= 0 && g < groupOptions.length - 1 && (
             <button type="button" className={smallButton} disabled={disabled} onClick={() => moveGroup(row, groupOptions[g + 1].value)}>{groupOptions[g + 1].label} →</button>
+          )}
+          {isShot && siblings.length > 1 && (
+            <button type="button" tabIndex={-1} disabled={disabled} title="Drag to reorder (or use the up and down buttons)"
+              aria-label={`Drag ${rowTitle(config, row, records)} to reorder; the up and down buttons do the same`}
+              className={`${smallButton} cursor-grab touch-none select-none active:cursor-grabbing`}
+              onMouseDown={(e) => e.preventDefault()} onPointerDown={(e) => startDrag(e, row, siblings)} onPointerMove={moveDrag}
+              onPointerUp={() => endDrag(false)} onPointerCancel={() => endDrag(true)}>⠿ Drag</button>
           )}
           {config.positioned && index > 0 && (
             <button type="button" className={smallButton} disabled={disabled} aria-label={`Move ${rowTitle(config, row, records)} up`} onClick={() => swap(row, siblings[index - 1])}>↑</button>
