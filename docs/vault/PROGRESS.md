@@ -1236,3 +1236,26 @@ Not verified:
 - Drive export against real Google.
 
 Commits: `e02570a`, `564c58d`, `94a11ba`, `0261fa4`, `a185e7c`, `127115c` and the documentation commits after them.
+
+## 2026-11-25: Go-live of 7A–7C and 5B
+
+On the owner's "go live":
+1. **CI:** green on `1193416` (run 45357078105). Two fixes came before that:
+   - B-10: the project Overview overflowed 320 px phones.
+   - The SQL-suite image is now pinned by digest and falls back to Docker Hub, because AWS's public registry was rate-limiting CI.
+2. **Backup:** the owner sealed their passphrase (`backup-scheduled.ps1 -Action Setup`). Then a backup and restore drill: 30 of 30 tables identical, all file hashes matching.
+   - The 110 catalog differences are the four new tables, which exist only in the drill (its schema comes from the repository), plus the known legacy `timevault_state` and `rls_auto_enable()`.
+   - The backup showed fewer rows than the 2026-11-24 pre-check: 2 ideas, 4 project files, 1 story unit, 1 entry and 1 character were gone. The owner confirmed they deleted these themselves.
+3. **Read-only pre-check:** 30 tables; none of the new tables or the 018 index existed yet.
+4. **Migrations:** applied `018_drawings.sql`, then `019_boards.sql`, using `db query --yes`. Post-check (read-only):
+   - 34 tables;
+   - RLS on for `drawings`, `boards`, `board_cards` and `board_links`;
+   - 4 policies each, for `authenticated` only; 0 anon grants;
+   - the triggers and `project_files_project_id_key` present;
+   - existing counts unchanged (projects 2, project_showcases 1, drive_connections 1, drive_folders 3, site_owner 1).
+5. **Rollback target:** `dpl_6BNkoTDw3k1sz1i6Sa7WDAJBHTN6` (`bc48972`).
+6. **Deploy:** fast-forwarded `main` `bc48972` → `1193416`. Vercel deployment `4wwBYBpyH7Bj1Xnt6XDDfzqDYtbc` is ready.
+7. **Live check:** 12/12. Logged out, the drawing and board pages redirect to `/login`, and `/api/ai/propose` refuses a cross-site request (403).
+8. **Weekly backup:** registered (Sundays 11:00; next 2026-11-29). `npm run check:backup` is healthy.
+
+Not verified: the logged-in pass and the iPad checklist (owner; see FINAL_HANDOVER), and real Drive export.

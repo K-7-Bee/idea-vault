@@ -71,7 +71,7 @@ Setup for the weekly backup is in [scripts/vault/README.md](../scripts/vault/REA
 3. `npm run test:sql` until it passes.
 4. Apply to production only during a go-live (below), after a backup.
 
-Order applied to production so far: `schema.sql`, `002_tags.sql` … `017_ai.sql`, in number order. **Not yet applied:** `018_drawings.sql` and `019_boards.sql` (built 2026-11-24). Apply them in that order at the next go-live, after a backup. A fresh project needs `scripts/vault/drill/storage-standin.sql` **only in test databases**; real Supabase has its own Storage schema.
+Order applied to production so far: `schema.sql`, `002_tags.sql` … `019_boards.sql`, in number order (018 and 019 applied 2026-11-25). A fresh project needs `scripts/vault/drill/storage-standin.sql` **only in test databases**; real Supabase has its own Storage schema.
 
 ## Go-live
 

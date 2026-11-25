@@ -2,7 +2,7 @@
 
 **Read this first.** Everything below happened on the branch `vault-audit-and-planning-docs`.
 
-**Nothing was deployed.** `main` and the live site are unchanged since 6E (`bc48972`). No live database change was made, and no credential was touched.
+**Update 2026-11-25: now live.** On the owner's "go live": a backup with the owner's passphrase and a passing restore drill, migrations 018 and 019 applied with read-only checks before and after, `main` fast-forwarded to `1193416`, and the live check passing (12/12). Details are in `docs/vault/PROGRESS.md`. Overnight itself, nothing was deployed.
 
 ## Executive summary
 
@@ -27,10 +27,10 @@
 | Phase | Status | Evidence |
 | --- | --- | --- |
 | 0–6E | Live (before tonight) | PROGRESS.md |
-| **7A** sketching | **Built, not live** | `564c58d`, CI green; sketch spec (Chromium 7/7, WebKit 3/3) |
-| **7B** annotation | **Built, not live** | `94a11ba`, CI green; annotate spec (Chromium 2/2, WebKit 1/1) |
-| **7C** boards | **Built, not live** | `0261fa4`; board spec (Chromium 3/3, WebKit 1/1); SQL 24 checks |
-| **5B** proposals | **Built, not live** (and 5A is off in production) | `a185e7c`; 6 unit and 3 browser tests |
+| **7A** sketching | **Live 2026-11-25** | `564c58d`, CI green; sketch spec (Chromium 7/7, WebKit 3/3) |
+| **7B** annotation | **Live 2026-11-25** | `94a11ba`, CI green; annotate spec (Chromium 2/2, WebKit 1/1) |
+| **7C** boards | **Live 2026-11-25** | `0261fa4`; board spec (Chromium 3/3, WebKit 1/1); SQL 24 checks |
+| **5B** proposals | **Live 2026-11-25** (code only: the assistant, 5A, is off in production) | `a185e7c`; 6 unit and 3 browser tests |
 | **5C** file text to AI | **Not built: blocked** | It contradicts your approved privacy page (V-077) |
 | Domain, Drive Production | Blocked: you | Steps were given 2026-11-23 |
 | CSP enforcement | Blocked: on or after 2026-11-30 | RUNBOOK, Switches |
