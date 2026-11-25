@@ -150,4 +150,4 @@ Proposals and any data changes (5B), file or Drive text (5C), image generation, 
 - **Assistant panel:** a "Suggest new items" section with Accept (a normal owner insert) and Reject (saves nothing). Proposals aren't stored.
 - **Tests:** `tests/proposals.test.mjs` (6) and `tests/browser/proposals.spec.ts` (3), both against the fake Gemini.
 - **Not verified:** real Gemini output quality, or whether the real model follows the JSON format reliably. An unreadable reply shows nothing.
-- **5C is not built (V-077).**
+- **5C is not built (V-077), and won't be while the privacy promise stands (V-078, 2026-11-25). Phase 5 is complete at 5A and 5B.**

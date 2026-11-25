@@ -139,4 +139,6 @@
 3. Do the iPad checklist.
 4. Enforce the CSP on or after 30 Nov.
 5. Connect the domain, then Drive Production.
-6. Later: a shared "read typed value" input hook for all Vault forms (B-1 class); per-scene loading of sketch previews for very large storyboards.
+6. Later items, assessed 2026-11-25:
+   - **The B-1 class** (text typed before loading): no further change is needed. A test that held back the page's scripts showed Vault screens render their forms only after the scripts run, so nothing can be typed early. Only statically rendered forms are exposed, and the login form (B-1) and the new-board form (B-5) are fixed.
+   - **Per-scene loading of sketch previews:** deferred until a storyboard is large enough to matter. Live data is tiny today.

@@ -1259,3 +1259,19 @@ On the owner's "go live":
 8. **Weekly backup:** registered (Sundays 11:00; next 2026-11-29). `npm run check:backup` is healthy.
 
 Not verified: the logged-in pass and the iPad checklist (owner; see FINAL_HANDOVER), and real Drive export.
+## 2026-11-25: Remaining tasks, recommended options
+
+The owner said "go live and finish all the tasks with the recommended option".
+- **Docs live:** `main` was fast-forwarded to `27343f4`, the go-live record. CI and Cross-browser were green on `1193416`.
+- **Supabase sign-ups:** checked read-only through the public auth settings: `disable_signup: true`, email the only provider. S-4 is closed apart from rate limits, which this endpoint doesn't show.
+- **Dependabot (V-079):**
+  - **Merged:** #1 (supabase-js 2.119.2, React 19.3.1) and #2 (Playwright 1.65.1, Tailwind 4.3.5) into the branch. Types, lint (0 errors) and unit tests (229) passed locally; CI was green on `12f84ca` (run 45542700805).
+  - **Not taken:** #3 (TypeScript 7, fails the type check), #4 (`@types/node` 26, now ignored above 24) and #5 (ESLint 10). The owner closes these on GitHub; `gh` isn't logged in here.
+- **5C (V-078):** not built; the privacy promise stays. Phase 5 is complete at 5A and 5B.
+- **B-1 class:** assessed with a held-scripts test. Vault forms render only after the scripts run, so no change was needed. Per-scene preview loading is deferred.
+- **This PC:** drive C: is full (about 0.6 GB free), so Playwright 1.65's browsers are on `S:\playwright-browsers`. Set `PLAYWRIGHT_BROWSERS_PATH=S:\playwright-browsers` before local browser tests.
+
+**Can't be done from here:**
+- CSP enforcement: due on or after 2026-11-30, and needs Vercel's runtime logs plus an environment variable.
+- Dependabot security updates: a repository setting.
+- Domain, Drive Production and the iPad checklist: owner actions.

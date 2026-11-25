@@ -12,6 +12,11 @@ updates:
       time: "06:00"
       timezone: Asia/Seoul
     open-pull-requests-limit: 5
+    # The site runs on Node 24 (CI and Vercel), so Node's type definitions stay on 24 until the
+    # runtime moves (decided 2026-11-25; PR #4 offered 26).
+    ignore:
+      - dependency-name: "@types/node"
+        versions: [">=25"]
     groups:
       production:
         dependency-type: production

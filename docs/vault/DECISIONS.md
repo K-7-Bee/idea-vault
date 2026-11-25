@@ -187,3 +187,12 @@ The owner removed the approval waits from AGENTS.md and asked for every remainin
 | V-075 | Board cards whose record is deleted | Kept and shown as "(removed)" (link cleared). Deleting a card removes its connections; deleting a board removes its cards, after a confirmation. |
 | V-076 | 5B scope | Proposals for tasks and milestones (engineering and planning modes) or continuity notes (story mode); at most 8; each must cite a ticked record. The route writes only the usage ledger. Each Accept is one normal owner insert. Proposals aren't kept after the page closes. |
 | V-077 | 5C | **Not built.** Sending file text to Gemini contradicts the privacy page the owner approved on 2026-11-23 ("never sends Google Drive file contents"). That needs the owner's decision. |
+
+## Owner decisions taken with the recommended option (2026-11-25)
+
+The owner said "go live and finish all the tasks with the recommended option".
+
+| ID | Question | Answer |
+| --- | --- | --- |
+| V-078 | 5C (sending file text to the assistant) | **Keep the privacy promise; 5C is not built.** The privacy page stays as approved ("never sends Google Drive file contents"). Revisit only with a deliberate privacy-page change in the same release. Phase 5 is closed at 5A and 5B. |
+| V-079 | Dependabot updates of 2026-11-25 | **Taken:** the minor and patch groups (#1: supabase-js 2.119.2, React 19.3.1; #2: Playwright 1.65.1, Tailwind 4.3.5). **Not taken:** TypeScript 7 (#3: fails the type check; a compiler rewrite that needs its own migration), `@types/node` 26 (#4: the runtime is Node 24, so it is now ignored above 24 in `dependabot.yml`), ESLint 10 (#5: a major version with config changes; take it once Next's ESLint config supports it). Close #3–#5 on GitHub. |
